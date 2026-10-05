@@ -134,7 +134,8 @@ struct LocalBooksView: View {
             }
 
             Task { await reload() }
-            isImporting = false            if failures.isEmpty {
+            isImporting = false
+            if failures.isEmpty {
                 message = "已导入 \(succeeded) 个文件。"
             } else {
                 message = "成功 \(succeeded) 个，失败 \(failures.count) 个：\n" + failures.joined(separator: "\n")

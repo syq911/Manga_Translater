@@ -44,6 +44,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 🔧 修复 / Fixed（M1 收尾）
 
+- `LocalBooksView` 一处编辑把换行吃掉，导致两条语句挤在同一行
+  （编译报 `Consecutive statements on a line must be separated by ';'`）。
+  已修复，并把「值 + 4 空格以上 + 语句关键字」这一漏换行特征加进预检
+  （已反向验证：人为还原该行即被拦下）。
+
+
 - **`AppCore` 缺 `import CoreGraphics`**：`CGSize`/`CGFloat` 经 Foundation 可见，
   但 `.zero` 与 `Equatable` 一致性定义在 CoreGraphics 模块里，导致
   「type 'CGSize' has no member 'zero'」与「ZoomState 不符合 Equatable」编译失败。

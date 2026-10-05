@@ -115,6 +115,26 @@ def check_file(path):
             continue
         problems.append(f"第 {index + 1} 行 else 可能悬空（上一行：{previous[:60]}）")
 
+    # 漏换行：Swift 一行只能有一个语句，出现「值 + 大量空白 + 关键字」
+    # 基本可以断定是编辑时把换行吃掉了（实测踩过：
+    # `isImporting = false            if failures.isEmpty {` 报
+    #  "Consecutive statements on a line must be separated by ';'"）。
+    # 判定收紧到「字面量结尾 + 4 空格以上 + 语句关键字」，避免误报
+    # （对齐的代码块、多行字符串已在 strip_literals_and_comments 里剔除）。
+    merged = re.compile(
+        r"\b(true|false|nil|\d+|\"[^\"]*\"|\))\s{4,}"
+        r"(if|for|while|guard|switch|return|let|var|do|Task)\b"
+    )
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("//") or stripped.startswith("*"):
+            continue
+        match = merged.search(line)
+        if match:
+            problems.append(
+                f"第 {index + 1} 行疑似漏换行（`{match.group(1)}` 与 `{match.group(2)}` 挤在同一行）"
+            )
+
     return problems
 
 
