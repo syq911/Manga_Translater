@@ -44,6 +44,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 🔧 修复 / Fixed（M1 收尾）
 
+- `CoverThumbnailCache` 多解了一层 Optional：Swift 5 起 `try?` 会**折叠**嵌套
+  Optional，故 `try? load()`（load 返回 `Data?`）的类型是 `Data?` 而非 `Data??`，
+  写 `guard let a = try?, let a` 会报「initializer for conditional binding must
+  have Optional type, not 'Data'」。已改为只解一层。
+- `AppEnvironment.addToLibrary` 丢弃 `try?` 的包装结果（消除
+  "result of 'try?' is unused" 警告）。
+
+
 - `LocalBooksView` 一处编辑把换行吃掉，导致两条语句挤在同一行
   （编译报 `Consecutive statements on a line must be separated by ';'`）。
   已修复，并把「值 + 4 空格以上 + 语句关键字」这一漏换行特征加进预检

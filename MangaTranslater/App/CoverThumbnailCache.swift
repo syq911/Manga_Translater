@@ -55,7 +55,9 @@ final class CoverThumbnailCache: @unchecked Sendable {
             storeInMemory(onDisk, mangaID: mangaID)
             return onDisk
         }
-        guard let original = try? load(), let original, !original.isEmpty else { return nil }
+        // 注意：Swift 5 起 `try?` 会**折叠**嵌套 Optional，
+        // 所以 `try? load()` 的类型是 `Data?` 而不是 `Data??` —— 只解一层。
+        guard let original = try? load(), !original.isEmpty else { return nil }
         guard let generated = Self.makeThumbnail(from: original, maxPixel: maxPixel) else {
             diag("CoverThumbnailCache: 封面不是有效图片，跳过 —— \(mangaID)")
             return nil

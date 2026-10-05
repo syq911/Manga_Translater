@@ -135,7 +135,9 @@ final class AppEnvironment {
         if let existing = try? libraryStore.entry(mangaID: manga.id) {
             var updated = existing
             updated.manga = manga
-            try? libraryStore.save(updated)
+            // `save` 返回 Void，用 `_ =` 显式丢弃 `try?` 的包装结果，
+            // 否则会报 "result of 'try?' is unused"。
+            _ = try? libraryStore.save(updated)
             return updated
         }
         let entry = LibraryEntry(manga: manga, categoryID: categoryID)
