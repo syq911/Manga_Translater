@@ -135,6 +135,23 @@ def check_file(path):
                 f"第 {index + 1} 行疑似漏换行（`{match.group(1)}` 与 `{match.group(2)}` 挤在同一行）"
             )
 
+    # 几何构造函数里的裸 `.nan` / `.infinity`：同时 import Foundation 与
+    # CoreGraphics 时，`CGFloat.nan` 在两个模块都有定义，会报
+    # "ambiguous use of 'nan'"。要求显式写 `CGFloat.nan`。
+    ambiguous = re.compile(
+        r"\bCG(?:Size|Point|Rect|Vector)\([^)\n]*?(?<![\w.])\.(nan|infinity)\b"
+    )
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("//"):
+            continue
+        match = ambiguous.search(line)
+        if match:
+            problems.append(
+                f"第 {index + 1} 行的 `.{match.group(1)}` 类型不明确，"
+                f"请写成 `CGFloat.{match.group(1)}`"
+            )
+
     return problems
 
 

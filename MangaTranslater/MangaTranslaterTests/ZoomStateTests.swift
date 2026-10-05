@@ -204,8 +204,10 @@ struct ZoomStateTests {
 
     @Test("非法平移输入按 0 处理")
     func panHandlesNonFinite() {
+        // 必须写 `CGFloat.nan`：同时 import Foundation 与 CoreGraphics 时，
+        // 裸 `.nan` / `.infinity` 会报 "ambiguous use of 'nan'"。
         let offset = ZoomState.clampedOffset(
-            CGSize(width: .nan, height: .infinity),
+            CGSize(width: CGFloat.nan, height: CGFloat.infinity),
             scale: 2,
             containerSize: CGSize(width: 300, height: 400),
             imageSize: CGSize(width: 100, height: 200)

@@ -44,6 +44,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 🔧 修复 / Fixed（M1 收尾）
 
+- `ZoomStateTests` 里 `CGSize(width: .nan, ...)` 报 "ambiguous use of 'nan'"：
+  同时 import Foundation 与 CoreGraphics 时 `CGFloat.nan` 有两处定义。
+  改为显式 `CGFloat.nan`，并把「几何构造函数里裸写 `.nan` / `.infinity`」
+  加进预检（已反向验证）。
+
+
 - `CoverThumbnailCache` 多解了一层 Optional：Swift 5 起 `try?` 会**折叠**嵌套
   Optional，故 `try? load()`（load 返回 `Data?`）的类型是 `Data?` 而非 `Data??`，
   写 `guard let a = try?, let a` 会报「initializer for conditional binding must
