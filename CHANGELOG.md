@@ -91,6 +91,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   CRC 由外部实现写入的逐字节校验、不支持的方法被拒、声明尺寸不符、
   压缩流被破坏、缺失条目
 
+### 🔧 修复 / Fixed
+
+- `ReadingHistoryEntry` 缺少 `Codable`（被 JSON payload 编解码使用），编译失败；
+  并把这类问题固化为预检规则：`decode(X.self …)` 涉及的自有类型必须声明 `Codable`
+  （`tools/check_swift_syntax.py`，已实测能抓到该缺陷）。
+
 ### 🧪 测试 / Tests
 
 - 覆盖全部四个包的正常流程、异常分支与边界条件（空输入、超长文本、非法参数、

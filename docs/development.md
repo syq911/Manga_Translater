@@ -34,7 +34,7 @@ bash tools/preflight.sh
 |---|---|
 | `tools/check_project.py` | pbxproj 引用完整性（曾因结构非法导致包解析器崩溃）、例外集与磁盘测试文件一致性、包登记、配置文件语法、旧项目名残留 |
 | `tools/check_imports.py` | ①「用了某包类型却没 import」；②「跨模块调用了 non-public 成员」——纯编译器错误，本地提前挡掉 |
-| `tools/check_swift_syntax.py` | 括号配平、`#if/#endif` 配对、悬空 `else`（本机无 Swift 工具链时的词法体检） |
+| `tools/check_swift_syntax.py` | 括号配平、`#if/#endif` 配对、悬空 `else`、**JSON 编解码类型必须 Codable**（本机无 Swift 工具链时的词法体检） |
 | `tools/check_docs_sync.py` | `docs/source-api.md` 的契约示例与测试夹具必须逐字一致 |
 | Python 语法检查 | CI 里 `release` job 会执行的脚本 |
 | `tools/check_redlines.py` | 合规红线：不得出现第三方站点名、不得提交源脚本（`*.js`）、不得提交凭据 |

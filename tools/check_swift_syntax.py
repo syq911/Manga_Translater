@@ -118,12 +118,56 @@ def check_file(path):
     return problems
 
 
+def check_codable_consistency(files):
+    """
+    JSON 编解码一致性：凡是以 `decode(X.self …)` 形式被解码的自有类型，
+    它的声明必须包含 Codable（或同时包含 Encodable 与 Decodable）。
+
+    动机：CI 上曾出现 `ReadingHistoryEntry` 忘记声明 Codable，
+    直到编译才报 "requires that ... conform to Decodable"。
+    这类问题在词法层面就能拦掉，不必消耗一轮 CI。
+    """
+    problems = []
+
+    # 收集仓库内自有类型的声明行
+    declarations = {}
+    for path in files:
+        text = io.open(path, encoding="utf-8").read()
+        for match in re.finditer(
+            r"^(\s*)(?:public\s+|internal\s+|final\s+)*(?:struct|class|enum|actor)\s+([A-Za-z_][A-Za-z0-9_]*)([^{]*)\{",
+            text,
+            re.M,
+        ):
+            header = match.group(0)
+            declarations[match.group(2)] = (path, header)
+
+    for path in files:
+        text = io.open(path, encoding="utf-8").read()
+        code = strip_literals_and_comments(text)
+        for match in re.finditer(r"decode\(\s*([A-Z][A-Za-z0-9_]*)\.self", code):
+            name = match.group(1)
+            if name not in declarations:
+                continue  # 系统类型或第三方类型，不管
+            _, header = declarations[name]
+            codable = "Codable" in header or ("Encodable" in header and "Decodable" in header)
+            if not codable:
+                problems.append(
+                    (
+                        os.path.relpath(path).replace("\\", "/"),
+                        f"{name} 被 JSONDecoder 解码，但声明里没有 Codable",
+                    )
+                )
+    return problems
+
+
 def main():
     files = swift_files("MangaTranslater") + swift_files("Packages")
     all_problems = []
     for path in files:
         for problem in check_file(path):
             all_problems.append((os.path.relpath(path).replace("\\", "/"), problem))
+    for problem in check_codable_consistency(files):
+        all_problems.append(problem)
 
     print(f"体检 Swift 文件：{len(files)} 个")
     if all_problems:
@@ -131,7 +175,7 @@ def main():
         for path, problem in all_problems:
             print(f"  {path}: {problem}")
         return 1
-    print("✅ 括号配平、条件编译指令配对，未发现明显结构问题")
+    print("✅ 括号配平、条件编译指令配对、JSON 编解码类型一致")
     return 0
 
 

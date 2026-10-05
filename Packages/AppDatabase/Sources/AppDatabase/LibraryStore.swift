@@ -30,7 +30,9 @@ public enum LibrarySortOrder: String, Sendable, CaseIterable {
 }
 
 /// 阅读历史条目。
-public struct ReadingHistoryEntry: Identifiable, Equatable, Sendable {
+///
+/// `Codable`：历史以 JSON payload 落库（见 `DatabaseLibraryStore`）。
+public struct ReadingHistoryEntry: Identifiable, Codable, Equatable, Sendable {
     /// 主键：`<mangaID>|<chapterID>`，同一章节只保留一条。
     public let id: String
     public let mangaID: String
