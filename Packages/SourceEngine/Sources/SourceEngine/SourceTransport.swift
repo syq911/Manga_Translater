@@ -92,7 +92,11 @@ public protocol SourceTransporting: Sendable {
     func cookieHeader(for url: String, sourceID: SourceID) async -> String?
 
     /// 该源在某地址上可见的 Cookie（结构化，供 `cookies.getAll` 使用）。
-    func cookies(for url: String, sourceID: SourceID) async -> [(name: String, value: String)]
+    ///
+    /// - Important: **同步且必须是非阻塞的纯内存读取**。JS 侧的 `cookies.get`
+    ///   是同步 API，若这里需要等待异步工作，就会在 JS 执行线程上形成自锁。
+    ///   实现请直接读内存中的 Cookie 存储（`CookieJar` 本身线程安全）。
+    func cookies(for url: String, sourceID: SourceID) -> [String: String]
 
     /// 写入 Cookie（源在 JS 里维护会话用）。
     func storeCookies(_ cookies: [String: String], for url: String, sourceID: SourceID) async
@@ -205,11 +209,14 @@ public final class DefaultSourceTransport: SourceTransporting, @unchecked Sendab
         cookieJar.cookieHeader(for: sourceID, url: url)
     }
 
-    public func cookies(for url: String, sourceID: SourceID) async -> [(name: String, value: String)] {
-        guard let parsed = URL(string: url), let host = parsed.host else { return [] }
+    public func cookies(for url: String, sourceID: SourceID) -> [String: String] {
+        guard let parsed = URL(string: url), let host = parsed.host else { return [:] }
         let path = parsed.path.isEmpty ? "/" : parsed.path
-        return cookieJar.cookies(for: sourceID, host: host, path: path)
-            .map { (name: $0.name, value: $0.value) }
+        var result: [String: String] = [:]
+        for cookie in cookieJar.cookies(for: sourceID, host: host, path: path) {
+            result[cookie.name] = cookie.value
+        }
+        return result
     }
 
     public func storeCookies(_ cookies: [String: String], for url: String, sourceID: SourceID) async {

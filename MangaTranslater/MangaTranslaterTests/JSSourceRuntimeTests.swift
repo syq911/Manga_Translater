@@ -107,10 +107,10 @@ final class StubSourceTransport: SourceTransporting, @unchecked Sendable {
         return cookies.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: "; ")
     }
 
-    func cookies(for url: String, sourceID: SourceID) async -> [(name: String, value: String)] {
+    func cookies(for url: String, sourceID: SourceID) -> [String: String] {
         lock.lock()
         defer { lock.unlock() }
-        return (cookieStorage[url] ?? [:]).map { (name: $0.key, value: $0.value) }.sorted { $0.name < $1.name }
+        return cookieStorage[url] ?? [:]
     }
 
     func storeCookies(_ cookies: [String: String], for url: String, sourceID: SourceID) async {
@@ -383,8 +383,8 @@ struct JSSourceRuntimeTests {
 
         // 写入是异步派发的，给它一点时间落地
         try await Task.sleep(nanoseconds: 200_000_000)
-        let stored = await transport.cookies(for: "https://example.com/search", sourceID: SourceID("demo"))
-        #expect(stored.contains { $0.name == "token" && $0.value == "new" })
+        let stored = transport.cookies(for: "https://example.com/search", sourceID: SourceID("demo"))
+        #expect(stored["token"] == "new")
     }
 
     @Test("prefs 读不到时用默认值，写入后能读回")

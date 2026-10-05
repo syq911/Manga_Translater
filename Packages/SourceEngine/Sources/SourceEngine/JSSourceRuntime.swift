@@ -165,9 +165,17 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
 
         installBridge(context: ctx, meta: meta)
 
-        if let bootstrap = ctx.evaluateScript(Self.bootstrapScript), bootstrap.isUndefined {
-            throw SourceRunnerError.executionFailed("桥接初始化失败：\(ctx.exception?.toString() ?? "未知错误")")
+        // 注意：引导脚本是个立即执行的函数表达式，正常执行完返回 undefined ——
+        // 因此**不能**用返回值判断成败，只能看有没有异常。
+        ctx.exception = nil
+        ctx.evaluateScript(Self.bootstrapScript)
+        if let exception = ctx.exception {
+            let text = exception.toString() ?? "未知错误"
+            ctx.exception = nil
+            teardown()
+            throw SourceRunnerError.executionFailed("桥接初始化失败：\(text)")
         }
+        ctx.exception = nil
 
         // 顶层求值：脚本此时只应做声明，不应真正发请求
         ctx.evaluateScript(script)
@@ -273,7 +281,10 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
     // MARK: 桥接注入
 
     private func installBridge(context: JSContext, meta: SourceScriptMeta) {
-        let bridge = JSValue(newObjectIn: context)
+        guard let bridge = JSValue(newObjectIn: context) else {
+            logSink("error", "[javascript] 无法创建桥接对象")
+            return
+        }
         let sourceID = meta.id
         let rateLimit = meta.rateLimitMilliseconds
 
@@ -298,57 +309,49 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
             }
             return promise
         }
-        bridge?.setObject(netFetch as Any, forKeyedSubscript: "netFetch" as NSString)
+        bridge.setObject(netFetch as Any, forKeyedSubscript: "netFetch" as NSString)
 
         // 日志（只记级别与短消息，不落内容）
         let logInfo: @convention(block) (String) -> Void = { [weak self] message in
             Task { await self?.writeLog(level: "info", message: message, sourceID: sourceID) }
         }
-        bridge?.setObject(logInfo as Any, forKeyedSubscript: "logInfo" as NSString)
+        bridge.setObject(logInfo as Any, forKeyedSubscript: "logInfo" as NSString)
 
-        let cookiesGet: @convention(block) (String) -> String = { [weak self] url in
-            // 读 Cookie 是同步的（CookieJar 内部加锁），但为保持单一入口仍走 actor；
-            // 这里用一个短超时同步等待，避免在 JS 线程上无限阻塞。
-            let semaphore = DispatchSemaphore(value: 0)
-            let box = StringBox()
-            Task { [weak self] in
-                let value = await self?.bridgeCookieJSON(url: url, sourceID: sourceID) ?? "{}"
-                box.value = value
-                semaphore.signal()
+        // 同步桥接**不允许**回到 actor：JS 执行发生在 actor 的执行线程上，
+        // 若在这里等待一个需要 actor 的任务，就会自锁。因此直接调用
+        // 线程安全的同步实现（规范要求它是纯内存读取）。
+        let transport = self.transport
+        let cookiesGet: @convention(block) (String) -> String = { url in
+            let cookies = transport.cookies(for: url, sourceID: sourceID)
+            guard let data = try? JSONSerialization.data(withJSONObject: cookies),
+                  let text = String(data: data, encoding: .utf8) else {
+                return "{}"
             }
-            _ = semaphore.wait(timeout: .now() + 5)
-            return box.value ?? "{}"
+            return text
         }
-        bridge?.setObject(cookiesGet as Any, forKeyedSubscript: "cookiesGet" as NSString)
+        bridge.setObject(cookiesGet as Any, forKeyedSubscript: "cookiesGet" as NSString)
 
         let cookiesSet: @convention(block) (String, String) -> Void = { [weak self] url, json in
             Task { await self?.bridgeStoreCookies(url: url, json: json, sourceID: sourceID) }
         }
-        bridge?.setObject(cookiesSet as Any, forKeyedSubscript: "cookiesSet" as NSString)
+        bridge.setObject(cookiesSet as Any, forKeyedSubscript: "cookiesSet" as NSString)
 
-        // 读类桥接是**同步** API（脚本里写 `prefs.get(...)` 比 await 自然）。
-        // 由于取值需要回到 actor，这里用短超时同步等待：actor 在
-        // `await callAsyncJavaScript` 期间是空闲的，因此常规路径不会阻塞；
-        // 极端情况（脚本在顶层同步调用）会等满超时并返回默认值，不会死锁。
-        let prefsGet: @convention(block) (String) -> JSValue = { [weak self] key in
-            guard let self else { return JSValue(nullIn: context) }
-            let semaphore = DispatchSemaphore(value: 0)
-            let box = StringBox()
-            Task {
-                box.value = await self.preferenceValue(key: key, sourceID: sourceID)
-                semaphore.signal()
+        // 同样：同步 API 直接读线程安全的存储（`SourcePreferencesStoring` 本就是同步协议）。
+        let preferences = self.preferences
+        let prefsGet: @convention(block) (String) -> JSValue = { key in
+            let fullKey = JSSourceRuntime.preferenceKey(sourceID: sourceID, key: key)
+            guard let value = preferences.value(forKey: fullKey) else {
+                return JSValue(nullIn: context)
             }
-            _ = semaphore.wait(timeout: .now() + 5)
-            guard let value = box.value else { return JSValue(nullIn: context) }
             // `JSValue(object:in:)` 是可失败构造，失败时退回 null
             return JSValue(object: value, in: context) ?? JSValue(nullIn: context)
         }
-        bridge?.setObject(prefsGet as Any, forKeyedSubscript: "prefsGet" as NSString)
+        bridge.setObject(prefsGet as Any, forKeyedSubscript: "prefsGet" as NSString)
 
         let prefsSet: @convention(block) (String, String) -> Void = { [weak self] key, value in
             Task { await self?.setPreferenceValue(value, key: key, sourceID: sourceID) }
         }
-        bridge?.setObject(prefsSet as Any, forKeyedSubscript: "prefsSet" as NSString)
+        bridge.setObject(prefsSet as Any, forKeyedSubscript: "prefsSet" as NSString)
 
         context.setObject(bridge, forKeyedSubscript: "__bridge" as NSString)
     }
@@ -449,17 +452,6 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         logSink(level, "[\(sourceID.rawValue)] \(trimmed)")
     }
 
-    private func bridgeCookieJSON(url: String, sourceID: SourceID) async -> String {
-        let items = await transport.cookies(for: url, sourceID: sourceID)
-        var dict: [String: String] = [:]
-        for item in items { dict[item.name] = item.value }
-        guard let data = try? JSONSerialization.data(withJSONObject: dict),
-              let text = String(data: data, encoding: .utf8) else {
-            return "{}"
-        }
-        return text
-    }
-
     private func bridgeStoreCookies(url: String, json: String, sourceID: SourceID) async {
         guard let data = json.data(using: .utf8),
               let raw = try? JSONSerialization.jsonObject(with: data),
@@ -469,10 +461,6 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
             cookies[key] = String(describing: value)
         }
         await transport.storeCookies(cookies, for: url, sourceID: sourceID)
-    }
-
-    private func preferenceValue(key: String, sourceID: SourceID) async -> String? {
-        preferences.value(forKey: Self.preferenceKey(sourceID: sourceID, key: key))
     }
 
     private func setPreferenceValue(_ value: String, key: String, sourceID: SourceID) {
@@ -548,25 +536,6 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
             return "[]"
         }
         return text
-    }
-}
-
-/// 极简线程安全字符串槽（用于在同步 block 里取异步结果）。
-final class StringBox: @unchecked Sendable {
-    private var storage: String?
-    private let lock = NSLock()
-
-    var value: String? {
-        get {
-            lock.lock()
-            defer { lock.unlock() }
-            return storage
-        }
-        set {
-            lock.lock()
-            storage = newValue
-            lock.unlock()
-        }
     }
 }
 
