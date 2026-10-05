@@ -42,6 +42,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **文档**：`docs/architecture.md`、`docs/development.md`、`docs/source-api.md`、`docs/testing.md`。
 - **合规**：`LICENSE`（Apache-2.0）、`NOTICE`（上游归属声明）、README 中性话术。
 
+### 🔧 修复 / Fixed
+
+- `BrowseView` 缺少 `import SourceEngine`，导致 App 与测试两个 target 编译失败。
+- `HTTPClient.parseRetryAfter` 由 internal 提升为 public（跨模块测试与自定义重试策略需要）。
+- `AppSettings.fontScale` 默认值取成了范围下限 0.5，应为 1.0；并把各默认值收敛为具名常量。
+- **`DownloadQueue` 重构**：原实现用 `Task {}`（继承 actor 隔离）驱动状态机，
+  CI 上实测出现任务永久停在 `.running`、`waitUntilIdle` 超时、页数据未落盘的问题。
+  改为显式驱动 `processPending()` + `Task.detached` 的 `start()`，
+  取消改为协作式（页边界生效），并把测试改为确定性推进。
+
 ### 🧪 测试 / Tests
 
 - 覆盖全部四个包的正常流程、异常分支与边界条件（空输入、超长文本、非法参数、

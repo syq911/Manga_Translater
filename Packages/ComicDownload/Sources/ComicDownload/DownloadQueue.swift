@@ -2,10 +2,21 @@
 //  DownloadQueue.swift
 //  ComicDownload
 //
-//  下载队列（actor）：并发上限、逐页重试、暂停 / 恢复 / 取消、
-//  失败与取消时的资源清理（回滚）。
+//  下载队列（actor）。
 //
-//  并发安全由 actor 保证；对外只暴露 async 接口。
+//  设计（0.2.0 重构）：
+//  - **不派生后台任务来驱动状态机**。推进流程是显式的 async 方法
+//    `processPending()`：它依次取出待办任务、逐页抓取。于是
+//    「何时推进一页、何时算结束」完全由调用方掌握 —— 测试无需轮询等待，
+//    也不存在后台任务被调度器挂起的可能（0.1.0 的 `Task{}` 方案在 CI 上
+//    出现过任务永久停在中途的实测问题）。
+//  - `start()` 是给 App 用的便利入口：内部派生**一个**任务去跑
+//    `processPending()`，等待结束用 `waitUntilIdle()`。
+//  - 取消是**协作式**的：置状态为 `.cancelled`，处理循环在下一页边界收尾并
+//    清理，不依赖 `Task.cancel()`（也就能保证「取消后磁盘无残留」可被测试断言）。
+//  - `processPending()` 单线程推进，因此同一时刻只会处理一个任务，
+//    `maxConcurrentJobs` 天然不会被突破。
+//
 //  重试等待通过注入的 `sleeper` 实现，测试无需真实等待。
 //
 
@@ -112,9 +123,8 @@ public actor DownloadQueue {
 
     private var jobs: [String: DownloadJob] = [:]
     private var order: [String] = []
-    private var active: Set<String> = []
-    private var tasks: [String: Task<Void, Never>] = [:]
-    /// 当前各任务的重试等待（用于统计与断言）。
+    private var isProcessing = false
+    private var processingTask: Task<Void, Never>?
     private var recordedWaits: [TimeInterval] = []
 
     public init(
@@ -137,7 +147,7 @@ public actor DownloadQueue {
     // MARK: 入队
 
     /// 加入一个任务。
-    /// - Throws: `AppError.invalidInput`——页列表为空或任务重复。
+    /// - Throws: `AppError.invalidInput`——页列表为空、章节标识为空或任务重复。
     @discardableResult
     public func enqueue(_ job: DownloadJob) throws -> DownloadJob {
         guard !job.pageURLs.isEmpty else {
@@ -151,21 +161,59 @@ public actor DownloadQueue {
         }
         var created = job
         created.state = .pending
+        created.completedPages = 0
+        created.pageAttempts = 0
+        created.errorMessage = nil
         jobs[created.id] = created
         order.append(created.id)
         notify(created)
-        pump()
         return created
+    }
+
+    // MARK: 驱动
+
+    /// App 用入口：派生一个任务推进队列（幂等）。
+    /// 等待结束用 `waitUntilIdle()`；测试建议直接 `await processPending()`。
+    ///
+    /// 这里用 `Task.detached` 而不是 `Task {}`：后者会继承 actor 隔离，
+    /// 在 CI 上实测出现过后台任务停在中途不再推进的情况；detached
+    /// 明确跑在全局执行器上，只在访问状态时才跳回 actor，语义更清晰。
+    public func start() {
+        guard processingTask == nil else { return }
+        processingTask = Task.detached(priority: .utility) { [weak self] in
+            await self?.processPending()
+            await self?.clearProcessingTask()
+        }
+    }
+
+    /// 依次处理所有待办任务，直到没有待办为止。
+    ///
+    /// - 可安全重复调用；正在处理时再次调用立即返回（`isProcessing` 保护）。
+    /// - 每推进一页前检查任务状态，因此暂停 / 取消都在页边界生效。
+    public func processPending() async {
+        guard !isProcessing else { return }
+        isProcessing = true
+        defer { isProcessing = false }
+
+        while let id = nextPendingJobID() {
+            jobs[id]?.state = .running
+            if let job = jobs[id] { notify(job) }
+            await process(jobID: id)
+        }
+    }
+
+    private func clearProcessingTask() {
+        processingTask = nil
+    }
+
+    /// 取下一个待办任务（跳过暂停 / 已取消 / 已结束的）。
+    private func nextPendingJobID() -> String? {
+        order.first { jobs[$0]?.state == .pending }
     }
 
     // MARK: 控制
 
-    /// 开始（或继续）调度待处理任务。
-    public func start() {
-        pump()
-    }
-
-    /// 暂停任务：不再调度新页，已在进行中的页会跑完。
+    /// 暂停任务：不再被调度。正在抓取的那一页会跑完，之后停在页边界。
     public func pause(_ id: String) {
         guard var job = jobs[id], !job.state.isTerminal else { return }
         job.state = .paused
@@ -179,32 +227,28 @@ public actor DownloadQueue {
         job.state = .pending
         jobs[id] = job
         notify(job)
-        pump()
     }
 
-    /// 取消任务：中断在途请求并清理已下载数据。
+    /// 取消任务：置为取消并清理已下载数据。
+    /// 若该任务正在处理，处理循环会在页边界停止后续抓取。
     public func cancel(_ id: String) async {
         guard var job = jobs[id], !job.state.isTerminal else { return }
-        tasks[id]?.cancel()
-        tasks[id] = nil
-        active.remove(id)
-        try? store.cleanup(jobID: id)
         job.state = .cancelled
         job.completedPages = 0
         job.errorMessage = nil
         jobs[id] = job
+        try? store.cleanup(jobID: id)
         notify(job)
-        pump()
     }
 
-    /// 取消全部。
+    /// 取消全部未终结任务。
     public func cancelAll() async {
-        for id in jobs.keys where !(jobs[id]?.state.isTerminal ?? true) {
+        for id in order where !(jobs[id]?.state.isTerminal ?? true) {
             await cancel(id)
         }
     }
 
-    /// 清空所有已完成 / 失败 / 取消的记录。
+    /// 清空所有已终结任务的记录。返回清理条数。
     @discardableResult
     public func removeFinished() -> Int {
         let finished = jobs.filter { $0.value.state.isTerminal }.map(\.key)
@@ -223,18 +267,20 @@ public actor DownloadQueue {
         order.compactMap { jobs[$0] }
     }
 
-    public var runningJobCount: Int { active.count }
+    public var runningJobCount: Int {
+        jobs.values.filter { $0.state == .running }.count
+    }
 
     public var pendingJobCount: Int {
         jobs.values.filter { $0.state == .pending }.count
     }
 
-    /// 是否已无待处理 / 进行中任务（测试与「下载全部完成」提示用）。
+    /// 是否已无待办 / 处理中任务。
     public var isIdle: Bool {
-        active.isEmpty && pendingJobCount == 0
+        !isProcessing && pendingJobCount == 0 && runningJobCount == 0
     }
 
-    /// 轮询等待队列空闲（测试用，带超时）。
+    /// 轮询等待队列空闲（供 `start()` 之后使用；带超时）。
     public func waitUntilIdle(timeout: TimeInterval = 5) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -247,86 +293,64 @@ public actor DownloadQueue {
     /// 记录到的重试等待时长（测试断言用）。
     public func recordedRetryWaits() -> [TimeInterval] { recordedWaits }
 
-    // MARK: 调度
+    // MARK: 处理
 
-    private func pump() {
-        while active.count < configuration.maxConcurrentJobs {
-            guard let id = order.first(where: { jobs[$0]?.state == .pending && !active.contains($0) }) else {
-                return
-            }
-            guard var job = jobs[id] else { return }
-            job.state = .running
-            jobs[id] = job
-            active.insert(id)
-            notify(job)
-
-            tasks[id] = Task { [weak self] in
-                await self?.run(jobID: id)
-            }
-        }
-    }
-
-    /// 执行一个任务（actor 内方法，await 期间可处理其他消息）。
-    private func run(jobID: String) async {
+    /// 处理单个任务（actor 内方法，await 期间可响应其他消息）。
+    private func process(jobID: String) async {
         guard var job = jobs[jobID] else { return }
 
-        do {
-            // 首次开始时准备目录（会清空上次残留）；断点恢复时保留已下载的页。
-            if job.completedPages == 0 {
+        // 首次开始时准备目录（清空上次残留）；断点续跑保留已下载的页。
+        if job.completedPages == 0 {
+            do {
                 try store.prepare(jobID: jobID)
+            } catch {
+                finish(jobID: jobID, state: .failed, message: AppError.normalize(error).localizedDescription)
+                return
             }
-        } catch {
-            finish(jobID: jobID, state: .failed, message: AppError.normalize(error).localizedDescription)
-            return
         }
 
         for index in job.completedPages..<job.pageURLs.count {
-            // 取消 / 暂停检查
-            if jobs[jobID]?.state == .cancelled { return }
-            if jobs[jobID]?.state == .paused {
-                // 让出调度权，等 resume 再继续
-                active.remove(jobID)
-                tasks[jobID] = nil
+            // 页边界状态检查：暂停 / 取消在此生效
+            guard let current = jobs[jobID] else { return }
+            switch current.state {
+            case .paused, .cancelled, .completed, .failed:
                 return
-            }
-            if Task.isCancelled {
-                jobs[jobID]?.state = .cancelled
-                try? store.cleanup(jobID: jobID)
-                return
+            case .pending, .running:
+                break
             }
 
             let url = job.pageURLs[index]
             var attempt = 0
-            var success = false
+            var succeeded = false
             var lastMessage = "未知错误"
 
-            while attempt <= configuration.maxRetriesPerPage {
+            while true {
                 do {
                     let data = try await fetcher.fetchPage(url: url, headers: job.headers)
                     guard data.count <= configuration.maxPageBytes else {
-                        throw AppError.invalidInput("单页数据过大（\(data.count) 字节）")
+                        throw AppError.invalidInput(
+                            "单页数据过大（\(data.count) 字节，上限 \(configuration.maxPageBytes)）"
+                        )
                     }
                     try store.store(data: data, jobID: jobID, index: index)
-                    success = true
+                    succeeded = true
                     break
                 } catch {
                     let normalized = AppError.normalize(error)
                     lastMessage = normalized.localizedDescription
-                    if !normalized.isRetryable || attempt == configuration.maxRetriesPerPage {
-                        break
-                    }
+                    let canRetry = normalized.isRetryable && attempt < configuration.maxRetriesPerPage
+                    guard canRetry else { break }
+
                     let waitIndex = min(attempt, configuration.retryBackoff.count - 1)
                     let wait = configuration.retryBackoff[waitIndex]
                     recordedWaits.append(wait)
                     do {
                         try await sleeper(wait)
                     } catch {
-                        // 睡眠被取消 → 视为取消
-                        try? store.cleanup(jobID: jobID)
+                        // 等待被取消 → 视为任务取消
                         jobs[jobID]?.state = .cancelled
-                        active.remove(jobID)
-                        tasks[jobID] = nil
-                        notify(jobs[jobID] ?? job)
+                        try? store.cleanup(jobID: jobID)
+                        if let updated = jobs[jobID] { notify(updated) }
                         return
                     }
                     attempt += 1
@@ -335,8 +359,8 @@ public actor DownloadQueue {
                 }
             }
 
-            guard success else {
-                // 失败 → 回滚已下载数据
+            guard succeeded else {
+                // 回滚：不留半成品
                 try? store.cleanup(jobID: jobID)
                 finish(jobID: jobID, state: .failed, message: lastMessage)
                 return
@@ -344,7 +368,7 @@ public actor DownloadQueue {
 
             job.completedPages += 1
             jobs[jobID]?.completedPages = job.completedPages
-            notify(jobs[jobID] ?? job)
+            if let updated = jobs[jobID] { notify(updated) }
         }
 
         finish(jobID: jobID, state: .completed, message: nil)
@@ -358,10 +382,7 @@ public actor DownloadQueue {
             job.completedPages = 0
         }
         jobs[jobID] = job
-        active.remove(jobID)
-        tasks[jobID] = nil
         notify(job)
-        pump()
     }
 
     private func notify(_ job: DownloadJob) {

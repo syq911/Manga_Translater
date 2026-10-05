@@ -60,7 +60,21 @@ App（SwiftUI，MangaTranslater target）
 - 下载：任务失败或取消时清理已落盘的页，不留半成品。
 - Cookie：持久化用原子写；损坏文件备份为 `.corrupt` 后重置，绝不阻塞启动。
 
-### 3.5 沙箱与限流
+### 3.5 队列由调用方驱动（0.2.0 起）
+
+`DownloadQueue` **不派生后台任务来驱动状态机**，推进流程是显式的
+`await queue.processPending()`：
+
+- 测试完全确定性：入队 → `processPending()` → 断言，无需轮询等待；
+- App 走 `start()`（内部 `Task.detached` 跑 `processPending()`）+ `waitUntilIdle()`；
+- 取消是协作式的：置状态后在**页边界**收尾并清理，保证「取消后磁盘无残留」可断言；
+- `processPending()` 单线程推进，`maxConcurrentJobs` 天然不会被突破。
+
+> 背景：0.1.0 用 `Task {}`（继承 actor 隔离）驱动，CI 上实测出现任务永久停在
+> 中途、`waitUntilIdle` 超时的现象。改为显式驱动后问题消失。
+
+
+### 3.6 沙箱与限流
 
 - 源运行时的调用超时、响应上限、是否允许联网集中在 `SourceRuntimeConfiguration`。
 - 每个来源一个 `RateLimiter`（遵守源声明的 `rateLimitMs`），避免触发站点风控。

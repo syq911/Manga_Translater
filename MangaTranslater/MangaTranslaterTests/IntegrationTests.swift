@@ -124,10 +124,7 @@ struct IntegrationTests {
             pageURLs: (1...3).map { "https://example.com/\($0).jpg" }
         )
         try await queue.enqueue(job)
-        await queue.start()
-
-        let idle = await queue.waitUntilIdle()
-        #expect(idle)
+        await queue.processPending()
         #expect(await queue.job(job.id)?.state == .completed)
         #expect(store.storedPageCount(jobID: job.id) == 3)
 
@@ -172,8 +169,7 @@ struct IntegrationTests {
             pageURLs: ["https://example.com/1.jpg", "https://example.com/2.jpg"]
         )
         try await queue.enqueue(job)
-        await queue.start()
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
 
         #expect(await queue.job(job.id)?.state == .failed)
         #expect(store.storedPageCount(jobID: job.id) == 0)

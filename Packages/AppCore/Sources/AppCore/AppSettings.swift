@@ -99,10 +99,10 @@ public struct SettingsSnapshot: Codable, Equatable, Sendable {
 
     public init(
         readerMode: ReaderMode = .pagedRightToLeft,
-        fontScale: Double = 1.0,
-        preloadWindow: Int = 10,
-        maxConcurrentDownloads: Int = 3,
-        requestTimeoutSeconds: Int = 15,
+        fontScale: Double = AppSettings.defaultFontScale,
+        preloadWindow: Int = AppSettings.defaultPreloadWindow,
+        maxConcurrentDownloads: Int = AppSettings.defaultMaxConcurrentDownloads,
+        requestTimeoutSeconds: Int = AppSettings.defaultRequestTimeoutSeconds,
         translationBackend: TranslationBackend = .bringYourOwnKey,
         sourceLanguage: TranslationLanguage = .auto,
         targetLanguage: TranslationLanguage = .simplifiedChinese,
@@ -142,6 +142,14 @@ public final class AppSettings: @unchecked Sendable {
 
     /// 字号缩放范围。
     public static let fontScaleRange: ClosedRange<Double> = 0.5...2.0
+    /// 字号缩放默认值（1.0 = 原尺寸）。
+    public static let defaultFontScale: Double = 1.0
+    /// 预加载窗口默认值。
+    public static let defaultPreloadWindow = 10
+    /// 下载并发默认值。
+    public static let defaultMaxConcurrentDownloads = 3
+    /// 请求超时默认值（秒）。
+    public static let defaultRequestTimeoutSeconds = 15
     /// 预加载窗口范围（当前页前后各 N 页）。
     public static let preloadWindowRange: ClosedRange<Int> = 1...50
     /// 下载并发上限。来源可能进一步限制（规范建议单来源 ≤3）。
@@ -204,7 +212,7 @@ public final class AppSettings: @unchecked Sendable {
     /// 字号缩放，取值自动钳制到 `fontScaleRange`。`NaN` / 无穷大回退到 1.0。
     public var fontScale: Double {
         get {
-            let stored = read(Key.fontScale, fallback: Self.fontScaleRange.lowerBound)
+            let stored = read(Key.fontScale, fallback: AppSettings.defaultFontScale)
             return Self.clampFontScale(stored)
         }
         set { write(Self.clampFontScale(newValue), for: Key.fontScale) }
@@ -212,19 +220,19 @@ public final class AppSettings: @unchecked Sendable {
 
     /// 预加载窗口，自动钳制到 `preloadWindowRange`。
     public var preloadWindow: Int {
-        get { Self.clamp(read(Key.preloadWindow, fallback: 10), to: Self.preloadWindowRange) }
+        get { Self.clamp(read(Key.preloadWindow, fallback: AppSettings.defaultPreloadWindow), to: Self.preloadWindowRange) }
         set { write(Self.clamp(newValue, to: Self.preloadWindowRange), for: Key.preloadWindow) }
     }
 
     /// 下载并发数，自动钳制到 `maxConcurrentDownloadsRange`。
     public var maxConcurrentDownloads: Int {
-        get { Self.clamp(read(Key.maxConcurrentDownloads, fallback: 3), to: Self.maxConcurrentDownloadsRange) }
+        get { Self.clamp(read(Key.maxConcurrentDownloads, fallback: AppSettings.defaultMaxConcurrentDownloads), to: Self.maxConcurrentDownloadsRange) }
         set { write(Self.clamp(newValue, to: Self.maxConcurrentDownloadsRange), for: Key.maxConcurrentDownloads) }
     }
 
     /// 单次请求超时（秒），自动钳制到 `requestTimeoutRange`。
     public var requestTimeoutSeconds: Int {
-        get { Self.clamp(read(Key.requestTimeoutSeconds, fallback: 15), to: Self.requestTimeoutRange) }
+        get { Self.clamp(read(Key.requestTimeoutSeconds, fallback: AppSettings.defaultRequestTimeoutSeconds), to: Self.requestTimeoutRange) }
         set { write(Self.clamp(newValue, to: Self.requestTimeoutRange), for: Key.requestTimeoutSeconds) }
     }
 
@@ -381,7 +389,7 @@ public final class AppSettings: @unchecked Sendable {
     }
 
     static func clampFontScale(_ value: Double) -> Double {
-        guard value.isFinite else { return 1.0 }
+        guard value.isFinite else { return AppSettings.defaultFontScale }
         return clamp(value, to: fontScaleRange)
     }
 

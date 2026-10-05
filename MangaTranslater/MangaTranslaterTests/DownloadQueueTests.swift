@@ -55,9 +55,8 @@ struct DownloadQueueTests {
             "https://example.com/2.jpg",
             "https://example.com/3.jpg",
         ]))
-        await queue.start()
+        await queue.processPending()
 
-        #expect(await queue.waitUntilIdle())
         let finished = try #require(await queue.job(job.id))
 
         #expect(finished.state == .completed)
@@ -74,8 +73,7 @@ struct DownloadQueueTests {
         let queue = makeQueue(fetcher: fetcher, store: store)
 
         try await queue.enqueue(makeJob(pages: (0..<5).map { "https://example.com/\($0).jpg" }))
-        await queue.start()
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
 
         // 单任务内不并发抓页
         #expect(fetcher.peakConcurrency == 1)
@@ -97,8 +95,7 @@ struct DownloadQueueTests {
                 "https://example.com/\(index)-2.jpg",
             ]))
         }
-        await queue.start()
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
 
         #expect(fetcher.peakConcurrency <= 2)
         #expect(await queue.allJobs().allSatisfy { $0.state == .completed })
@@ -120,8 +117,7 @@ struct DownloadQueueTests {
         )
 
         let job = try await queue.enqueue(makeJob(pages: ["https://example.com/1.jpg"]))
-        await queue.start()
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
 
         let finished = try #require(await queue.job(job.id))
         #expect(finished.state == .completed)
@@ -140,8 +136,7 @@ struct DownloadQueueTests {
         )
 
         let job = try await queue.enqueue(makeJob(pages: ["https://example.com/1.jpg"]))
-        await queue.start()
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
 
         let finished = try #require(await queue.job(job.id))
         #expect(finished.state == .failed)
@@ -162,8 +157,7 @@ struct DownloadQueueTests {
         )
 
         let job = try await queue.enqueue(makeJob(pages: ["https://example.com/1.jpg"]))
-        await queue.start()
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
 
         #expect(await queue.job(job.id)?.state == .failed)
         #expect(fetcher.calls(for: "https://example.com/1.jpg") == 1)
@@ -181,8 +175,7 @@ struct DownloadQueueTests {
         )
 
         let job = try await queue.enqueue(makeJob(pages: ["https://example.com/1.jpg"]))
-        await queue.start()
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
 
         #expect(await queue.job(job.id)?.state == .failed)
         #expect(store.storedPageCount(jobID: job.id) == 0)
@@ -208,8 +201,7 @@ struct DownloadQueueTests {
         await queue.pause(paused.id)
 
         let running = try await queue.enqueue(makeJob(chapter: "running", pages: ["https://example.com/b1.jpg"]))
-        await queue.start()
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
 
         // 暂停的任务完全没被碰过
         #expect(await queue.job(paused.id)?.state == .paused)
@@ -218,7 +210,7 @@ struct DownloadQueueTests {
 
         // 恢复后跑完
         await queue.resume(paused.id)
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
         #expect(await queue.job(paused.id)?.state == .completed)
         #expect(store.storedPageCount(jobID: paused.id) == 3)
     }
@@ -229,8 +221,7 @@ struct DownloadQueueTests {
         let queue = makeQueue(fetcher: StubPageFetcher(pageData: Data([0x01])), store: store)
 
         let job = try await queue.enqueue(makeJob(pages: ["https://example.com/1.jpg"]))
-        await queue.start()
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
 
         await queue.pause(job.id)
         #expect(await queue.job(job.id)?.state == .completed)
@@ -256,9 +247,8 @@ struct DownloadQueueTests {
         ]))
         let second = try await queue.enqueue(makeJob(chapter: "second", pages: ["https://example.com/b1.jpg"]))
 
-        await queue.start()
         await queue.cancel(second.id)
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
 
         #expect(await queue.job(second.id)?.state == .cancelled)
         #expect(store.storedPageCount(jobID: second.id) == 0)
@@ -271,8 +261,7 @@ struct DownloadQueueTests {
         let queue = makeQueue(fetcher: StubPageFetcher(pageData: Data([0x01])), store: store)
 
         let job = try await queue.enqueue(makeJob(pages: ["https://example.com/1.jpg"]))
-        await queue.start()
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
 
         await queue.cancel(job.id)
         #expect(await queue.job(job.id)?.state == .completed)
@@ -323,6 +312,29 @@ struct DownloadQueueTests {
         }
     }
 
+    // MARK: App 入口
+
+    @Test("start 幂等且最终进入空闲")
+    func startIsIdempotent() async throws {
+        let store = InMemoryPageStore()
+        let queue = makeQueue(fetcher: StubPageFetcher(pageData: Data([0x01])), store: store)
+
+        try await queue.enqueue(makeJob(chapter: "c1", pages: ["https://example.com/1.jpg"]))
+        await queue.start()
+        await queue.start()   // 重复调用不应出错，也不应重复处理
+
+        #expect(await queue.waitUntilIdle(timeout: 10))
+        #expect(await queue.job("c1")?.state == .completed)
+        #expect(store.storedPageCount(jobID: "c1") == 1)
+        #expect(await queue.isIdle)
+    }
+
+    @Test("空闲队列的 waitUntilIdle 立即返回")
+    func waitUntilIdleOnEmptyQueue() async {
+        let queue = makeQueue(fetcher: StubPageFetcher(), store: InMemoryPageStore())
+        #expect(await queue.waitUntilIdle(timeout: 1))
+    }
+
     // MARK: 记录清理
 
     @Test("清理已终结任务")
@@ -332,8 +344,7 @@ struct DownloadQueueTests {
 
         try await queue.enqueue(makeJob(chapter: "c1", pages: ["https://example.com/1.jpg"]))
         try await queue.enqueue(makeJob(chapter: "c2", pages: ["https://example.com/2.jpg"]))
-        await queue.start()
-        #expect(await queue.waitUntilIdle())
+        await queue.processPending()
 
         let removed = await queue.removeFinished()
         #expect(removed == 2)
