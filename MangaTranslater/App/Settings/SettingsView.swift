@@ -20,6 +20,7 @@ struct SettingsView: View {
 
     @State private var showsAgeConfirmation = false
     @State private var showsComingSoon = false
+    @State private var statusMessage: String?
 
     private var settings: AppSettings { environment.settings }
 
@@ -44,6 +45,14 @@ struct SettingsView: View {
             }
             .alert(L("common.notAvailableYet"), isPresented: $showsComingSoon) {
                 Button(L("common.ok"), role: .cancel) {}
+            }
+            .alert("提示", isPresented: Binding(
+                get: { statusMessage != nil },
+                set: { if !$0 { statusMessage = nil } }
+            )) {
+                Button(L("common.ok"), role: .cancel) { statusMessage = nil }
+            } message: {
+                Text(statusMessage ?? "")
             }
         }
     }
@@ -131,6 +140,31 @@ struct SettingsView: View {
                 Text("阅读模式")
             }
 
+            Picker(selection: Binding(
+                get: { settings.readerTheme },
+                set: { settings.readerTheme = $0 }
+            )) {
+                ForEach(ReaderTheme.allCases, id: \.self) { theme in
+                    Text(theme.displayName).tag(theme)
+                }
+            } label: {
+                Text("阅读背景")
+            }
+
+            Stepper(
+                "页面留白：\(settings.readerPageSpacing) pt",
+                value: Binding(
+                    get: { settings.readerPageSpacing },
+                    set: { settings.readerPageSpacing = $0 }
+                ),
+                in: AppSettings.readerPageSpacingRange
+            )
+
+            Toggle("阅读时保持屏幕常亮", isOn: Binding(
+                get: { settings.keepsScreenAwake },
+                set: { settings.keepsScreenAwake = $0 }
+            ))
+
             VStack(alignment: .leading) {
                 Text(String(format: "字号缩放：%.2f×", settings.fontScale))
                     .font(.footnote)
@@ -185,6 +219,13 @@ struct SettingsView: View {
 
             Button(L("settings.diagnostics.clear"), role: .destructive) {
                 environment.diagnostics.clear()
+            }
+
+            Button("清空封面缓存") {
+                let removed = environment.coverCache.removeAll()
+                statusMessage = removed > 0
+                    ? "已清理 \(removed) 项封面缓存。"
+                    : "封面缓存本来就是空的。"
             }
 
             Button(L("settings.about.license")) { showsComingSoon = true }

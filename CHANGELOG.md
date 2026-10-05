@@ -42,6 +42,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **文档**：`docs/architecture.md`、`docs/development.md`、`docs/source-api.md`、`docs/testing.md`。
 - **合规**：`LICENSE`（Apache-2.0）、`NOTICE`（上游归属声明）、README 中性话术。
 
+### 🔧 修复 / Fixed（M1 收尾）
+
+- 本地文件列表在每个 cell 渲染时同步解析 ZIP 取章节数，文件多时会明显卡顿；
+  改为在 `reload()` 时**一次算好**（并放到后台任务）。
+- 阅读器原来没有恢复「上次读到的页码」（只恢复了章节），进入时总从第 1 页开始；
+  现在按保存的页码恢复，越界由页数钳制收敛。
+
 ### 🔧 修复 / Fixed（M1 第二段）
 
 - **自然排序在超长数字上失效**：原实现把数字段截断到 1e9 防溢出，导致 30 位以上
@@ -114,6 +121,19 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **App 接线**：书架页（导入 / 排序 / 删除 / 进度显示 / 持久化降级提示）、阅读器页
   （翻页、预加载、进度写回）、本地文件页（浏览 / 导入 / 直接阅读）
 
+### ✨ 新增 / Added（M1 收尾：封面、阅读外观与手势）
+
+- **书架封面**：`LocalSource.coverData(for:)` 取首页原始字节（纯 Foundation、可单测），
+  `CoverThumbnailCache` 负责等比缩放与内存 + 磁盘缓存（文件名由作品 ID 哈希派生）。
+  书架与本地文件列表均显示封面；设置页可一键清空缓存。
+- **阅读器外观设置**（`AppSettings`）：阅读背景主题（跟随系统/浅色/米黄/深色/纯黑）、
+  页面留白（0–60 pt）、阅读时屏幕常亮。
+- **阅读器手势**：双击缩放、捏合缩放、放大后拖动平移；
+  未放大时横滑翻页，方向随阅读模式变化（右到左模式下左滑为上一页）。
+- **`AppCore.ZoomState`**：缩放/平移的纯逻辑（档位、捏合基准、平移边界钳制）。
+- **设置快照向后兼容**：`SettingsSnapshot` 改为 `decodeIfPresent + 默认值` 解码，
+  旧版本导出的备份（缺新字段）仍可恢复。
+
 ### 📖 文档 / Docs
 
 - **`docs/source-api.md` 契约按实现细化**：补齐仓库/脚本校验的**精确规则表**
@@ -125,6 +145,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - 契约示例由**测试守护**：新增 `MangaTranslaterTests/SourceAPIDocTests.swift`
   逐项断言示例能过校验、方法齐全、元信息与文档表格一致；
   `tools/check_docs_sync.py` 保证文档与夹具**逐字一致**（预检第 4 项）。
+
+### 🧪 测试 / Tests（新增 47 个用例）
+
+- `ZoomStateTests.swift`：缩放钳制（含 NaN/无穷）、缩回 1 倍归零位移、
+  捏合基准、双击往返、适配尺寸、**平移边界钳制**（未放大不可拖动 /
+  只允许按超出量移动 / 单轴无溢出则锁死）
+- `CoverThumbnailCacheTests.swift`：真实 PNG 夹具自检、文件名派生（稳定 / 无非法字符 /
+  区分不同作品）、等比缩放五种边界、生成产物可再解码、
+  内存与磁盘命中、损坏图片不落盘、清空缓存、目录按需创建、并发一致性
+- `AppSettingsTests.swift` 扩充：新阅读字段的钳制与往返；
+  **快照向后兼容**（缺字段 / 类型不符 / null / 空对象 / 未知字段）
 
 ### 🧪 测试 / Tests（新增 60 个用例）
 

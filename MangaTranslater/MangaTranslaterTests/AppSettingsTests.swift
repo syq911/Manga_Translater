@@ -267,4 +267,145 @@ struct AppSettingsTests {
         #expect(TranslationLanguage.auto.visionLanguages.count == 4)
         #expect(TranslationLanguage.simplifiedChinese.visionLanguages == ["zh-Hans"])
     }
+
+    // MARK: 阅读外观
+
+    @Test("阅读主题默认跟随系统")
+    func readerThemeDefaultsToSystem() throws {
+        let (settings, defaults, suite) = try makeSettings()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(settings.readerTheme == .system)
+    }
+
+    @Test("阅读主题可读写，非法存储值回退默认")
+    func readerThemeRoundTrips() throws {
+        let (settings, defaults, suite) = try makeSettings()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        settings.readerTheme = .sepia
+        #expect(settings.readerTheme == .sepia)
+
+        // 外部写脏：模拟旧版本/手工改 UserDefaults
+        defaults.set("rainbow", forKey: AppSettings.storageKeyPrefix + "readerTheme")
+        #expect(settings.readerTheme == .system, "未知主题必须回退到默认值而不是崩溃")
+    }
+
+    @Test("页间距越界被钳制", arguments: [(-10, 0), (0, 0), (30, 30), (9999, 60)])
+    func pageSpacingIsClamped(input: Int, expected: Int) throws {
+        let (settings, defaults, suite) = try makeSettings()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        settings.readerPageSpacing = input
+        #expect(settings.readerPageSpacing == expected)
+    }
+
+    @Test("屏幕常亮默认开启且可关闭")
+    func keepsScreenAwakeDefaultsOn() throws {
+        let (settings, defaults, suite) = try makeSettings()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(settings.keepsScreenAwake)
+        settings.keepsScreenAwake = false
+        #expect(settings.keepsScreenAwake == false)
+    }
+
+    @Test("新增阅读字段进入快照并往返一致")
+    func newReaderFieldsRoundTripThroughSnapshot() throws {
+        let (settings, defaults, suite) = try makeSettings()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        settings.readerTheme = .black
+        settings.readerPageSpacing = 24
+        settings.keepsScreenAwake = false
+
+        let snapshot = settings.snapshot()
+        #expect(snapshot.readerTheme == .black)
+        #expect(snapshot.readerPageSpacing == 24)
+        #expect(snapshot.keepsScreenAwake == false)
+
+        settings.resetToDefaults()
+        settings.apply(snapshot)
+        #expect(settings.readerTheme == .black)
+        #expect(settings.readerPageSpacing == 24)
+        #expect(settings.keepsScreenAwake == false)
+    }
+
+    // MARK: 快照向后兼容
+
+    /// 旧版本导出的备份（缺少后加的阅读字段）必须能解码，缺失项按默认值处理。
+    @Test("解码缺字段的旧备份：缺失项回退默认值")
+    func snapshotDecodesLegacyPayload() throws {
+        let legacy = """
+        {
+          "readerMode": "continuousVertical",
+          "fontScale": 1.5,
+          "preloadWindow": 20,
+          "maxConcurrentDownloads": 2,
+          "requestTimeoutSeconds": 30,
+          "translationBackend": "cloudService",
+          "sourceLanguage": "ja",
+          "targetLanguage": "en",
+          "usesLineDropFallback": false,
+          "showsNSFWSources": false,
+          "hasConfirmedAdultContent": false,
+          "deepSeekBaseURL": "https://api.example.com",
+          "deepSeekModel": "custom-model",
+          "preferredLanguages": ["en"]
+        }
+        """
+        let snapshot = try JSONDecoder().decode(SettingsSnapshot.self, from: Data(legacy.utf8))
+
+        // 旧字段原样保留
+        #expect(snapshot.readerMode == .continuousVertical)
+        #expect(snapshot.fontScale == 1.5)
+        #expect(snapshot.preloadWindow == 20)
+        #expect(snapshot.deepSeekModel == "custom-model")
+        #expect(snapshot.preferredLanguages == ["en"])
+        // 新字段回退默认值
+        #expect(snapshot.readerTheme == SettingsSnapshot().readerTheme)
+        #expect(snapshot.readerPageSpacing == SettingsSnapshot().readerPageSpacing)
+        #expect(snapshot.keepsScreenAwake == SettingsSnapshot().keepsScreenAwake)
+    }
+
+    @Test("解码类型不符 / null 的字段：逐项回退默认值而不整体失败")
+    func snapshotDecodesMistypedFields() throws {
+        let broken = """
+        {
+          "readerMode": "notAMode",
+          "readerTheme": "rainbow",
+          "fontScale": "big",
+          "preloadWindow": null,
+          "readerPageSpacing": [1, 2],
+          "keepsScreenAwake": "yes",
+          "preferredLanguages": "zh-Hans"
+        }
+        """
+        let snapshot = try JSONDecoder().decode(SettingsSnapshot.self, from: Data(broken.utf8))
+        let fallback = SettingsSnapshot()
+
+        #expect(snapshot.readerMode == fallback.readerMode)
+        #expect(snapshot.readerTheme == fallback.readerTheme)
+        #expect(snapshot.fontScale == fallback.fontScale)
+        #expect(snapshot.preloadWindow == fallback.preloadWindow)
+        #expect(snapshot.readerPageSpacing == fallback.readerPageSpacing)
+        #expect(snapshot.keepsScreenAwake == fallback.keepsScreenAwake)
+        #expect(snapshot.preferredLanguages == fallback.preferredLanguages)
+    }
+
+    @Test("空对象也能解码出全默认快照")
+    func snapshotDecodesEmptyObject() throws {
+        let snapshot = try JSONDecoder().decode(SettingsSnapshot.self, from: Data("{}".utf8))
+        #expect(snapshot == SettingsSnapshot())
+    }
+
+    @Test("中文键名/额外未知字段不影响解码")
+    func snapshotIgnoresUnknownKeys() throws {
+        let payload = """
+        { "未来新增的字段": 42, "readerTheme": "sepia" }
+        """
+        let snapshot = try JSONDecoder().decode(SettingsSnapshot.self, from: Data(payload.utf8))
+        #expect(snapshot.readerTheme == .sepia)
+        #expect(snapshot.fontScale == SettingsSnapshot().fontScale)
+    }
 }

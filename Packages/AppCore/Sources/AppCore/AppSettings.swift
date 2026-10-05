@@ -47,6 +47,27 @@ public enum ReaderMode: String, Codable, Sendable, CaseIterable {
     }
 }
 
+/// 阅读器外观主题（阅读区背景）。
+///
+/// `system` 表示跟随系统深浅色；其余为固定背景，用于长时间阅读时减少眩光。
+public enum ReaderTheme: String, Codable, Sendable, CaseIterable {
+    case system
+    case light
+    case sepia
+    case dark
+    case black
+
+    public var displayName: String {
+        switch self {
+        case .system: return "跟随系统 / System"
+        case .light: return "浅色 / Light"
+        case .sepia: return "米黄 / Sepia"
+        case .dark: return "深色 / Dark"
+        case .black: return "纯黑 / Black"
+        }
+    }
+}
+
 /// 翻译语言。`visionLanguages` 用于 OCR 语言提示，`isSource` 决定能否作为原文语言。
 public enum TranslationLanguage: String, Codable, Sendable, CaseIterable {
     case auto
@@ -81,10 +102,16 @@ public enum TranslationLanguage: String, Codable, Sendable, CaseIterable {
 }
 
 /// 备份 / 恢复用的设置快照。
+///
+/// **向后兼容**：解码走 `decodeIfPresent + 默认值`，因此旧版本导出的备份
+/// （缺少后加的字段）恢复时不会失败，缺失项按当前默认值处理。
 public struct SettingsSnapshot: Codable, Equatable, Sendable {
     public var readerMode: ReaderMode
+    public var readerTheme: ReaderTheme
     public var fontScale: Double
     public var preloadWindow: Int
+    public var readerPageSpacing: Int
+    public var keepsScreenAwake: Bool
     public var maxConcurrentDownloads: Int
     public var requestTimeoutSeconds: Int
     public var translationBackend: TranslationBackend
@@ -99,8 +126,11 @@ public struct SettingsSnapshot: Codable, Equatable, Sendable {
 
     public init(
         readerMode: ReaderMode = .pagedRightToLeft,
+        readerTheme: ReaderTheme = .system,
         fontScale: Double = AppSettings.defaultFontScale,
         preloadWindow: Int = AppSettings.defaultPreloadWindow,
+        readerPageSpacing: Int = AppSettings.defaultReaderPageSpacing,
+        keepsScreenAwake: Bool = true,
         maxConcurrentDownloads: Int = AppSettings.defaultMaxConcurrentDownloads,
         requestTimeoutSeconds: Int = AppSettings.defaultRequestTimeoutSeconds,
         translationBackend: TranslationBackend = .bringYourOwnKey,
@@ -114,8 +144,11 @@ public struct SettingsSnapshot: Codable, Equatable, Sendable {
         preferredLanguages: [String] = ["zh-Hans", "en"]
     ) {
         self.readerMode = readerMode
+        self.readerTheme = readerTheme
         self.fontScale = fontScale
         self.preloadWindow = preloadWindow
+        self.readerPageSpacing = readerPageSpacing
+        self.keepsScreenAwake = keepsScreenAwake
         self.maxConcurrentDownloads = maxConcurrentDownloads
         self.requestTimeoutSeconds = requestTimeoutSeconds
         self.translationBackend = translationBackend
@@ -127,6 +160,49 @@ public struct SettingsSnapshot: Codable, Equatable, Sendable {
         self.deepSeekBaseURL = deepSeekBaseURL
         self.deepSeekModel = deepSeekModel
         self.preferredLanguages = preferredLanguages
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case readerMode, readerTheme, fontScale, preloadWindow, readerPageSpacing, keepsScreenAwake
+        case maxConcurrentDownloads, requestTimeoutSeconds
+        case translationBackend, sourceLanguage, targetLanguage, usesLineDropFallback
+        case showsNSFWSources, hasConfirmedAdultContent
+        case deepSeekBaseURL, deepSeekModel, preferredLanguages
+    }
+
+    /// 容错解码：缺失 / 类型不符的字段一律回退到默认值。
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = SettingsSnapshot()
+
+        /// 逐字段取值：`decodeIfPresent` 对「键不存在」与「值为 null」都返回 nil，
+        /// 类型不符则抛错 —— 后者也应当被吞掉，所以整体再兜一层 try?。
+        func value<T: Decodable>(_ type: T.Type, _ key: CodingKeys, _ fallbackValue: T) -> T {
+            (try? container.decodeIfPresent(type, forKey: key)) ?? fallbackValue
+        }
+        func rawValue<T: RawRepresentable>(_ type: T.Type, _ key: CodingKeys, _ fallbackValue: T) -> T
+        where T.RawValue == String {
+            guard let raw = try? container.decodeIfPresent(String.self, forKey: key) else { return fallbackValue }
+            return T(rawValue: raw) ?? fallbackValue
+        }
+
+        self.readerMode = rawValue(ReaderMode.self, .readerMode, fallback.readerMode)
+        self.readerTheme = rawValue(ReaderTheme.self, .readerTheme, fallback.readerTheme)
+        self.fontScale = value(Double.self, .fontScale, fallback.fontScale)
+        self.preloadWindow = value(Int.self, .preloadWindow, fallback.preloadWindow)
+        self.readerPageSpacing = value(Int.self, .readerPageSpacing, fallback.readerPageSpacing)
+        self.keepsScreenAwake = value(Bool.self, .keepsScreenAwake, fallback.keepsScreenAwake)
+        self.maxConcurrentDownloads = value(Int.self, .maxConcurrentDownloads, fallback.maxConcurrentDownloads)
+        self.requestTimeoutSeconds = value(Int.self, .requestTimeoutSeconds, fallback.requestTimeoutSeconds)
+        self.translationBackend = rawValue(TranslationBackend.self, .translationBackend, fallback.translationBackend)
+        self.sourceLanguage = rawValue(TranslationLanguage.self, .sourceLanguage, fallback.sourceLanguage)
+        self.targetLanguage = rawValue(TranslationLanguage.self, .targetLanguage, fallback.targetLanguage)
+        self.usesLineDropFallback = value(Bool.self, .usesLineDropFallback, fallback.usesLineDropFallback)
+        self.showsNSFWSources = value(Bool.self, .showsNSFWSources, fallback.showsNSFWSources)
+        self.hasConfirmedAdultContent = value(Bool.self, .hasConfirmedAdultContent, fallback.hasConfirmedAdultContent)
+        self.deepSeekBaseURL = value(String.self, .deepSeekBaseURL, fallback.deepSeekBaseURL)
+        self.deepSeekModel = value(String.self, .deepSeekModel, fallback.deepSeekModel)
+        self.preferredLanguages = value([String].self, .preferredLanguages, fallback.preferredLanguages)
     }
 }
 
@@ -144,6 +220,10 @@ public final class AppSettings: @unchecked Sendable {
     public static let fontScaleRange: ClosedRange<Double> = 0.5...2.0
     /// 字号缩放默认值（1.0 = 原尺寸）。
     public static let defaultFontScale: Double = 1.0
+    /// 条漫模式下页与页之间的间距默认值（点）。
+    public static let defaultReaderPageSpacing = 0
+    /// 页间距范围（点）。
+    public static let readerPageSpacingRange: ClosedRange<Int> = 0...60
     /// 预加载窗口默认值。
     public static let defaultPreloadWindow = 10
     /// 下载并发默认值。
@@ -160,6 +240,9 @@ public final class AppSettings: @unchecked Sendable {
     private enum Key {
         static let prefix = "mangatranslater."
         static let readerMode = prefix + "readerMode"
+        static let readerTheme = prefix + "readerTheme"
+        static let readerPageSpacing = prefix + "readerPageSpacing"
+        static let keepsScreenAwake = prefix + "keepsScreenAwake"
         static let fontScale = prefix + "fontScale"
         static let preloadWindow = prefix + "preloadWindow"
         static let maxConcurrentDownloads = prefix + "maxConcurrentDownloads"
@@ -207,6 +290,27 @@ public final class AppSettings: @unchecked Sendable {
             return ReaderMode(rawValue: stored) ?? .pagedRightToLeft
         }
         set { write(newValue.rawValue, for: Key.readerMode) }
+    }
+
+    /// 阅读区外观主题。
+    public var readerTheme: ReaderTheme {
+        get {
+            let stored: String = read(Key.readerTheme, fallback: ReaderTheme.system.rawValue)
+            return ReaderTheme(rawValue: stored) ?? .system
+        }
+        set { write(newValue.rawValue, for: Key.readerTheme) }
+    }
+
+    /// 条漫模式下页与页之间的间距（点），自动钳制到 `readerPageSpacingRange`。
+    public var readerPageSpacing: Int {
+        get { Self.clamp(read(Key.readerPageSpacing, fallback: AppSettings.defaultReaderPageSpacing), to: Self.readerPageSpacingRange) }
+        set { write(Self.clamp(newValue, to: Self.readerPageSpacingRange), for: Key.readerPageSpacing) }
+    }
+
+    /// 阅读时是否保持屏幕常亮。
+    public var keepsScreenAwake: Bool {
+        get { read(Key.keepsScreenAwake, fallback: true) }
+        set { write(newValue, for: Key.keepsScreenAwake) }
     }
 
     /// 字号缩放，取值自动钳制到 `fontScaleRange`。`NaN` / 无穷大回退到 1.0。
@@ -340,8 +444,11 @@ public final class AppSettings: @unchecked Sendable {
     public func snapshot() -> SettingsSnapshot {
         SettingsSnapshot(
             readerMode: readerMode,
+            readerTheme: readerTheme,
             fontScale: fontScale,
             preloadWindow: preloadWindow,
+            readerPageSpacing: readerPageSpacing,
+            keepsScreenAwake: keepsScreenAwake,
             maxConcurrentDownloads: maxConcurrentDownloads,
             requestTimeoutSeconds: requestTimeoutSeconds,
             translationBackend: translationBackend,
@@ -359,6 +466,9 @@ public final class AppSettings: @unchecked Sendable {
     /// 应用快照。非法值被忽略（保留当前值），不抛错——恢复备份不应导致 App 不可用。
     public func apply(_ snapshot: SettingsSnapshot) {
         fontScale = snapshot.fontScale
+        readerTheme = snapshot.readerTheme
+        readerPageSpacing = snapshot.readerPageSpacing
+        keepsScreenAwake = snapshot.keepsScreenAwake
         preloadWindow = snapshot.preloadWindow
         maxConcurrentDownloads = snapshot.maxConcurrentDownloads
         requestTimeoutSeconds = snapshot.requestTimeoutSeconds

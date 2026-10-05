@@ -81,7 +81,7 @@ App（SwiftUI，MangaTranslater target）
 失败必须无痕：`updateProgress` 对不存在的条目抛 `entryNotFound` 时，
 不应写入任何历史（有专门用例断言）。
 
-### 3.5 队列由调用方驱动（0.2.0 起）
+### 3.6 队列由调用方驱动（0.2.0 起）
 
 `DownloadQueue` **不派生后台任务来驱动状态机**，推进流程是显式的
 `await queue.processPending()`：
@@ -95,7 +95,7 @@ App（SwiftUI，MangaTranslater target）
 > 中途、`waitUntilIdle` 超时的现象。改为显式驱动后问题消失。
 
 
-### 3.6 本地文件源与阅读器内核（M1）
+### 3.7 本地文件源与阅读器内核（M1）
 
 **本地文件源（`SourceEngine/LocalSource`）**
 
@@ -119,7 +119,29 @@ App（SwiftUI，MangaTranslater target）
 
 阅读器通过这一个协议取页数据；本地源同步解压，M2 的在线源走 HTTP，阅读器零分支。
 
-### 3.6 沙箱与限流
+### 3.8 封面缩略图与缩放：把「平台相关」留在 App 层（M1 收尾）
+
+**封面**分两段，各自落在能测的那一层：
+
+| 层 | 职责 | 为什么在这 |
+|---|---|---|
+| `SourceEngine.LocalSource.coverData(for:)` | 找出「第一章第一页」并返回**原始字节** | 纯 Foundation，可单测；不涉及图形框架 |
+| `App.CoverThumbnailCache` | 等比缩放成缩略图、内存 + 磁盘缓存 | 依赖 UIKit/CoreGraphics，只留在 App 层 |
+
+缓存文件名由 `SHA256(mangaID)` 前 16 位派生 —— 作品 ID 含 `|`、`/` 与中文，
+不能直接当文件名；哈希后也天然保证「同一作品只占一个文件」。
+损坏图片**不写缓存**，避免下次直接命中坏数据；缓存写失败只记日志，不影响阅读。
+
+**缩放/平移**的规则同样抽成值类型 `AppCore.ZoomState`（可单测），视图只做手势映射。
+两条容易出错的规则被固化成测试：
+
+1. 缩回 1 倍时位移必须归零（否则复原后画面偏）；
+2. 内容未超出容器的方向**不允许拖动**（否则能把整页拖出屏幕）。
+
+阅读区背景、页面留白、屏幕常亮都来自 `AppSettings`；
+单击区方向语义随 `readerMode` 变化（右到左模式下左侧是「下一页」）。
+
+### 3.9 沙箱与限流
 
 - 源运行时的调用超时、响应上限、是否允许联网集中在 `SourceRuntimeConfiguration`。
 - 每个来源一个 `RateLimiter`（遵守源声明的 `rateLimitMs`），避免触发站点风控。

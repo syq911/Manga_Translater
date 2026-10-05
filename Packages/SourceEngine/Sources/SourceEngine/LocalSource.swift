@@ -378,6 +378,29 @@ public final class LocalSource: @unchecked Sendable {
         try books().count
     }
 
+    /// 封面数据：取**第一章的第一页**原始图片字节。
+    ///
+    /// 返回原始数据而不是缩略图：缩放依赖平台图形框架，属于 UI 层职责，
+    /// 由 App 侧（`CoverThumbnailCache`）负责；这里只保证「能拿到哪一页」。
+    /// 作品不存在或归档里没有图片时返回 nil，不抛错——封面缺失不该影响列表展示。
+    public func coverEntryName(for manga: Manga) throws -> String? {
+        let url = try fileURL(forRelativePath: manga.url)
+        guard fileManager.fileExists(atPath: url.path) else { return nil }
+        let reader = try openReader(for: manga.url, at: url)
+        let title = readMeta(forArchiveAt: url)?.title ?? manga.title
+        let index = LocalArchiveIndexer.index(entryNames: reader.entryNames, bookTitle: title)
+        return index.chapters.first?.pageEntries.first
+    }
+
+    /// 封面原始数据。取不到返回 nil（不抛错）。
+    public func coverData(for manga: Manga) throws -> Data? {
+        guard let entry = try coverEntryName(for: manga) else { return nil }
+        let url = try fileURL(forRelativePath: manga.url)
+        guard fileManager.fileExists(atPath: url.path) else { return nil }
+        let reader = try openReader(for: manga.url, at: url)
+        return try? reader.data(for: entry)
+    }
+
     // MARK: 归档缓存
 
     private func openReader(for key: String, at url: URL) throws -> ZipArchiveReader {

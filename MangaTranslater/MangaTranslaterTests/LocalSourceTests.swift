@@ -372,6 +372,69 @@ struct LocalSourceTests {
         #expect(try source.books().isEmpty)
     }
 
+    // MARK: 封面
+
+    @Test("封面取第一章的第一页，且与阅读页数据一致")
+    func coverUsesFirstPageOfFirstChapter() throws {
+        let (source, root) = try makeSource()
+        defer { TestFileSystem.remove(root) }
+
+        let file = try writeTemporaryArchive(Self.multiChapterArchive, fileName: "Cover.cbz", in: root)
+        let (manga, chapters) = try source.importBook(from: file)
+
+        #expect(try source.coverEntryName(for: manga) == "第1话/001.jpg")
+
+        let cover = try #require(try source.coverData(for: manga))
+        let firstPage = try #require(try source.pages(for: chapters[0], manga: manga).first)
+        #expect(cover == (try source.imageDataSync(for: firstPage, manga: manga)))
+        #expect(cover.prefix(3) == Data([0xFF, 0xD8, 0xFF]))
+    }
+
+    @Test("单章归档的封面取根目录第一页")
+    func coverForRootLayout() throws {
+        let (source, root) = try makeSource()
+        defer { TestFileSystem.remove(root) }
+
+        let file = try writeTemporaryArchive(Self.singleChapterRootArchive, fileName: "RootCover.cbz", in: root)
+        let (manga, _) = try source.importBook(from: file)
+        // 自然排序应让 1.jpg 成为封面，而不是字典序最小的 10.jpg
+        #expect(try source.coverEntryName(for: manga) == "1.jpg")
+    }
+
+    @Test("作品不存在时封面返回 nil 而不是抛错")
+    func coverForMissingBookReturnsNil() throws {
+        let (source, root) = try makeSource()
+        defer { TestFileSystem.remove(root) }
+
+        let ghost = Manga(sourceID: .local, url: "LocalLibrary/nope-00000000.cbz", title: "Ghost")
+        #expect(try source.coverEntryName(for: ghost) == nil)
+        #expect(try source.coverData(for: ghost) == nil)
+    }
+
+    @Test("删除作品后封面也取不到")
+    func coverAfterRemovalReturnsNil() throws {
+        let (source, root) = try makeSource()
+        defer { TestFileSystem.remove(root) }
+
+        let file = try writeTemporaryArchive(Self.multiChapterArchive, fileName: "Gone.cbz", in: root)
+        let (manga, _) = try source.importBook(from: file)
+        _ = try #require(try source.coverData(for: manga))
+
+        #expect(try source.removeBook(mangaID: manga.id))
+        #expect(try source.coverData(for: manga) == nil)
+    }
+
+    @Test("非法作品 ID 不会读到别处文件")
+    func coverRejectsTraversalMangaID() throws {
+        let (source, root) = try makeSource()
+        defer { TestFileSystem.remove(root) }
+
+        let evil = Manga(sourceID: .local, url: "LocalLibrary/../../secret.cbz", title: "Evil")
+        expectThrows(LocalSourceError.invalidRelativePath(evil.url)) {
+            _ = try source.coverData(for: evil)
+        }
+    }
+
     // MARK: 列出与删除
 
     @Test("books() 从文件系统重建本地作品列表")

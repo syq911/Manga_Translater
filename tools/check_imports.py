@@ -20,7 +20,7 @@ PKG_TYPES = {
         "LibraryEntry", "MangaStatus", "MangaListPage", "AppSettings", "AppError",
         "DiagnosticsLog", "TranslationBackend", "ReaderMode", "TranslationLanguage",
         "SettingsSnapshot", "ModelValidation", "PageDataProviding", "ReaderSession",
-        "ReaderAdvanceResult",
+        "ReaderAdvanceResult", "ReaderTheme", "ZoomState",
     ],
     "ComicNet": [
         "HTTPClient", "HTTPResponse", "HTTPTransporting", "CookieJar", "StoredCookie",

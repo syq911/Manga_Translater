@@ -30,6 +30,8 @@ final class AppEnvironment {
     let dataDirectory: URL
     /// 书架是否持久化。false 表示已降级为内存存储（UI 应提示用户）。
     let isLibraryPersistent: Bool
+    /// 封面缩略图缓存（内存 + 磁盘）。
+    let coverCache: CoverThumbnailCache
 
     init(
         settings: AppSettings,
@@ -39,7 +41,8 @@ final class AppEnvironment {
         libraryStore: LibraryStoring,
         localSource: LocalSource,
         dataDirectory: URL,
-        isLibraryPersistent: Bool
+        isLibraryPersistent: Bool,
+        coverCache: CoverThumbnailCache? = nil
     ) {
         self.settings = settings
         self.sourceStore = sourceStore
@@ -49,6 +52,8 @@ final class AppEnvironment {
         self.localSource = localSource
         self.dataDirectory = dataDirectory
         self.isLibraryPersistent = isLibraryPersistent
+        // 默认按数据目录派生，测试可注入替身
+        self.coverCache = coverCache ?? CoverThumbnailCache(dataDirectory: dataDirectory)
     }
 
     /// 按默认路径构建。任一步失败都降级而非崩溃，保证 App 一定能启动。
@@ -111,6 +116,17 @@ final class AppEnvironment {
     /// 文件系统里的本地作品（不依赖数据库）。
     func localBooks() -> [Manga] {
         (try? localSource.books()) ?? []
+    }
+
+    /// 本地作品的封面缩略图（取首页 → 缩放 → 缓存）。取不到返回 nil。
+    ///
+    /// 只在 `sourceID == .local` 时可用；在线源的封面走网络（M2 接入）。
+    func coverThumbnail(for manga: Manga) -> Data? {
+        guard manga.sourceID == .local else { return nil }
+        let source = localSource
+        return coverCache.thumbnail(mangaID: manga.id) {
+            try source.coverData(for: manga)
+        }
     }
 
     /// 加入书架。已存在时只更新作品信息，**不覆盖阅读进度**。

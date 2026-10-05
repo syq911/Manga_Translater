@@ -60,12 +60,58 @@ def normalize(text):
     return [line.rstrip() for line in text.split("\n")]
 
 
+def check_heading_numbers():
+    """
+    检查 docs/*.md 的小节编号是否重复。
+
+    起因：手写文档时反复出现「新增一节后忘记改号」——曾经同时存在两个 3.5
+    与三个 3.6。编号重复会让交叉引用（「见 3.6」）指向不明，属文档腐化。
+    """
+    import collections
+    import glob
+    import os
+
+    problems = []
+    for path in sorted(glob.glob("docs/*.md")):
+        text = io.open(path, encoding="utf-8").read()
+        seen = {}
+        for index, line in enumerate(text.split("\n"), start=1):
+            match = re.match(r"^#{2,4}\s+(\d+(?:\.\d+)*)", line)
+            if not match:
+                continue
+            key = match.group(1)
+            if key in seen:
+                problems.append(
+                    f"{os.path.relpath(path)}:{index} 小节编号 {key} 与第 {seen[key]} 行重复"
+                )
+            else:
+                seen[key] = index
+        # 同一父级下编号必须递增（例如出现 3.7 之后又回到 3.2）
+        order = [
+            tuple(int(x) for x in match.group(1).split("."))
+            for match in re.finditer(r"^#{2,4}\s+(\d+(?:\.\d+)*)", text, re.M)
+        ]
+        for previous, current in zip(order, order[1:]):
+            if len(previous) == len(current) and current < previous:
+                problems.append(
+                    f"{os.path.relpath(path)} 小节编号顺序回退：{previous} → {current}"
+                )
+    return problems
+
+
 def main():
     doc_lines = normalize(extract_doc_block())
     swift_lines = normalize(extract_swift_literal())
 
+    structure_problems = check_heading_numbers()
+    if structure_problems:
+        print("❌ 文档结构问题：")
+        for problem in structure_problems:
+            print("   ", problem)
+        return 1
+
     if doc_lines == swift_lines:
-        print(f"✅ 文档示例与测试夹具一致（{len(doc_lines)} 行）")
+        print(f"✅ 文档示例与测试夹具一致（{len(doc_lines)} 行）、小节编号无重复")
         return 0
 
     print("❌ 文档示例与测试夹具不一致：")

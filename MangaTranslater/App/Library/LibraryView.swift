@@ -85,21 +85,25 @@ struct LibraryView: View {
     }
 
     private func row(for entry: LibraryEntry) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                if entry.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
+        HStack(spacing: 12) {
+            CoverThumbnailView(manga: entry.manga)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    if entry.isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+                    Text(entry.manga.title)
+                        .lineLimit(2)
                 }
-                Text(entry.manga.title)
-                    .lineLimit(2)
+                Text(progressText(for: entry))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            Text(progressText(for: entry))
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 
     @ToolbarContentBuilder

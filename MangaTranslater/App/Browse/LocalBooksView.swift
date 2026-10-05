@@ -18,6 +18,8 @@ struct LocalBooksView: View {
     @Environment(AppEnvironment.self) private var environment
 
     @State private var books: [Manga] = []
+    /// 作品 → 章节数。**在 reload 时一次算好**，不在每行渲染时重复解析 ZIP。
+    @State private var chapterCounts: [String: Int] = [:]
     @State private var showsImporter = false
     @State private var message: String?
     @State private var isImporting = false
@@ -60,7 +62,7 @@ struct LocalBooksView: View {
             allowsMultipleSelection: true,
             onCompletion: handleImport
         )
-        .task { reload() }
+        .task { await reload() }
         .alert("导入结果", isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
@@ -72,20 +74,36 @@ struct LocalBooksView: View {
     }
 
     private func row(for book: Manga) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(book.title)
-            if let chapters = try? environment.localSource.chapters(for: book) {
-                Text("\(chapters.count) 章")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 12) {
+            CoverThumbnailView(manga: book)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(book.title)
+                if let count = chapterCounts[book.id] {
+                    Text("\(count) 章")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
+        .padding(.vertical, 4)
     }
 
     // MARK: 行为
 
-    private func reload() {
-        books = environment.localBooks()
+    /// 重新扫描本地文件。解析归档（取章节数）放到后台，避免进入页面时卡顿。
+    private func reload() async {
+        let source = environment.localSource
+        let outcome = await Task.detached(priority: .userInitiated) { () -> ([Manga], [String: Int]) in
+            let books = (try? source.books()) ?? []
+            var counts: [String: Int] = [:]
+            for book in books {
+                counts[book.id] = (try? source.chapters(for: book))?.count ?? 0
+            }
+            return (books, counts)
+        }.value
+
+        books = outcome.0
+        chapterCounts = outcome.1
     }
 
     /// 可导入的类型：`.cbz` 在系统里没有独立 UTI，按其父类型 zip 处理。
@@ -115,9 +133,8 @@ struct LocalBooksView: View {
                 }
             }
 
-            reload()
-            isImporting = false
-            if failures.isEmpty {
+            Task { await reload() }
+            isImporting = false            if failures.isEmpty {
                 message = "已导入 \(succeeded) 个文件。"
             } else {
                 message = "成功 \(succeeded) 个，失败 \(failures.count) 个：\n" + failures.joined(separator: "\n")

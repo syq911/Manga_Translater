@@ -37,6 +37,10 @@
   跑在 GRDB 实现与内存实现上，防止两个实现的语义漂移。
 - **纯逻辑单测优先**：翻页/分章/自然排序等规则放在值类型里（`ReaderSession`、
   `LocalArchiveIndexer`），不依赖 UI 与文件系统即可穷举边界。
+- **需要真图的测试就用真图**：`CoverThumbnailCacheTests` 的夹具是真实 PNG
+  （base64 内联），因为该类的职责就是「把真图片缩放」——用伪图片头等于没测。
+- **设置快照必须能读旧备份**：`SettingsSnapshot` 的解码走 `decodeIfPresent + 默认值`，
+  并有专门用例覆盖「缺字段 / 类型不符 / null / 空对象 / 未知字段」五种情况。
 - **外部实现的夹具优先**：验证 ZIP deflate 解压时，夹具由 Python `zipfile` 生成并
   base64 内联（`ZipDeflateTests.swift`）——用自己的编码器造夹具验证自己的解码器
   是自证循环，独立实现才有意义。
