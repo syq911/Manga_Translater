@@ -1,0 +1,50 @@
+/* MangaTranslater — English strings */
+
+"tab.library" = "Library";
+"tab.browse" = "Browse";
+"tab.downloads" = "Downloads";
+"tab.settings" = "Settings";
+
+"library.empty.title" = "Your library is empty";
+"library.empty.body" = "Add a source or import local files, then tap the star on any title to keep it here.";
+
+"browse.empty.title" = "No sources installed";
+"browse.empty.body" = "MangaTranslater ships with no online sources. You can: import local files (CBZ/ZIP), connect your own Komga or Kavita server, or add a third-party source repository URL in Settings → Source repositories.";
+
+"browse.section.local" = "Local files";
+"browse.section.servers" = "Self-hosted servers";
+"browse.section.repositories" = "Source repositories";
+"browse.installed" = "Installed sources";
+"browse.noInstalled" = "No sources installed yet.";
+
+"downloads.empty.title" = "No downloads";
+"downloads.empty.body" = "Chapters you download will appear here and stay readable offline.";
+
+"settings.section.account" = "Account & Cloud";
+"settings.section.translation" = "Translation";
+"settings.section.reader" = "Reader";
+"settings.section.sources" = "Sources";
+"settings.section.about" = "About";
+
+"settings.cloud.entry" = "Cloud translation service";
+"settings.cloud.subtitle" = "Optional. Use your own API key for free, or subscribe for hosted quota.";
+"settings.nsfw" = "Show adult (18+) sources";
+"settings.nsfw.footer" = "Hidden by default. Turning this on requires confirming you are 18 or older.";
+"settings.nsfw.confirm.title" = "Confirm your age";
+"settings.nsfw.confirm.body" = "This will show sources that may contain adult content. You must be 18 or older to continue.";
+"settings.nsfw.confirm.action" = "I am 18 or older";
+
+"settings.diagnostics.export" = "Diagnostics log";
+"settings.diagnostics.subtitle" = "Contains technical details only. Share it when reporting a problem.";
+"settings.diagnostics.clear" = "Clear log";
+
+"settings.about.license" = "Open-source licenses";
+"settings.about.privacy" = "Privacy policy";
+"settings.about.terms" = "Terms of use";
+"settings.about.version" = "Version";
+
+"common.ok" = "OK";
+"common.cancel" = "Cancel";
+"common.done" = "Done";
+"common.continue" = "Continue";
+"common.notAvailableYet" = "Coming soon";

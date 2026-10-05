@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 用户添加的源可能使用自签证书或 http（仅本机调试）场景，故放开 ATS。
+	     这是阅读器的必要能力，不涉及任何内置内容。 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<!-- 后台下载与刷新 -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).download</string>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).refresh</string>
+	</array>
+	<!-- 允许通过「文件」App 访问下载的漫画与诊断日志 -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<!-- 用于「应用锁」功能 -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>使用 Face ID 解锁应用</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>

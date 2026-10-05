@@ -1,0 +1,50 @@
+/* MangaTranslater — 简体中文字符串 */
+
+"tab.library" = "书架";
+"tab.browse" = "浏览";
+"tab.downloads" = "下载";
+"tab.settings" = "设置";
+
+"library.empty.title" = "书架还是空的";
+"library.empty.body" = "添加一个源或导入本地文件，然后在作品页点星标收藏到书架。";
+
+"browse.empty.title" = "尚未安装任何源";
+"browse.empty.body" = "MangaTranslater 不自带任何在线源。你可以：导入本地文件（CBZ/ZIP）；连接你自己的 Komga 或 Kavita 服务器；或在「设置 → 源仓库」中添加第三方源仓库 URL。";
+
+"browse.section.local" = "本地文件";
+"browse.section.servers" = "自建服务器";
+"browse.section.repositories" = "源仓库";
+"browse.installed" = "已安装的源";
+"browse.noInstalled" = "还没有安装任何源。";
+
+"downloads.empty.title" = "没有下载任务";
+"downloads.empty.body" = "下载的章节会出现在这里，并可离线阅读。";
+
+"settings.section.account" = "账号与云服务";
+"settings.section.translation" = "翻译";
+"settings.section.reader" = "阅读器";
+"settings.section.sources" = "源";
+"settings.section.about" = "关于";
+
+"settings.cloud.entry" = "云翻译服务";
+"settings.cloud.subtitle" = "可选。自备 API Key 免费使用，或订阅官方托管额度。";
+"settings.nsfw" = "显示成人（18+）源";
+"settings.nsfw.footer" = "默认隐藏。开启需先确认你已年满 18 周岁。";
+"settings.nsfw.confirm.title" = "确认年龄";
+"settings.nsfw.confirm.body" = "开启后将显示可能包含成人内容的源。请确认你已年满 18 周岁。";
+"settings.nsfw.confirm.action" = "我已年满 18 周岁";
+
+"settings.diagnostics.export" = "诊断日志";
+"settings.diagnostics.subtitle" = "仅包含技术信息。反馈问题时请一并提供。";
+"settings.diagnostics.clear" = "清空日志";
+
+"settings.about.license" = "开源许可";
+"settings.about.privacy" = "隐私政策";
+"settings.about.terms" = "使用条款";
+"settings.about.version" = "版本";
+
+"common.ok" = "好";
+"common.cancel" = "取消";
+"common.done" = "完成";
+"common.continue" = "继续";
+"common.notAvailableYet" = "即将推出";

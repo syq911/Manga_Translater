@@ -1,0 +1,215 @@
+name: Build IPA
+
+# 定制打包流水线：产出「ad-hoc 签名 ipa」，供用户用 AltStore / SideStore / Sideloadly 自行重签安装。
+# 三个 job：build-ipa（打包产物）、test（模拟器跑单测）、release（打 tag 时发布）。
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+# 同一分支只保留最新一次构建，避免排队堆积
+concurrency:
+  group: build-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ipa:
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 镜像上可能有多个 Xcode，取最新的一个
+      - name: Select newest Xcode
+        run: |
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          LATEST=${LATEST:-/Applications/Xcode.app}
+          sudo xcode-select -s "$LATEST"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i ios || true
+
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "MangaTranslater.xcodeproj" \
+            -scheme "MangaTranslater"
+
+      # 归档阶段不签名（CODE_SIGNING_ALLOWED=NO）；ad-hoc 签名在打包步骤里用 codesign 完成。
+      # 版本号优先取 tag（v0.1.0 → 0.1.0），分支构建用默认值；这样 tag 与 ipa 内版本永不漂移。
+      - name: Resolve marketing version
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.1.0"
+          fi
+          echo "版本号: $VERSION"
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Archive (unsigned)
+        run: |
+          xcodebuild archive \
+            -project "MangaTranslater.xcodeproj" \
+            -scheme "MangaTranslater" \
+            -destination "generic/platform=iOS" \
+            -archivePath build/MangaTranslater.xcarchive \
+            MARKETING_VERSION=${{ steps.ver.outputs.value }} \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Ad-hoc sign & package IPA
+        run: |
+          set -euo pipefail
+          APP="build/MangaTranslater.xcarchive/Products/Applications/MangaTranslater.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::未找到 .app 产物，打印 archive 内容以便排查"
+            find build/MangaTranslater.xcarchive -maxdepth 4 -name "*.app" -print
+            exit 1
+          fi
+          echo "=== 产物信息 ==="
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$APP/Info.plist" || true
+
+          mkdir -p build/Payload
+          cp -R "$APP" build/Payload/
+          TARGET="build/Payload/MangaTranslater.app"
+
+          # 清掉扩展属性 / 资源分叉，避免 codesign 报 detritus
+          xattr -cr "$TARGET" || true
+
+          # 用 Apple 官方 codesign 做 ad-hoc 签名（--sign -）。
+          # 目的：给安装时的重签工具一个「已带代码签名」的基线 ——
+          # 部分工具在「从零给完全无签名的二进制补签名」这条路径上会产出
+          # SIGKILL - CODESIGNING，导致启动即闪退。
+          if [ -d "$TARGET/PlugIns" ]; then
+            for appex in "$TARGET/PlugIns"/*.appex; do
+              [ -d "$appex" ] || continue
+              echo "ad-hoc 签名扩展: $appex"
+              codesign --force --sign - --timestamp=none "$appex"
+            done
+          fi
+          echo "ad-hoc 签名主 App"
+          codesign --force --sign - --timestamp=none "$TARGET"
+
+          echo "=== 签名校验 ==="
+          codesign -dv --verbose=4 "$TARGET" 2>&1 | sed -n '1,12p' || true
+          codesign --verify --verbose=2 "$TARGET" || true
+
+          cd build
+          # 用 Apple 官方 ditto 打包（而不是 zip）：更能保留 bundle 属性，
+          # 输出结构与 Apple 自家 ipa 一致，兼容各类安装器
+          ditto -c -k --keepParent Payload MangaTranslater.ipa
+          echo "=== ipa 结构自检 ==="
+          unzip -l MangaTranslater.ipa | tail -3
+          ls -lh MangaTranslater.ipa
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MangaTranslater-ipa-${{ github.run_number }}
+          path: build/MangaTranslater.ipa
+          retention-days: 30
+
+  # 回归测试 gate。与打包 job 相互独立 —— 即便测试挂了，ipa 产物照样上传，
+  # 便于「先能装、再修测试」，但 workflow 整体会标红提醒。
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          LATEST=${LATEST:-/Applications/Xcode.app}
+          sudo xcode-select -s "$LATEST"
+          xcodebuild -version
+
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "MangaTranslater.xcodeproj" \
+            -scheme "MangaTranslater"
+
+      # 不写死机型：取当前镜像上最新 runtime 里可用的 iPhone 模拟器
+      - name: Pick an available iPhone simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available --json | python3 -c "
+          import sys, json
+          devs = json.load(sys.stdin)['devices']
+          pool = [d for rt in sorted(devs) for d in devs[rt] if 'iPhone' in d.get('name','')]
+          print(pool[-1]['udid'] if pool else '')
+          ")
+          if [ -z "$UDID" ]; then
+            echo "::error::镜像上没有可用的 iPhone 模拟器"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "挑中模拟器: $UDID"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Run unit tests
+        run: |
+          xcodebuild test \
+            -project "MangaTranslater.xcodeproj" \
+            -scheme "MangaTranslater" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+  # 打 v* tag 时自动建 Release 并附上 ipa（用 runner 自带 gh + GITHUB_TOKEN，不需要 PAT）
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-ipa
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "MangaTranslater-ipa-*"
+          merge-multiple: true
+          path: dist
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ls -lh dist
+          gh release create "${GITHUB_REF_NAME}" dist/MangaTranslater.ipa \
+            --title "MangaTranslater ${GITHUB_REF_NAME}" \
+            --notes "ad-hoc 签名 ipa（仅作重签基线），请用 AltStore / SideStore / Sideloadly 自行重签安装。详见 CHANGELOG.md。"
+
+      # 生成 AltStore / SideStore 源清单，作为本次 Release 的附件上传。
+      # 对外统一地址（加进 AltStore 后即可自动检查更新）：
+      #   https://github.com/<owner>/<repo>/releases/latest/download/source.json
+      # 必须放在 create release 之后——脚本要能扫到刚发布的这个版本。
+      - name: Build AltStore source (source.json)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/build_altstore_source.py
+          python3 -c "import json;d=json.load(open('source.json'));print('source.json 版本:',[v['version'] for v in d['apps'][0]['versions']])"
+
+      - name: Upload source.json to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" source.json --clobber

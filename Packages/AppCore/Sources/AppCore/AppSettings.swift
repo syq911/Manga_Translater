@@ -1,0 +1,394 @@
+//
+//  AppSettings.swift
+//  AppCore
+//
+//  应用设置。全部取值都经过范围钳制与合法性检查，非法输入不会写入。
+//
+//  设计要点：
+//  - `UserDefaults` 可注入，测试用独立 suite，互不干扰。
+//  - 读写加锁，保证并发调用安全（设置可能被多个任务同时读写）。
+//  - `snapshot()` / `apply(_:)` 支持备份与恢复，恢复时忽略非法值而不是整体失败。
+//
+
+import Foundation
+
+/// 翻译后端。
+public enum TranslationBackend: String, Codable, Sendable, CaseIterable {
+    /// 用户自备 API Key（免费，额度由用户自己的账号承担）。
+    case bringYourOwnKey
+    /// 官方云服务（免配置，按额度计费）。
+    case cloudService
+    /// 系统端上翻译（设备能力受限）。
+    case appleOnDevice
+
+    public var displayName: String {
+        switch self {
+        case .bringYourOwnKey: return "自备密钥 / Own API key"
+        case .cloudService: return "云服务 / Cloud service"
+        case .appleOnDevice: return "设备端翻译 / On-device"
+        }
+    }
+}
+
+/// 阅读模式。
+public enum ReaderMode: String, Codable, Sendable, CaseIterable {
+    case pagedLeftToRight
+    case pagedRightToLeft
+    case continuousVertical
+    case doublePage
+
+    public var displayName: String {
+        switch self {
+        case .pagedLeftToRight: return "左到右翻页"
+        case .pagedRightToLeft: return "右到左翻页"
+        case .continuousVertical: return "条漫连续滚动"
+        case .doublePage: return "双页"
+        }
+    }
+}
+
+/// 翻译语言。`visionLanguages` 用于 OCR 语言提示，`isSource` 决定能否作为原文语言。
+public enum TranslationLanguage: String, Codable, Sendable, CaseIterable {
+    case auto
+    case japanese = "ja"
+    case english = "en"
+    case simplifiedChinese = "zh-Hans"
+    case traditionalChinese = "zh-Hant"
+    case korean = "ko"
+
+    /// 传给 Vision 的语言列表；`auto` 表示交由系统自动检测。
+    public var visionLanguages: [String] {
+        switch self {
+        case .auto: return ["ja-JP", "zh-Hans", "zh-Hant", "en-US"]
+        case .japanese: return ["ja-JP"]
+        case .english: return ["en-US"]
+        case .simplifiedChinese: return ["zh-Hans"]
+        case .traditionalChinese: return ["zh-Hant"]
+        case .korean: return ["ko-KR"]
+        }
+    }
+
+    public var displayName: String {
+        switch self {
+        case .auto: return "自动检测"
+        case .japanese: return "日语"
+        case .english: return "英语"
+        case .simplifiedChinese: return "简体中文"
+        case .traditionalChinese: return "繁体中文"
+        case .korean: return "韩语"
+        }
+    }
+}
+
+/// 备份 / 恢复用的设置快照。
+public struct SettingsSnapshot: Codable, Equatable, Sendable {
+    public var readerMode: ReaderMode
+    public var fontScale: Double
+    public var preloadWindow: Int
+    public var maxConcurrentDownloads: Int
+    public var requestTimeoutSeconds: Int
+    public var translationBackend: TranslationBackend
+    public var sourceLanguage: TranslationLanguage
+    public var targetLanguage: TranslationLanguage
+    public var usesLineDropFallback: Bool
+    public var showsNSFWSources: Bool
+    public var hasConfirmedAdultContent: Bool
+    public var deepSeekBaseURL: String
+    public var deepSeekModel: String
+    public var preferredLanguages: [String]
+
+    public init(
+        readerMode: ReaderMode = .pagedRightToLeft,
+        fontScale: Double = 1.0,
+        preloadWindow: Int = 10,
+        maxConcurrentDownloads: Int = 3,
+        requestTimeoutSeconds: Int = 15,
+        translationBackend: TranslationBackend = .bringYourOwnKey,
+        sourceLanguage: TranslationLanguage = .auto,
+        targetLanguage: TranslationLanguage = .simplifiedChinese,
+        usesLineDropFallback: Bool = true,
+        showsNSFWSources: Bool = false,
+        hasConfirmedAdultContent: Bool = false,
+        deepSeekBaseURL: String = AppSettings.defaultDeepSeekBaseURL,
+        deepSeekModel: String = AppSettings.defaultDeepSeekModel,
+        preferredLanguages: [String] = ["zh-Hans", "en"]
+    ) {
+        self.readerMode = readerMode
+        self.fontScale = fontScale
+        self.preloadWindow = preloadWindow
+        self.maxConcurrentDownloads = maxConcurrentDownloads
+        self.requestTimeoutSeconds = requestTimeoutSeconds
+        self.translationBackend = translationBackend
+        self.sourceLanguage = sourceLanguage
+        self.targetLanguage = targetLanguage
+        self.usesLineDropFallback = usesLineDropFallback
+        self.showsNSFWSources = showsNSFWSources
+        self.hasConfirmedAdultContent = hasConfirmedAdultContent
+        self.deepSeekBaseURL = deepSeekBaseURL
+        self.deepSeekModel = deepSeekModel
+        self.preferredLanguages = preferredLanguages
+    }
+}
+
+/// 应用设置存取。
+public final class AppSettings: @unchecked Sendable {
+
+    // MARK: 默认值与范围
+
+    /// 默认云端翻译服务地址（OpenAI 兼容）。
+    public static let defaultDeepSeekBaseURL = "https://api.deepseek.com"
+    /// 默认模型。注意：`deepseek-chat` 别名已由官方弃用，不要回退到它。
+    public static let defaultDeepSeekModel = "deepseek-v4-flash"
+
+    /// 字号缩放范围。
+    public static let fontScaleRange: ClosedRange<Double> = 0.5...2.0
+    /// 预加载窗口范围（当前页前后各 N 页）。
+    public static let preloadWindowRange: ClosedRange<Int> = 1...50
+    /// 下载并发上限。来源可能进一步限制（规范建议单来源 ≤3）。
+    public static let maxConcurrentDownloadsRange: ClosedRange<Int> = 1...4
+    /// 请求超时范围（秒）。
+    public static let requestTimeoutRange: ClosedRange<Int> = 5...60
+
+    private enum Key {
+        static let prefix = "mangatranslater."
+        static let readerMode = prefix + "readerMode"
+        static let fontScale = prefix + "fontScale"
+        static let preloadWindow = prefix + "preloadWindow"
+        static let maxConcurrentDownloads = prefix + "maxConcurrentDownloads"
+        static let requestTimeoutSeconds = prefix + "requestTimeoutSeconds"
+        static let translationBackend = prefix + "translationBackend"
+        static let sourceLanguage = prefix + "sourceLanguage"
+        static let targetLanguage = prefix + "targetLanguage"
+        static let usesLineDropFallback = prefix + "usesLineDropFallback"
+        static let showsNSFWSources = prefix + "showsNSFWSources"
+        static let hasConfirmedAdultContent = prefix + "hasConfirmedAdultContent"
+        static let deepSeekBaseURL = prefix + "deepSeekBaseURL"
+        static let deepSeekModel = prefix + "deepSeekModel"
+        static let preferredLanguages = prefix + "preferredLanguages"
+    }
+
+    private let defaults: UserDefaults
+    private let lock = NSLock()
+
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    /// 存储键前缀，供备份 / 迁移使用。
+    public static var storageKeyPrefix: String { Key.prefix }
+
+    // MARK: 读取 / 写入
+
+    private func read<T>(_ key: String, fallback: T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return defaults.object(forKey: key) as? T ?? fallback
+    }
+
+    private func write(_ value: Any, for key: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        defaults.set(value, forKey: key)
+    }
+
+    // MARK: 阅读器
+
+    public var readerMode: ReaderMode {
+        get {
+            let stored: String = read(Key.readerMode, fallback: ReaderMode.pagedRightToLeft.rawValue)
+            return ReaderMode(rawValue: stored) ?? .pagedRightToLeft
+        }
+        set { write(newValue.rawValue, for: Key.readerMode) }
+    }
+
+    /// 字号缩放，取值自动钳制到 `fontScaleRange`。`NaN` / 无穷大回退到 1.0。
+    public var fontScale: Double {
+        get {
+            let stored = read(Key.fontScale, fallback: Self.fontScaleRange.lowerBound)
+            return Self.clampFontScale(stored)
+        }
+        set { write(Self.clampFontScale(newValue), for: Key.fontScale) }
+    }
+
+    /// 预加载窗口，自动钳制到 `preloadWindowRange`。
+    public var preloadWindow: Int {
+        get { Self.clamp(read(Key.preloadWindow, fallback: 10), to: Self.preloadWindowRange) }
+        set { write(Self.clamp(newValue, to: Self.preloadWindowRange), for: Key.preloadWindow) }
+    }
+
+    /// 下载并发数，自动钳制到 `maxConcurrentDownloadsRange`。
+    public var maxConcurrentDownloads: Int {
+        get { Self.clamp(read(Key.maxConcurrentDownloads, fallback: 3), to: Self.maxConcurrentDownloadsRange) }
+        set { write(Self.clamp(newValue, to: Self.maxConcurrentDownloadsRange), for: Key.maxConcurrentDownloads) }
+    }
+
+    /// 单次请求超时（秒），自动钳制到 `requestTimeoutRange`。
+    public var requestTimeoutSeconds: Int {
+        get { Self.clamp(read(Key.requestTimeoutSeconds, fallback: 15), to: Self.requestTimeoutRange) }
+        set { write(Self.clamp(newValue, to: Self.requestTimeoutRange), for: Key.requestTimeoutSeconds) }
+    }
+
+    // MARK: 翻译
+
+    public var translationBackend: TranslationBackend {
+        get {
+            let stored: String = read(Key.translationBackend, fallback: TranslationBackend.bringYourOwnKey.rawValue)
+            return TranslationBackend(rawValue: stored) ?? .bringYourOwnKey
+        }
+        set { write(newValue.rawValue, for: Key.translationBackend) }
+    }
+
+    public var sourceLanguage: TranslationLanguage {
+        get {
+            let stored: String = read(Key.sourceLanguage, fallback: TranslationLanguage.auto.rawValue)
+            return TranslationLanguage(rawValue: stored) ?? .auto
+        }
+        set { write(newValue.rawValue, for: Key.sourceLanguage) }
+    }
+
+    public var targetLanguage: TranslationLanguage {
+        get {
+            let stored: String = read(Key.targetLanguage, fallback: TranslationLanguage.simplifiedChinese.rawValue)
+            return TranslationLanguage(rawValue: stored) ?? .simplifiedChinese
+        }
+        set { write(newValue.rawValue, for: Key.targetLanguage) }
+    }
+
+    /// 漏行兜底（针对已知系统 OCR 漏行问题的兼容手段），默认开启。
+    public var usesLineDropFallback: Bool {
+        get { read(Key.usesLineDropFallback, fallback: true) }
+        set { write(newValue, for: Key.usesLineDropFallback) }
+    }
+
+    /// 自备密钥模式下的服务地址。空值或非法地址回退到默认值。
+    public var deepSeekBaseURL: String {
+        get {
+            let stored = read(Key.deepSeekBaseURL, fallback: Self.defaultDeepSeekBaseURL)
+            return ModelValidation.isValidURLString(stored) ? stored : Self.defaultDeepSeekBaseURL
+        }
+        set {
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            write(ModelValidation.isValidURLString(trimmed) ? trimmed : Self.defaultDeepSeekBaseURL, for: Key.deepSeekBaseURL)
+        }
+    }
+
+    /// 自备密钥模式下的模型名。空值回退到默认模型。
+    public var deepSeekModel: String {
+        get {
+            let stored = read(Key.deepSeekModel, fallback: Self.defaultDeepSeekModel)
+            return Self.isValidModelName(stored) ? stored : Self.defaultDeepSeekModel
+        }
+        set {
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            write(Self.isValidModelName(trimmed) ? trimmed : Self.defaultDeepSeekModel, for: Key.deepSeekModel)
+        }
+    }
+
+    /// 界面语言偏好顺序。
+    public var preferredLanguages: [String] {
+        get {
+            let stored = read(Key.preferredLanguages, fallback: ["zh-Hans", "en"])
+            return stored.isEmpty ? ["zh-Hans", "en"] : stored
+        }
+        set {
+            let cleaned = newValue
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            write(cleaned.isEmpty ? ["zh-Hans", "en"] : cleaned, for: Key.preferredLanguages)
+        }
+    }
+
+    // MARK: 成人内容门槛
+
+    /// 用户是否已确认年满 18 岁。开启 NSFW 源的前提。
+    public var hasConfirmedAdultContent: Bool {
+        get { read(Key.hasConfirmedAdultContent, fallback: false) }
+        set { write(newValue, for: Key.hasConfirmedAdultContent) }
+    }
+
+    /// 是否显示 NSFW 源。**未确认年龄时无法打开**（写入被拒绝）。
+    /// - Returns: 是否成功设置为目标值。
+    @discardableResult
+    public func setShowsNSFWSources(_ enabled: Bool) -> Bool {
+        guard enabled else {
+            write(false, for: Key.showsNSFWSources)
+            return true
+        }
+        guard hasConfirmedAdultContent else {
+            write(false, for: Key.showsNSFWSources)
+            return false
+        }
+        write(true, for: Key.showsNSFWSources)
+        return true
+    }
+
+    public var showsNSFWSources: Bool {
+        // 即使存储被外部写脏，也必须同时满足「已确认年龄」，否则一律视为关闭。
+        read(Key.showsNSFWSources, fallback: false) && hasConfirmedAdultContent
+    }
+
+    // MARK: 快照
+
+    public func snapshot() -> SettingsSnapshot {
+        SettingsSnapshot(
+            readerMode: readerMode,
+            fontScale: fontScale,
+            preloadWindow: preloadWindow,
+            maxConcurrentDownloads: maxConcurrentDownloads,
+            requestTimeoutSeconds: requestTimeoutSeconds,
+            translationBackend: translationBackend,
+            sourceLanguage: sourceLanguage,
+            targetLanguage: targetLanguage,
+            usesLineDropFallback: usesLineDropFallback,
+            showsNSFWSources: showsNSFWSources,
+            hasConfirmedAdultContent: hasConfirmedAdultContent,
+            deepSeekBaseURL: deepSeekBaseURL,
+            deepSeekModel: deepSeekModel,
+            preferredLanguages: preferredLanguages
+        )
+    }
+
+    /// 应用快照。非法值被忽略（保留当前值），不抛错——恢复备份不应导致 App 不可用。
+    public func apply(_ snapshot: SettingsSnapshot) {
+        fontScale = snapshot.fontScale
+        preloadWindow = snapshot.preloadWindow
+        maxConcurrentDownloads = snapshot.maxConcurrentDownloads
+        requestTimeoutSeconds = snapshot.requestTimeoutSeconds
+        readerMode = snapshot.readerMode
+        translationBackend = snapshot.translationBackend
+        sourceLanguage = snapshot.sourceLanguage
+        targetLanguage = snapshot.targetLanguage
+        usesLineDropFallback = snapshot.usesLineDropFallback
+        hasConfirmedAdultContent = snapshot.hasConfirmedAdultContent
+        deepSeekBaseURL = snapshot.deepSeekBaseURL
+        deepSeekModel = snapshot.deepSeekModel
+        preferredLanguages = snapshot.preferredLanguages
+        // NSFW 开关最后处理：它依赖年龄确认，且写入可能被拒绝。
+        setShowsNSFWSources(snapshot.showsNSFWSources)
+    }
+
+    /// 恢复出厂设置。
+    public func resetToDefaults() {
+        apply(SettingsSnapshot())
+    }
+
+    // MARK: 工具
+
+    static func clamp<T: Comparable>(_ value: T, to range: ClosedRange<T>) -> T {
+        if value < range.lowerBound { return range.lowerBound }
+        if value > range.upperBound { return range.upperBound }
+        return value
+    }
+
+    static func clampFontScale(_ value: Double) -> Double {
+        guard value.isFinite else { return 1.0 }
+        return clamp(value, to: fontScaleRange)
+    }
+
+    /// 模型名只允许字母、数字、`.` `-` `_` `/`，长度 1...128。
+    static func isValidModelName(_ value: String) -> Bool {
+        guard (1...128).contains(value.count) else { return false }
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_/")
+        return value.unicodeScalars.allSatisfy { allowed.contains($0) }
+    }
+}
