@@ -252,10 +252,11 @@ struct JSSourceHTMLBridgeTests {
             transport: transport,
             logSink: { level, message in logs.append(level: level, message: message) }
         )
-        let broken = Self.sourceScript.replacingOccurrences(
-            of: "div.item",
-            with: "div.item["
-        )
+        // 把两个选择器都改坏（只改一个的话，另一个仍能匹配，
+        // hasNextPage 仍会是 true，测不到「坏选择器返回空」）
+        let broken = Self.sourceScript
+            .replacingOccurrences(of: "div.item", with: "div.item[")
+            .replacingOccurrences(of: "a.next", with: "a.next[")
         let meta = try SourceScriptValidator.validate(Self.sourceScript)
         try await runtime.load(script: broken, meta: meta)
 
