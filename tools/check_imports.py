@@ -66,6 +66,99 @@ def owning_package(relative_path):
     return None  # App target
 
 
+def _collect_members():
+    """
+    收集「(类型名, 成员名) → 是否 public」。
+
+    按类型归属而不是按模块归属，避免同名成员互相干扰
+    （例如 `HTTPClient.transport` 是私有属性，而 `NetworkError.transport`
+     是自动 public 的枚举 case —— 按模块归属会误报）。
+
+    只统计成员层声明（缩进恰好 4 个空格），并跳过 `case`（枚举 case
+    自动继承枚举访问级别，无需 public）。
+    """
+    members = {}
+    type_pattern = re.compile(
+        r"^(?:public\s+|internal\s+|private\s+|fileprivate\s+|final\s+|open\s+)*"
+        r"(?:class|struct|enum|actor|protocol|extension)\s+([A-Za-z_][A-Za-z0-9_]*)"
+    )
+
+    for path in swift_files("Packages"):
+        current_type = None
+        for line in io.open(path, encoding="utf-8").read().split("\n"):
+            indent = len(line) - len(line.lstrip(" "))
+            stripped = line.strip()
+            if stripped.startswith("//") or stripped.startswith("*"):
+                continue
+            if indent == 0:
+                match = type_pattern.match(line)
+                if match:
+                    current_type = match.group(1)
+                elif stripped and not stripped.startswith(("@", "}", ")")):
+                    # 顶层非类型声明（如全局函数）→ 脱离类型上下文
+                    current_type = None
+                continue
+            if indent != 4 or current_type is None:
+                continue
+            match = re.search(r"\b(?:let|var|func|init)\s+([A-Za-z_][A-Za-z0-9_]*)", stripped)
+            if not match:
+                continue
+            name = match.group(1)
+            is_public = re.search(r"\bpublic\b", stripped) is not None
+            key = (current_type, name)
+            members[key] = members.get(key, False) or is_public
+
+    return members
+
+
+def check_access_levels(problems):
+    """
+    检查跨模块访问权限：App / 测试里 `Type.member` 形式的调用，
+    对应声明必须是 public，否则会报
+    "is inaccessible due to 'internal' protection level"。
+
+    - 只在包源码里能找到声明的成员才检查；
+    - 协议合成成员（allCases、rawValue、hashValue 等）跳过；
+    - 枚举 case 天然可见，不参与检查；
+    - 同名重载只要有一处 public 即视为可见。
+    """
+    type_to_module = {name: module for module, types in PKG_TYPES.items() for name in types}
+    members = _collect_members()
+
+    # 由协议合成 / 语言构造提供的成员，不参与检查
+    synthesized = {
+        "allCases", "rawValue", "hashValue", "description", "hash",
+        "debugDescription", "localizedDescription", "errorDescription",
+        "self", "Type", "init",
+    }
+
+    seen = set()
+    for path in swift_files("MangaTranslater"):
+        relative = os.path.relpath(path).replace("\\", "/")
+        code = strip_comments(io.open(path, encoding="utf-8").read())
+        for match in re.finditer(r"\b([A-Z][A-Za-z0-9_]*)\.([a-z][A-Za-z0-9_]*)", code):
+            type_name, member = match.group(1), match.group(2)
+            module = type_to_module.get(type_name)
+            if module is None or member in synthesized:
+                continue
+            key = (type_name, member)
+            if key not in members:
+                continue  # 找不到声明 → 视为枚举 case 或协议/语言合成，跳过
+            if members[key]:
+                continue
+            marker = (relative, type_name, member)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            problems.append(
+                (
+                    relative,
+                    f"{type_name}.{member} 在 {module} 中不是 public，跨模块访问会编译失败",
+                    [member],
+                )
+            )
+
+
 def main():
     problems = []
     scanned = 0
@@ -90,23 +183,24 @@ def main():
                     continue
                 if module in imports:
                     continue
-                # 包内文件引用了别的包但既没 import 也没在 Package.swift 声明时，
-                # 这里只报 import 缺失（依赖声明由 check_packages 检查）
-                problems.append((relative, module, sorted(used)[:6]))
+                problems.append((relative, f"需要 import {module}", sorted(used)[:6]))
+
+    check_access_levels(problems)
 
     print(f"扫描 Swift 文件：{scanned} 个")
     if problems:
-        print("\n❌ 缺少 import：")
+        print("\n❌ 发现问题：")
         seen = set()
-        for path, module, used in problems:
-            key = (path, module)
+        for path, reason, used in problems:
+            key = (path, reason)
             if key in seen:
                 continue
             seen.add(key)
-            print(f"  {path}\n      → 需要 `import {module}`（用到了 {', '.join(used)}）")
+            detail = f"（用到了 {', '.join(used)}）" if used else ""
+            print(f"  {path}\n      → {reason}{detail}")
         return 1
 
-    print("✅ 所有文件的 import 完整")
+    print("✅ import 完整、跨模块访问权限正确")
     return 0
 
 

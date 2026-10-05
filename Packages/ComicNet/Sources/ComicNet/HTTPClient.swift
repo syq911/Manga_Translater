@@ -282,7 +282,9 @@ public struct HTTPClient: Sendable {
     }
 
     /// 解析 `Retry-After`。支持秒数与 HTTP 日期两种形式；无法解析返回 nil。
-    static func parseRetryAfter(_ raw: String?, now: Date = Date()) -> Int? {
+    ///
+    /// 公开给上层与测试使用：自定义重试策略时同样需要这套解析规则。
+    public static func parseRetryAfter(_ raw: String?, now: Date = Date()) -> Int? {
         guard let raw else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
