@@ -65,8 +65,8 @@ struct LibraryStoreTests {
     @Test("打开内存库后迁移已应用")
     func migratesOnOpen() throws {
         let (_, database) = try makeStore()
-        #expect(try database.appliedMigrations() == [Migrations.initial])
-        #expect(try database.currentSchemaVersion() == Migrations.initial)
+        #expect(try database.appliedMigrations() == Migrations.all)
+        #expect(try database.currentSchemaVersion() == Migrations.all.last)
     }
 
     @Test("空库查询返回空结果")
@@ -501,7 +501,7 @@ struct LibraryStoreTests {
         let first = try AppDatabase.open(.file(url))
         try first.close()
         let second = try AppDatabase.open(.file(url))
-        #expect(try second.appliedMigrations() == [Migrations.initial])
+        #expect(try second.appliedMigrations() == Migrations.all)
         try second.close()
     }
 
@@ -820,14 +820,15 @@ struct LibraryStoreContractTests {
     func renameKeepsReferences() throws {
         for (name, store) in try makeStores() {
             let category = try store.createCategory(name: "旧名")
-            try store.save(makeEntry(id: "a", categoryID: category.id))
+            let entry = makeEntry(id: "a", categoryID: category.id)
+            try store.save(entry)
 
             let renamed = try store.renameCategory(id: category.id, to: "新名")
             #expect(renamed.id == category.id)
             #expect(renamed.name == "新名")
 
             #expect(
-                try store.entry(mangaID: "a")?.categoryID == category.id,
+                try store.entry(mangaID: entry.id)?.categoryID == category.id,
                 "实现 \(name)：重命名不应改变条目引用"
             )
             #expect(try store.categories().first?.name == "新名")
@@ -873,8 +874,10 @@ struct LibraryStoreContractTests {
         for (name, store) in try makeStores() {
             _ = try store.createCategory(name: "收藏")
             let categoryID = try #require(try store.categories().first?.id)
-            try store.save(makeEntry(id: "a", categoryID: categoryID))
-            try store.save(makeEntry(id: "b", categoryID: categoryID))
+            let entryA = makeEntry(id: "a", categoryID: categoryID)
+            let entryB = makeEntry(id: "b", categoryID: categoryID)
+            try store.save(entryA)
+            try store.save(entryB)
             try store.save(makeEntry(id: "c"))
 
             let affected = try store.deleteCategory(id: categoryID)
@@ -882,8 +885,8 @@ struct LibraryStoreContractTests {
 
             #expect(try store.categories().isEmpty)
             #expect(try store.count() == 3, "条目本身应保留")
-            #expect(try store.entry(mangaID: "a")?.categoryID == nil)
-            #expect(try store.entry(mangaID: "b")?.categoryID == nil)
+            #expect(try store.entry(mangaID: entryA.id)?.categoryID == nil)
+            #expect(try store.entry(mangaID: entryB.id)?.categoryID == nil)
             #expect(try store.entries(sortedBy: .title, categoryID: categoryID).isEmpty)
         }
     }
@@ -926,24 +929,26 @@ struct LibraryStoreContractTests {
     @Test("save 引用未登记的分类时自动补建，避免孤立引用")
     func saveBackfillsCategory() throws {
         for (name, store) in try makeStores() {
-            try store.save(makeEntry(id: "a", categoryID: "临时分类"))
+            let entry = makeEntry(id: "a", categoryID: "临时分类")
+            try store.save(entry)
 
             let listed = try store.categories()
             #expect(listed.map(\.name) == ["临时分类"], "实现 \(name)：应自动补建分类")
-            #expect(try store.entry(mangaID: "a")?.categoryID == listed.first?.id)
+            #expect(try store.entry(mangaID: entry.id)?.categoryID == listed.first?.id)
         }
     }
 
     @Test("setCategory 同样补建分类；设为 nil 只是移出条目")
     func setCategoryBackfills() throws {
         for (name, store) in try makeStores() {
-            try store.save(makeEntry(id: "a"))
-            try store.setCategory(mangaID: "a", categoryID: "稍后读")
+            let entry = makeEntry(id: "a")
+            try store.save(entry)
+            try store.setCategory(mangaID: entry.id, categoryID: "稍后读")
             #expect(try store.categories().count == 1, "实现 \(name)：应补建分类")
-            #expect(try store.entry(mangaID: "a")?.categoryID != nil)
+            #expect(try store.entry(mangaID: entry.id)?.categoryID != nil)
 
-            try store.setCategory(mangaID: "a", categoryID: nil)
-            #expect(try store.entry(mangaID: "a")?.categoryID == nil)
+            try store.setCategory(mangaID: entry.id, categoryID: nil)
+            #expect(try store.entry(mangaID: entry.id)?.categoryID == nil)
             #expect(try store.categories().count == 1, "实现 \(name)：移出分类不应删掉分类本身")
         }
     }
@@ -956,11 +961,12 @@ struct LibraryStoreContractTests {
 
         let first = DatabaseLibraryStore(database: try AppDatabase.open(.file(file)))
         let created = try first.createCategory(name: "常年追")
-        try first.save(makeEntry(id: "a", categoryID: created.id))
+        let entry = makeEntry(id: "a", categoryID: created.id)
+        try first.save(entry)
         _ = try first.createCategory(name: "空分类")
 
         let second = DatabaseLibraryStore(database: try AppDatabase.open(.file(file)))
         #expect(try second.categories().map(\.name) == ["常年追", "空分类"])
-        #expect(try second.entry(mangaID: "a")?.categoryID == created.id)
+        #expect(try second.entry(mangaID: entry.id)?.categoryID == created.id)
     }
 }
