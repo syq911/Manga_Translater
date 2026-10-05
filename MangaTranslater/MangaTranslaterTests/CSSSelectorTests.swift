@@ -171,8 +171,8 @@ struct CSSSelectorTests {
         let document = Self.document
         let rows = try document.select(".item")
         let titles = try rows.map { try $0.selectFirst("a.title")?.textContent ?? "" }
-        let links = try rows.map { $0.selectFirst("a.title")?.attribute("href") ?? "" }
-        let covers = try rows.map { $0.selectFirst("img")?.attribute("data-src") ?? "" }
+        let links = try rows.map { try $0.selectFirst("a.title")?.attribute("href") ?? "" }
+        let covers = try rows.map { try $0.selectFirst("img")?.attribute("data-src") ?? "" }
 
         #expect(titles == ["作品一", "作品二"])
         #expect(links == ["/m/1", "/m/2"])
