@@ -298,17 +298,34 @@ public final class DatabaseLibraryStore: LibraryStoring, @unchecked Sendable {
             guard try Self.category(db, id: id) != nil else {
                 throw LibraryStoreError.categoryNotFound(id)
             }
-            // 先让条目移出分类，再删分类；两步在同一事务内。
-            try db.execute(
-                sql: "UPDATE \(LibraryTable.entries) SET category_id = NULL WHERE category_id = ?",
+            // 注意：`payload` 才是条目的唯一事实来源，投影列只是它的影子。
+            // 只改列会让「读出来的条目仍带着已删除的分类」——
+            // 因此这里读出 payload、改掉分类、连同列一起写回。
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT manga_id, payload FROM \(LibraryTable.entries) WHERE category_id = ?",
                 arguments: [id]
             )
-            let affected = try Int.fetchOne(db, sql: "SELECT changes()") ?? 0
+            for row in rows {
+                let mangaID: String = row["manga_id"]
+                let payload: String = row["payload"]
+                var entry = try Self.decodeEntry(payload)
+                entry.categoryID = nil
+                try db.execute(
+                    sql: """
+                    UPDATE \(LibraryTable.entries)
+                       SET category_id = NULL, payload = ?
+                     WHERE manga_id = ?
+                    """,
+                    arguments: [try Self.encode(entry), mangaID]
+                )
+            }
+
             try db.execute(
                 sql: "DELETE FROM \(LibraryTable.categories) WHERE id = ?",
                 arguments: [id]
             )
-            return affected
+            return rows.count
         }
     }
 

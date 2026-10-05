@@ -44,6 +44,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 🔧 修复 / Fixed（M1 收尾）
 
+- **`deleteCategory` 只改了投影列、没改 payload**（测试抓到）：条目的唯一事实来源是
+  payload，只把 `category_id` 置空会导致「删除分类后，读出的条目仍带着该分类」。
+  现在在同一事务内读出 payload、改掉分类、连同列一起写回。
+  并把该约定固化为预检规则（含 `UPDATE 条目表` 的语句必须写 `payload`，已反向验证）。
+
+
 - `ZoomStateTests` 里 `CGSize(width: .nan, ...)` 报 "ambiguous use of 'nan'"：
   同时 import Foundation 与 CoreGraphics 时 `CGFloat.nan` 有两处定义。
   改为显式 `CGFloat.nan`，并把「几何构造函数里裸写 `.nan` / `.infinity`」

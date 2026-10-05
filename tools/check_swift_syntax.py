@@ -259,6 +259,42 @@ def check_multiline_string_indentation(path):
     return problems
 
 
+def check_payload_column_consistency(files):
+    """
+    `payload` 与投影列的一致性。
+
+    书架条目用「一列 payload（完整模型 JSON）+ 若干投影列（排序/筛选用）」存储，
+    **payload 才是唯一事实来源**。任何 `UPDATE library_entry` 如果只改了投影列
+    而不写 payload，就会出现「读出来的条目仍是旧值」的矛盾状态。
+
+    实测踩过：删除分类时把 `category_id` 置空却没动 payload，
+    结果条目读回来仍带着已删除的分类。
+
+    规则：字符串字面量里出现 `UPDATE` 且涉及条目表时，必须同时出现 `payload`。
+    """
+    literal = re.compile(r'"""((?:.|\n)*?)"""|"((?:[^"\\]|\\.)*)"')
+    problems = []
+    for path in files:
+        text = io.open(path, encoding="utf-8").read()
+        for match in literal.finditer(text):
+            body = match.group(1) or match.group(2) or ""
+            if "UPDATE" not in body:
+                continue
+            touchesEntries = "LibraryTable.entries" in body or "library_entry" in body
+            if not touchesEntries:
+                continue
+            if "payload" not in body:
+                line = text[: match.start()].count("\n") + 1
+                problems.append(
+                    (
+                        os.path.relpath(path).replace("\\", "/"),
+                        f"第 {line} 行的 UPDATE 改动了条目表却没有写 payload"
+                        "（payload 是唯一事实来源，只改投影列会导致读出的数据与列不一致）",
+                    )
+                )
+    return problems
+
+
 def main():
     files = swift_files("MangaTranslater") + swift_files("Packages")
     all_problems = []
@@ -269,6 +305,8 @@ def main():
         for problem in check_multiline_string_indentation(path):
             all_problems.append((relative, problem))
     for problem in check_codable_consistency(files):
+        all_problems.append(problem)
+    for problem in check_payload_column_consistency(files):
         all_problems.append(problem)
 
     print(f"体检 Swift 文件：{len(files)} 个")
