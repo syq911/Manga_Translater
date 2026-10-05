@@ -201,6 +201,24 @@ struct JSSourceRuntimeTests {
 
     // MARK: 夹具
 
+    /// 替换 demoScript 里 `getChapterList` 的实现体。
+    ///
+    /// 用**正则 + 忽略缩进**：多行字符串在不同上下文里的缩进不同，
+    /// 早先按源码缩进写死查找串，结果替换静默失败、用例假通过/假失败。
+    static func script(chapterListBody: String, extraTopLevel: String = "") -> String {
+        let pattern = #"async function getChapterList\(url\) \{\s*return \[\];\s*\}"#
+        let replacement = "async function getChapterList(url) { \(chapterListBody) }"
+        var text = demoScript.replacingOccurrences(
+            of: pattern,
+            with: replacement,
+            options: .regularExpression
+        )
+        if !extraTopLevel.isEmpty {
+            text += "\n" + extraTopLevel
+        }
+        return text
+    }
+
     private func makeRuntime(
         configuration: SourceRuntimeConfiguration = SourceRuntimeConfiguration(),
         preferences: SourcePreferencesStoring? = nil,
@@ -423,10 +441,7 @@ struct JSSourceRuntimeTests {
     @Test("脚本长时间不返回时按时超时")
     func callTimesOut() async throws {
         let (runtime, _) = makeRuntime(configuration: SourceRuntimeConfiguration(callTimeoutSeconds: 1))
-        let script = Self.demoScript.replacingOccurrences(
-            of: "async function getChapterList(url) {\n        return [];\n    }",
-            with: "async function getChapterList(url) {\n        return await new Promise(function () {});\n    }"
-        )
+        let script = Self.script(chapterListBody: "return await new Promise(function () {});")
         try await loadDemo(into: runtime, script: script)
 
         let start = Date()
@@ -476,9 +491,9 @@ struct JSSourceRuntimeTests {
     @Test("重新载入会替换旧沙箱（旧脚本的全局不可见）")
     func reloadReplacesSandbox() async throws {
         let (runtime, _) = makeRuntime()
-        let scriptA = Self.demoScript.replacingOccurrences(
-            of: "async function getChapterList(url) {\n        return [];\n    }",
-            with: "async function getChapterList(url) {\n        return [{ name: globalThis.__marker }];\n    }\nglobalThis.__marker = \"A\";"
+        let scriptA = Self.script(
+            chapterListBody: "return [{ name: globalThis.__marker }];",
+            extraTopLevel: "globalThis.__marker = \"A\";"
         )
         try await loadDemo(into: runtime, script: scriptA)
         let fromA = try await runtime.call(.chapterList, arguments: [#""/x""#])
@@ -511,14 +526,9 @@ struct JSSourceRuntimeTests {
         // 两个沙箱各用自己的脚本，各自在顶层写一个全局变量；
         // 若 VM 被共享，第二个沙箱会读到第一个的值。
         func script(marker: String) -> String {
-            Self.demoScript.replacingOccurrences(
-                of: "async function getChapterList(url) {\n        return [];\n    }",
-                with: """
-                async function getChapterList(url) {
-                    return [{ name: String(globalThis.__marker || "none") }];
-                }
-                globalThis.__marker = "\(marker)";
-                """
+            Self.script(
+                chapterListBody: #"return [{ name: String(globalThis.__marker || "none") }];"#,
+                extraTopLevel: "globalThis.__marker = \"\(marker)\";"
             )
         }
 
@@ -587,11 +597,22 @@ struct JSSourceRuntimeTests {
         #expect(object?["body"] as? String == "hello")
     }
 
-    @Test("jsonArrayLiteral 产出合法 JSON 数组并保留顺序")
+    @Test("jsonArrayLiteral 按 JSON 片段拼接并保留顺序")
     func buildsArrayLiteral() throws {
-        let text = JSSourceRuntime.jsonArrayLiteral(["1", #""a""#, "{}"])
-        let array = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String]
-        #expect(array == ["1", #""a""#, "{}"])
+        // 参数本身就是 JSON 片段：数字、字符串、对象、数组都要原样保留
+        let text = JSSourceRuntime.jsonArrayLiteral(["1", #""a""#, "{}", "[1,2]"])
+        let array = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [Any]
+        #expect(array?.count == 4)
+        #expect(array?[0] as? Int == 1)
+        #expect(array?[1] as? String == "a")
+        #expect((array?[2] as? [String: Any])?.isEmpty == true)
+        #expect(array?[3] as? [Int] == [1, 2])
+    }
+
+    @Test("jsonArrayLiteral 空参数为空数组")
+    func buildsEmptyArrayLiteral() throws {
+        let array = try JSONSerialization.jsonObject(with: Data(JSSourceRuntime.jsonArrayLiteral([]).utf8)) as? [Any]
+        #expect(array?.isEmpty == true)
     }
 
     @Test("偏好键按来源隔离")

@@ -107,6 +107,9 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
     private let preferences: SourcePreferencesStoring
     private let logSink: @Sendable (String, String) -> Void
 
+    /// 最近一次 JS 异常（由 exceptionHandler 同步写入）。
+    private let exceptionBox = JSExceptionBox()
+
     private var virtualMachine: JSVirtualMachine?
     private var context: JSContext?
     private var currentMeta: SourceScriptMeta?
@@ -153,10 +156,12 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
             throw SourceRunnerError.executionFailed("无法创建 JavaScript 虚拟机")
         }
 
-        ctx.exceptionHandler = { [weak self] _, exception in
-            let text = exception?.toString() ?? "未知 JavaScript 异常"
-            // 异常处理器是同步回调，写日志需要回到 actor
-            Task { await self?.logJSException(text) }
+        // 异常处理器的回调是同步的（在 JS 线程），因此用一个线程安全的盒子
+        // 同步记录最近一次异常；不要依赖 `ctx.exception`——在设置了
+        // exceptionHandler 之后它的行为不够可预期。
+        let exceptions = exceptionBox
+        ctx.exceptionHandler = { _, exception in
+            exceptions.record(exception?.toString() ?? "未知 JavaScript 异常")
         }
 
         self.virtualMachine = machine
@@ -167,20 +172,19 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
 
         // 注意：引导脚本是个立即执行的函数表达式，正常执行完返回 undefined ——
         // 因此**不能**用返回值判断成败，只能看有没有异常。
-        ctx.exception = nil
+        exceptionBox.reset()
         ctx.evaluateScript(Self.bootstrapScript)
-        if let exception = ctx.exception {
-            let text = exception.toString() ?? "未知错误"
-            ctx.exception = nil
+        if let text = exceptionBox.consume() {
+            logJSException(text)
             teardown()
             throw SourceRunnerError.executionFailed("桥接初始化失败：\(text)")
         }
-        ctx.exception = nil
 
         // 顶层求值：脚本此时只应做声明，不应真正发请求
+        exceptionBox.reset()
         ctx.evaluateScript(script)
-        if let exception = ctx.exception {
-            let text = exception.toString() ?? "未知错误"
+        if let text = exceptionBox.consume() {
+            logJSException(text)
             teardown()
             throw SourceRunnerError.scriptRejected("脚本执行出错：\(text)")
         }
@@ -247,12 +251,11 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         })()
         """
 
+        exceptionBox.reset()
         guard let promise = context.evaluateScript(source) else {
             throw SourceRunnerError.executionFailed("无法构造调用包装器")
         }
-        if let exception = context.exception {
-            let text = exception.toString() ?? "未知错误"
-            context.exception = nil
+        if let text = exceptionBox.consume() {
             throw SourceRunnerError.executionFailed(text)
         }
         guard promise.isObject else {
@@ -437,12 +440,15 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
             let message = (error as? SourceTransportError)?.message
                 ?? (error as? NetworkError)?.errorDescription
                 ?? error.localizedDescription
-            guard let object = JSValue(newObjectIn: context) else {
+            // 必须给出**合法 JSON**：JS 侧是 `JSON.parse(raw)` +
+            // `if (parsed.error) throw`。注意不能用 `JSValue.toString()`
+            // （对象会变成 "[object Object]"，导致 JS 侧解析失败）。
+            guard let data = try? JSONSerialization.data(withJSONObject: ["error": message]),
+                  let text = String(data: data, encoding: .utf8) else {
                 settlement.reject?.call(withArguments: [message])
                 return
             }
-            object.setObject(message, forKeyedSubscript: "error" as NSString)
-            settlement.resolve?.call(withArguments: [object.toString() ?? "{}"])
+            settlement.resolve?.call(withArguments: [text])
         }
     }
 
@@ -529,13 +535,44 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         return text
     }
 
-    /// 把 JSON 字符串数组拼成 JS 数组字面量，作为 `JSON.parse` 的输入。
-    static func jsonArrayLiteral(_ strings: [String]) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: strings),
-              let text = String(data: data, encoding: .utf8) else {
-            return "[]"
-        }
-        return text
+    /// 把参数拼成 JSON 数组字面量。
+    ///
+    /// **参数本身已经是 JSON 片段**（契约规定如此），因此直接拼接、
+    /// 不能再用 `JSONSerialization` 把整个数组当字符串编码一次——
+    /// 那会把 `"query"` 变成 `"\"query\""`（多一层引号），
+    /// 源脚本拿到的就是带引号的字符串。
+    static func jsonArrayLiteral(_ fragments: [String]) -> String {
+        "[" + fragments.joined(separator: ",") + "]"
+    }
+}
+
+/// 线程安全的「最近一次 JS 异常」槽。
+///
+/// 由 `JSContext.exceptionHandler` 在 JS 线程**同步**写入，
+/// 由 actor 侧读取后 `consume()`（读取即清空），避免读到上次的残留。
+final class JSExceptionBox: @unchecked Sendable {
+    private var message: String?
+    private let lock = NSLock()
+
+    func record(_ text: String) {
+        lock.lock()
+        message = text
+        lock.unlock()
+    }
+
+    func reset() {
+        lock.lock()
+        message = nil
+        lock.unlock()
+    }
+
+    /// 取出并清空。
+    func consume() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        let current = message
+        message = nil
+        return current
     }
 }
 
