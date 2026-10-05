@@ -33,6 +33,9 @@ PKG_TYPES = {
         "SourceRunnerError", "SourceRuntimeExecuting", "SourceRuntimeConfiguration",
         "LocalSource", "LocalArchiveIndexer", "LocalChapterDescriptor", "LocalBookIndex",
         "LocalSourceError",
+        "SourceTransporting", "DefaultSourceTransport", "SourceHTTPRequest", "SourceHTTPResult",
+        "SourceTransportError", "JSSourceRuntime", "SourcePreferencesStoring",
+        "UserDefaultsSourcePreferences", "InMemorySourcePreferences",
     ],
     "AppDatabase": [
         "LibraryStoring", "LibrarySortOrder", "ReadingHistoryEntry", "LibraryStoreError",

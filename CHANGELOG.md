@@ -179,6 +179,21 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   并显示每个分类的作品数。
 - **条目长按菜单**：移动到分类、置顶、移出书架。
 
+### ✨ 新增 / Added（M2 第一批：JavaScriptCore 源运行时）
+
+- **`JSSourceRuntime`**（`SourceRuntimeExecuting` 的 M2 实现）：
+  - 每个源一个 `JSVirtualMachine`，沙箱互不可见；`load` 即替换沙箱
+  - 装载前二次静态校验（体积 / 禁用 API / 必需方法 / id 一致性）
+  - `call` 通过 `callAsyncJavaScript` 支持脚本里的 `async/await`
+  - 调用超时用任务组竞速：超时后调用方立即返回（不阻塞 UI）
+- **四个桥接 API**（JS 侧只看到普通对象，Swift 侧只传字符串）：
+  `net.fetch`（自动带该源 Cookie + 节流 + 体积上限）、`cookies.get/set`、
+  `prefs.get/set`（键按来源隔离）、`log.info/warn/error`（截断、不落内容）
+- **`SourceTransporting`** 抽象 + `DefaultSourceTransport` 实现：
+  按源持有 `HTTPClient` 与 `RateLimiter`（慢源不会拖住快源）；
+  只允许 http/https，`http` 仅限本机；请求方法与体积在此收口
+- **`SourcePreferencesStoring`**：`UserDefaults` 版与内存版
+
 ### 📖 文档 / Docs
 
 - **`docs/source-api.md` 契约按实现细化**：补齐仓库/脚本校验的**精确规则表**
@@ -190,6 +205,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - 契约示例由**测试守护**：新增 `MangaTranslaterTests/SourceAPIDocTests.swift`
   逐项断言示例能过校验、方法齐全、元信息与文档表格一致；
   `tools/check_docs_sync.py` 保证文档与夹具**逐字一致**（预检第 4 项）。
+
+### 🧪 测试 / Tests（新增 27 个用例）
+
+- `JSSourceRuntimeTests.swift`：装载校验（缺方法 / 禁用 API / id 不符 / 顶层抛错）、
+  契约方法调用、`net` 的 GET/POST（方法、头、体、响应体）、网络失败在 JS 侧可捕获、
+  `cookies` 读写、`prefs` 默认值与写入、`log` 送达宿主、超时、
+  `teardown` 与未装载调用、重载替换沙箱、非法 JSON 参数、
+  **两个运行时沙箱隔离**、四则纯函数（请求解码 / 响应编码 / 数组字面量 / 偏好键）
+- 网络用可编程替身 `StubSourceTransport`：全部用例不依赖真实网络、可重复
 
 ### 🧪 测试 / Tests（新增 13 个用例）
 

@@ -164,6 +164,37 @@ v2 迁移把分类升级为独立实体 `LibraryCategory { id, name, sortOrder }
   并返回受影响的条目数。
 - 名称查重忽略大小写与连续空白（`ModelValidation.categoryNameKey`）。
 
+### 3.11 源执行沙箱：JavaScriptCore + 桥接（M2）
+
+**隔离**：每个源一个 `JSVirtualMachine`（不共享对象图与 GC），
+一个源无法读到另一个源的全局；`load` 时可随时替换沙箱（重载即换 VM）。
+
+**桥接只传字符串**。Swift 侧注入 `__bridge`（若干 `@convention(block)` 函数），
+再由一段固定的引导脚本把它包装成友好的 JS API：
+
+| JS API | 语义 | 宿主侧 |
+|---|---|---|
+| `net.fetch(url, options)` | 返回 `{status, ok, headers, body, text}` | `SourceTransporting.send`：带该源 Cookie + 节流 + 体积上限 |
+| `cookies.get(url[, name])` / `.set(url, obj)` | 读写该源 Cookie | `SourceTransporting.cookies/storeCookies` |
+| `prefs.get(key, fallback)` / `.set(key, v)` | 源自定义设置 | `SourcePreferencesStoring`，键带 `source.<id>.pref.` 前缀 |
+| `log.info/warn/error(msg)` | 诊断日志（截断 200 字符、不落内容） | `logSink` 回调 |
+
+之所以「只传字符串」：JSON 在两个世界之间是唯一无歧义的载体，
+省掉了大量 JSValue ↔ Swift 类型映射代码，出错面小得多。
+
+**错误语义**：网络失败不让 Swift 抛异常，而是让 JS 的 Promise **reject**
+（`parsed.error`），源脚本可以自行 `try/catch` 降级——这符合源作者的直觉。
+
+**超时**：`call` 用「任务组竞速」——JS 与计时器谁先完成谁生效。
+脚本里的死循环无法被 JSC 中断，因此超时的语义是
+**「调用方立即返回，不再等待 JS」**，而不是「杀掉 JS」；
+配合「每源独立 VM」，一个失控的源不会拖垮其他源或 UI。
+
+**为什么桥接的读操作是同步的**：脚本里写 `prefs.get(...)` 比 `await` 自然。
+取值需回到 actor，因此用短超时同步等待：
+常规路径（脚本在 async 函数内调用）时 actor 是空闲的，不会阻塞；
+极端情况会等满超时并返回默认值，不会死锁。
+
 
 ## 4. 目录结构
 
