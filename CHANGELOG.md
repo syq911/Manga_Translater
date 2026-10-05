@@ -44,6 +44,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 🔧 修复 / Fixed（M1 第二段）
 
+- `ReaderSessionTests` 里 22 处 `#expect(session.moveToPage(...))` 编译失败：
+  **`#expect` 的参数会被宏包进闭包，闭包捕获的变量不可变**，故不能在其中调用
+  `mutating` 方法。改为「先调用取返回值，再断言」，并把该规则固化进预检
+  （收集仓库内 `mutating func` 名字，命中 `#expect(... xxx.method(...) ...)` 即报错）。
+
+
 - `LibraryView` 缺少 `import AppDatabase`（`LibrarySortOrder` 不在作用域）——
   根因是**导入检查器的包类型表里没有 AppDatabase**，已补齐并通过反向验证。
 - `ReaderView.loadCurrentChapter` 在 `guard let` 的不可变绑定上调用 mutating 方法，

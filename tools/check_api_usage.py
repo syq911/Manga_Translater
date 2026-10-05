@@ -186,6 +186,39 @@ def collect_call_labels(code, type_name):
     return calls
 
 
+def check_mutating_calls_inside_expect(files):
+    """
+    `#expect(...)` 的参数会被宏包进闭包，闭包捕获的变量是**不可变**的，
+    因此里面不能调用 `mutating` 方法（实测报"cannot use mutating member on
+    immutable value: '$0' is immutable"）。
+
+    规则：收集仓库内所有 `mutating func` 的名字，若某个 `#expect(...)` 里
+    出现 `<接收者>.<该名字>(` 即报错。
+    """
+    mutating_names = set()
+    for path in files:
+        text = strip_comments(io.open(path, encoding="utf-8").read())
+        mutating_names.update(re.findall(r"\bmutating\s+func\s+([A-Za-z_][A-Za-z0-9_]*)", text))
+    if not mutating_names:
+        return []
+
+    pattern = re.compile(r"#expect\([^\n]*\.(" + "|".join(sorted(mutating_names)) + r")\s*\(")
+    problems = []
+    for path in swift_files("MangaTranslater"):
+        text = strip_comments(io.open(path, encoding="utf-8").read())
+        for index, line in enumerate(text.split("\n"), start=1):
+            match = pattern.search(line)
+            if match:
+                problems.append(
+                    (
+                        os.path.relpath(path).replace("\\", "/"),
+                        f"第 {index} 行的 #expect 里调用了 mutating 方法 {match.group(1)}()，"
+                        "应先调用取返回值再断言",
+                    )
+                )
+    return problems
+
+
 def main():
     library_files = swift_files("Packages")
     consumer_files = swift_files("MangaTranslater")
@@ -213,6 +246,9 @@ def main():
                             f"{type_name}(...) 缺少必需参数：{', '.join(sorted(missing))}",
                         )
                     )
+
+    for path, message in check_mutating_calls_inside_expect(library_files + consumer_files):
+        problems.append((path, message))
 
     print(f"检查构造调用：{checked} 处（涉及 {len(inits)} 个类型）")
     if problems:

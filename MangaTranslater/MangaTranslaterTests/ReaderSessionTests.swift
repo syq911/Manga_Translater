@@ -86,33 +86,45 @@ struct ReaderSessionTests {
     @Test("moveToPage 会钳制到合法范围")
     func moveToPageClamps() {
         var session = makeSession(pageIndex: 2)
-        #expect(session.moveToPage(5, pageCount: 10))
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome1 = session.moveToPage(5, pageCount: 10)
+        #expect(outcome1)
         #expect(session.pageIndex == 5)
 
-        #expect(session.moveToPage(999, pageCount: 10))
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome2 = session.moveToPage(999, pageCount: 10)
+        #expect(outcome2)
         #expect(session.pageIndex == 9)
 
-        #expect(session.moveToPage(-4, pageCount: 10))
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome3 = session.moveToPage(-4, pageCount: 10)
+        #expect(outcome3)
         #expect(session.pageIndex == 0)
     }
 
     @Test("moveToPage 目标与当前一致时返回 false")
     func moveToSamePageDoesNothing() {
         var session = makeSession(pageIndex: 3)
-        #expect(!session.moveToPage(3, pageCount: 10))
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome4 = session.moveToPage(3, pageCount: 10)
+        #expect(!outcome4)
     }
 
     @Test("pageCount 为 0 时 moveToPage 不越界")
     func moveToPageWithEmptyChapter() {
         var session = makeSession(pageIndex: 0)
-        #expect(!session.moveToPage(3, pageCount: 0))
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome5 = session.moveToPage(3, pageCount: 0)
+        #expect(!outcome5)
         #expect(session.pageIndex == 0)
     }
 
     @Test("moveToLastPage 跳到末页")
     func movesToLastPage() {
         var session = makeSession(pageIndex: 0)
-        #expect(session.moveToLastPage(pageCount: 7))
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome6 = session.moveToLastPage(pageCount: 7)
+        #expect(outcome6)
         #expect(session.pageIndex == 6)
     }
 
@@ -121,14 +133,20 @@ struct ReaderSessionTests {
     @Test("章内前进逐页移动")
     func advancesWithinChapter() {
         var session = makeSession(pageIndex: 0)
-        #expect(session.advanceForward(pageCount: 3) == .moved(toPage: 1))
-        #expect(session.advanceForward(pageCount: 3) == .moved(toPage: 2))
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome7 = session.advanceForward(pageCount: 3) == .moved(toPage: 1)
+        #expect(outcome7)
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome8 = session.advanceForward(pageCount: 3) == .moved(toPage: 2)
+        #expect(outcome8)
     }
 
     @Test("章末前进请求下一章")
     func requestsNextChapterAtChapterEnd() {
         var session = makeSession(chapterCount: 3, chapterIndex: 0, pageIndex: 2)
-        #expect(session.advanceForward(pageCount: 3) == .needsNextChapter)
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome9 = session.advanceForward(pageCount: 3)
+        #expect(outcome9 == .needsNextChapter)
         // 状态不变，等调用方换章
         #expect(session.pageIndex == 2)
     }
@@ -136,17 +154,23 @@ struct ReaderSessionTests {
     @Test("全书最后一页返回 atEnd")
     func reportsAtEnd() {
         var session = makeSession(chapterCount: 3, chapterIndex: 2, pageIndex: 2)
-        #expect(session.advanceForward(pageCount: 3) == .atEnd)
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome10 = session.advanceForward(pageCount: 3)
+        #expect(outcome10 == .atEnd)
         #expect(session.isAtEnd(pageCount: 3))
     }
 
     @Test("空章节前进：有下一章则请求换章，否则 atEnd")
     func advancesFromEmptyChapter() {
         var middle = makeSession(chapterCount: 3, chapterIndex: 0)
-        #expect(middle.advanceForward(pageCount: 0) == .needsNextChapter)
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome11 = middle.advanceForward(pageCount: 0)
+        #expect(outcome11 == .needsNextChapter)
 
         var last = makeSession(chapterCount: 1, chapterIndex: 0)
-        #expect(last.advanceForward(pageCount: 0) == .atEnd)
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome12 = last.advanceForward(pageCount: 0)
+        #expect(outcome12 == .atEnd)
     }
 
     // MARK: 后退
@@ -154,21 +178,29 @@ struct ReaderSessionTests {
     @Test("章内后退逐页移动")
     func movesBackwardWithinChapter() {
         var session = makeSession(pageIndex: 2)
-        #expect(session.advanceBackward(pageCount: 3) == .moved(toPage: 1))
-        #expect(session.advanceBackward(pageCount: 3) == .moved(toPage: 0))
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome13 = session.advanceBackward(pageCount: 3) == .moved(toPage: 1)
+        #expect(outcome13)
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome14 = session.advanceBackward(pageCount: 3) == .moved(toPage: 0)
+        #expect(outcome14)
     }
 
     @Test("章首后退请求上一章")
     func requestsPreviousChapterAtChapterStart() {
         var session = makeSession(chapterCount: 3, chapterIndex: 1, pageIndex: 0)
-        #expect(session.advanceBackward(pageCount: 3) == .needsPreviousChapter)
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome15 = session.advanceBackward(pageCount: 3)
+        #expect(outcome15 == .needsPreviousChapter)
         #expect(session.pageIndex == 0)
     }
 
     @Test("全书第一页返回 atStart")
     func reportsAtStart() {
         var session = makeSession(chapterCount: 3, chapterIndex: 0, pageIndex: 0)
-        #expect(session.advanceBackward(pageCount: 3) == .atStart)
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome16 = session.advanceBackward(pageCount: 3)
+        #expect(outcome16 == .atStart)
     }
 
     // MARK: 换章
@@ -176,7 +208,9 @@ struct ReaderSessionTests {
     @Test("换到下一章会把页码重置为 0")
     func movesToNextChapter() {
         var session = makeSession(chapterCount: 3, chapterIndex: 0, pageIndex: 5)
-        #expect(session.moveToNextChapter())
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome17 = session.moveToNextChapter()
+        #expect(outcome17)
         #expect(session.chapterIndex == 1)
         #expect(session.pageIndex == 0)
         #expect(session.currentChapter?.name == "第 2 话")
@@ -185,7 +219,9 @@ struct ReaderSessionTests {
     @Test("换到上一章会把页码重置为 0")
     func movesToPreviousChapter() {
         var session = makeSession(chapterCount: 3, chapterIndex: 2, pageIndex: 4)
-        #expect(session.moveToPreviousChapter())
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome18 = session.moveToPreviousChapter()
+        #expect(outcome18)
         #expect(session.chapterIndex == 1)
         #expect(session.pageIndex == 0)
     }
@@ -193,12 +229,16 @@ struct ReaderSessionTests {
     @Test("边界换章失败且状态不变")
     func refusesChapterTransitionAtBounds() {
         var first = makeSession(chapterCount: 2, chapterIndex: 0, pageIndex: 3)
-        #expect(!first.moveToPreviousChapter())
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome19 = first.moveToPreviousChapter()
+        #expect(!outcome19)
         #expect(first.chapterIndex == 0)
         #expect(first.pageIndex == 3)
 
         var last = makeSession(chapterCount: 2, chapterIndex: 1, pageIndex: 1)
-        #expect(!last.moveToNextChapter())
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome20 = last.moveToNextChapter()
+        #expect(!outcome20)
         #expect(last.chapterIndex == 1)
         #expect(last.pageIndex == 1)
     }
@@ -206,12 +246,17 @@ struct ReaderSessionTests {
     @Test("跳到指定章")
     func movesToSpecificChapter() {
         var session = makeSession(chapterCount: 4, chapterIndex: 1, pageIndex: 7)
-        #expect(session.moveToChapter(3))
+        // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+        let outcome21 = session.moveToChapter(3)
+        #expect(outcome21)
         #expect(session.chapterIndex == 3)
         #expect(session.pageIndex == 0)
 
-        #expect(!session.moveToChapter(3))     // 已在目标章
-        #expect(!session.moveToChapter(99))    // 越界
+        // 先调用（mutating），再断言
+        let movedToExisting = session.moveToChapter(3)
+        #expect(!movedToExisting)     // 已在目标章
+        let movedOutOfRange = session.moveToChapter(99)
+        #expect(!movedOutOfRange)     // 越界
         #expect(session.chapterIndex == 3)
     }
 
@@ -278,7 +323,9 @@ struct ReaderSessionTests {
                 #expect(toPage == session.pageIndex)
             case .needsNextChapter:
                 chapter += 1
-                #expect(session.moveToNextChapter())
+                // 先调用（mutating），再断言：`#expect` 的闭包会把变量变成不可变
+                let outcome22 = session.moveToNextChapter()
+                #expect(outcome22)
             case .atEnd:
                 #expect(visited.count == 6)   // 2 章 × 3 页
                 return
