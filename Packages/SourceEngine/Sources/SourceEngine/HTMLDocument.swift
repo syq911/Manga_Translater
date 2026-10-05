@@ -437,3 +437,84 @@ extension TreeBuilder.PartialElement {
         HTMLElement(nodeID: nodeID, tag: tag, attributes: attributes, children: children)
     }
 }
+
+
+// MARK: - 句柄容器（供 JS 桥接使用）
+
+/// 已解析文档的句柄表。
+///
+/// 为什么不做成 actor 方法：JS 侧的 `html.parse` / `doc.select` 是**同步** API，
+/// 而 JS 执行本身就发生在宿主的 actor 执行线程上——若这里需要回到 actor，
+/// 就会自锁（见开发笔记「同步桥接不能绕回 actor」）。
+/// 因此用独立的线程安全容器，桥接直接调用。
+public final class HTMLHandleStore: @unchecked Sendable {
+
+    /// 同时保留的文档数上限（超出时淘汰最旧的）。一次调用里通常只用一两个文档。
+    public let capacity: Int
+
+    private var documents: [Int: HTMLDocument] = [:]
+    private var order: [Int] = []
+    private var nextHandle = 1
+    private let lock = NSLock()
+
+    public init(capacity: Int = 16) {
+        self.capacity = max(1, capacity)
+    }
+
+    /// 存入文档并返回句柄。
+    @discardableResult
+    public func store(_ document: HTMLDocument) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        let handle = nextHandle
+        nextHandle += 1
+        documents[handle] = document
+        order.append(handle)
+        while order.count > capacity, let oldest = order.first {
+            order.removeFirst()
+            documents[oldest] = nil
+        }
+        return handle
+    }
+
+    public func document(for handle: Int) -> HTMLDocument? {
+        lock.lock()
+        defer { lock.unlock() }
+        return documents[handle]
+    }
+
+    public func dispose(_ handle: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        documents[handle] = nil
+        order.removeAll { $0 == handle }
+    }
+
+    public func removeAll() {
+        lock.lock()
+        documents.removeAll()
+        order.removeAll()
+        lock.unlock()
+    }
+
+    /// 已保留的文档数（测试用）。
+    public var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return documents.count
+    }
+}
+
+// MARK: - 元素查找
+
+extension HTMLElement {
+
+    /// 按 `nodeID` 在子树内查找元素（桥接按句柄 + 节点号定位时用）。
+    public func element(withID id: Int) -> HTMLElement? {
+        if nodeID == id { return self }
+        for child in childElements {
+            if let found = child.element(withID: id) { return found }
+        }
+        return nil
+    }
+}

@@ -109,6 +109,8 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
 
     /// 最近一次 JS 异常（由 exceptionHandler 同步写入）。
     private let exceptionBox = JSExceptionBox()
+    /// 已解析 HTML 文档的句柄表（线程安全，桥接直接访问，不经过 actor）。
+    private let htmlStore = HTMLHandleStore()
 
     private var virtualMachine: JSVirtualMachine?
     private var context: JSContext?
@@ -150,6 +152,8 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         guard missing.isEmpty else {
             throw SourceRunnerError.incompleteContract(missing: missing.map(\.rawValue))
         }
+
+        htmlStore.removeAll()
 
         let machine = JSVirtualMachine()
         guard let ctx = JSContext(virtualMachine: machine) else {
@@ -304,10 +308,14 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         return try await box.value()
     }
 
+    /// 当前保留的 HTML 文档数（诊断与测试用）。
+    public var htmlHandleCount: Int { htmlStore.count }
+
     public func teardown() {
         context = nil
         virtualMachine = nil
         currentMeta = nil
+        htmlStore.removeAll()
     }
 
     // MARK: 桥接注入
@@ -342,6 +350,30 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
             return promise
         }
         bridge.setObject(netFetch as Any, forKeyedSubscript: "netFetch" as NSString)
+
+        // HTML（同步、纯内存；句柄表自身线程安全，无需回到 actor）
+        let htmlStore = self.htmlStore
+        let htmlParse: @convention(block) (String) -> Int = { text in
+            htmlStore.store(HTMLParser.parse(text))
+        }
+        bridge.setObject(htmlParse as Any, forKeyedSubscript: "htmlParse" as NSString)
+
+        let htmlSelect: @convention(block) (Int, String, Int) -> String = { handle, selector, fromNodeID in
+            Self.selectJSON(store: htmlStore, handle: handle, selector: selector, fromNodeID: fromNodeID)
+        }
+        bridge.setObject(htmlSelect as Any, forKeyedSubscript: "htmlSelect" as NSString)
+
+        let htmlOuter: @convention(block) (Int, Int) -> String = { handle, nodeID in
+            guard let document = htmlStore.document(for: handle),
+                  let element = document.root.element(withID: nodeID) else { return "" }
+            return element.outerHTML
+        }
+        bridge.setObject(htmlOuter as Any, forKeyedSubscript: "htmlOuter" as NSString)
+
+        let htmlDispose: @convention(block) (Int) -> Void = { handle in
+            htmlStore.dispose(handle)
+        }
+        bridge.setObject(htmlDispose as Any, forKeyedSubscript: "htmlDispose" as NSString)
 
         // 日志（只记级别与短消息，不落内容）
         let logInfo: @convention(block) (String) -> Void = { [weak self] message in
@@ -434,6 +466,74 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
             warn: function (message) { bridge.logInfo('WARN ' + String(message)); },
             error: function (message) { bridge.logInfo('ERROR ' + String(message)); }
         };
+
+        // ---------- HTML 查询 ----------
+        // 元素与「集合」共用一整套方法：集合本身是真数组（可用 map/forEach/索引），
+        // 因此 `doc.select('a').map(...)` 与 `node.attr('href')` 都能直接写。
+        function queryRaw(handle, nodeId, selector) {
+            var raw = bridge.htmlSelect(handle, String(selector), nodeId);
+            var parsed = null;
+            try { parsed = JSON.parse(raw); } catch (error) { parsed = null; }
+            if (parsed === null || parsed === undefined) { return []; }
+            if (parsed.error) {
+                // 选择器写错不该让整次调用崩溃，但要留下线索便于排查
+                bridge.logInfo('html 查询失败：' + parsed.error + '（选择器：' + selector + '）');
+                return [];
+            }
+            return parsed.elements || [];
+        }
+
+        function makeElement(handle, raw) {
+            return {
+                __handle: handle,
+                __nodeId: raw.nodeId,
+                tag: raw.tag,
+                text: function () { return raw.text; },
+                html: function () { return bridge.htmlOuter(handle, raw.nodeId); },
+                attr: function (name) {
+                    if (name === undefined || name === null) { return null; }
+                    var key = String(name).toLowerCase();
+                    return Object.prototype.hasOwnProperty.call(raw.attrs, key) ? raw.attrs[key] : null;
+                },
+                select: function (selector) {
+                    return makeCollection(handle, queryRaw(handle, raw.nodeId, selector));
+                },
+                selectFirst: function (selector) {
+                    var found = makeCollection(handle, queryRaw(handle, raw.nodeId, selector));
+                    return found.length > 0 ? found[0] : null;
+                }
+            };
+        }
+
+        function makeCollection(handle, raws) {
+            var items = raws.map(function (raw) { return makeElement(handle, raw); });
+            var collection = items.slice();
+            collection.text = function () { return items.length > 0 ? items[0].text() : ''; };
+            collection.html = function () { return items.length > 0 ? items[0].html() : ''; };
+            collection.attr = function (name) { return items.length > 0 ? items[0].attr(name) : null; };
+            collection.select = function (selector) {
+                return items.length > 0 ? items[0].select(selector) : makeCollection(handle, []);
+            };
+            collection.selectFirst = function (selector) {
+                return items.length > 0 ? items[0].selectFirst(selector) : null;
+            };
+            return collection;
+        }
+
+        globalThis.html = {
+            parse: function (text) {
+                var handle = bridge.htmlParse(String(text));
+                return {
+                    __handle: handle,
+                    select: function (selector) { return makeCollection(handle, queryRaw(handle, -1, selector)); },
+                    selectFirst: function (selector) {
+                        var found = makeCollection(handle, queryRaw(handle, -1, selector));
+                        return found.length > 0 ? found[0] : null;
+                    },
+                    dispose: function () { bridge.htmlDispose(handle); }
+                };
+            }
+        };
     })();
     """
 
@@ -504,6 +604,57 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
 
     static func preferenceKey(sourceID: SourceID, key: String) -> String {
         "source.\(sourceID.rawValue).pref.\(key)"
+    }
+
+    // MARK: HTML 查询
+
+    /// 按句柄 + 节点号查询，返回 `{"elements": [...]}` 或 `{"error": "..."}`。
+    ///
+    /// 之所以返回对象而不是数组：选择器写错时要让 JS 侧能区分「没有匹配」
+    /// 与「选择器非法」，前者是正常结果，后者应记日志便于排查。
+    static func selectJSON(
+        store: HTMLHandleStore,
+        handle: Int,
+        selector: String,
+        fromNodeID: Int
+    ) -> String {
+        guard let document = store.document(for: handle) else {
+            return jsonObject(["error": "文档句柄已失效（可能已被替换或释放）"])
+        }
+        let root: HTMLElement
+        if fromNodeID < 0 {
+            root = document.root
+        } else if let element = document.root.element(withID: fromNodeID) {
+            root = element
+        } else {
+            return jsonObject(["error": "节点已失效"])
+        }
+
+        do {
+            let elements = try CSSSelectorEngine.select(selector, in: root)
+            let payload: [[String: Any]] = elements.map { element in
+                [
+                    "nodeId": element.nodeID,
+                    "tag": element.tag,
+                    "text": element.textContent,
+                    "attrs": element.attributes,
+                ]
+            }
+            return jsonObject(["elements": payload])
+        } catch let error as CSSSelectorError {
+            return jsonObject(["error": error.message])
+        } catch {
+            return jsonObject(["error": error.localizedDescription])
+        }
+    }
+
+    /// 用 `JSONSerialization` 构造 JSON 文本（避免手写转义出错）。
+    static func jsonObject(_ payload: [String: Any]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let text = String(data: data, encoding: .utf8) else {
+            return #"{"error":"序列化失败"}"#
+        }
+        return text
     }
 
     // MARK: 纯函数

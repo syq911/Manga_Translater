@@ -36,6 +36,10 @@ PKG_TYPES = {
         "SourceTransporting", "DefaultSourceTransport", "SourceHTTPRequest", "SourceHTTPResult",
         "SourceTransportError", "JSSourceRuntime", "SourcePreferencesStoring",
         "UserDefaultsSourcePreferences", "InMemorySourcePreferences",
+        "HTMLDocument", "HTMLElement", "HTMLNode", "HTMLParser", "HTMLText", "HTMLURL",
+        "HTMLHandleStore", "CSSSelector", "CSSSelectorEngine", "CSSSelectorParser",
+        "CSSSimpleSelector", "CSSSelectorError", "CSSAttributeRequirement", "CSSCombinator",
+        "CSSSelectorStep",
     ],
     "AppDatabase": [
         "LibraryStoring", "LibrarySortOrder", "ReadingHistoryEntry", "LibraryStoreError",

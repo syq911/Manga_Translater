@@ -218,6 +218,34 @@ HTML5 的隐式标签补全。这些都不影响真实源的常见写法，缺�
 `HTMLText.collapseWhitespace`、`HTMLURL.absolute`（处理 `/m/1`、`chapter/1.html`、
 `//cdn/a.jpg` 四种相对形式）、`HTMLURL.queryValue` / `settingQuery`。
 
+### 3.13 `html` 桥接：把选择器能力交给源脚本（M2 第三批）
+
+桥接同样遵守「同步 API 不经过 actor」的约束：解析结果存在**线程安全的句柄表**
+（`HTMLHandleStore`）里，JS 只拿到一个整数句柄，查询时用
+`(句柄, 起始节点号)` 定位——这样既避免把整棵 DOM 复制到 JS 侧，
+又不需要回到 actor。
+
+JS 侧暴露的 API 与 `docs/source-api.md` 的示例逐字对应：
+
+```js
+const doc = html.parse(response.body);
+doc.select("div.item").map(function (node) {
+    return { title: node.select("a.title").text(), url: node.select("a.title").attr("href") };
+});
+doc.select("a.next").length > 0
+```
+
+设计要点：
+
+- **元素与「集合」共用一整套方法**。集合是**真数组**（`map`/`forEach`/索引都可用），
+  同时在数组上挂了 `text()` / `attr()` / `html()` / `select()` / `selectFirst()`——
+  取「第一个元素的值」。这样 `node.select("a").text()` 这种写法才成立（契约示例即如此）。
+- **选择器非法不致命**：桥接返回 `{"error": …}`，JS 侧记一条日志后返回空集合。
+  源作者写错选择器只会拿到空结果，而不是整次调用失败。
+- **句柄有容量上限**（默认 16，超出淘汰最旧），避免长时间运行的源不断解析却不释放。
+- `html()`（序列化）按需通过 `htmlOuter` 取，元素列表的 JSON 里不带它——
+  否则每次查询都要序列化整棵子树。
+
 
 ## 4. 目录结构
 

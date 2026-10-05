@@ -206,6 +206,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `absolute`（四种相对地址）、`queryValue` / `settingQuery` / `host` / 反斜杠还原
 - 选择器支持在**元素子树内**继续查询（源提取列表项的常见写法）
 
+### ✨ 新增 / Added（M2 第三批：`html` 桥接）
+
+- **`html.parse(body)` → 文档对象**，`doc.select(sel)` / `doc.selectFirst(sel)` /
+  `doc.dispose()`；元素与集合共用 `text()` / `attr(name)` / `html()` /
+  `select(sel)` / `selectFirst(sel)`，集合是**真数组**（可 `map`）且支持 `.length`
+- **句柄表** `HTMLHandleStore`：JS 只持有整数句柄，解析结果留在宿主侧；
+  线程安全、容量上限 16（超出淘汰最旧）、`load`/`teardown` 时清空
+- **选择器非法不致命**：返回错误对象，JS 侧记日志并给出空集合
+- `html()` 按需序列化（避免每次查询都序列化整棵子树）
+- 与 `docs/source-api.md` 的契约示例逐字对应，避免文档与实现分叉
+
 ### 📖 文档 / Docs
 
 - **`docs/source-api.md` 契约按实现细化**：补齐仓库/脚本校验的**精确规则表**
@@ -217,6 +228,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - 契约示例由**测试守护**：新增 `MangaTranslaterTests/SourceAPIDocTests.swift`
   逐项断言示例能过校验、方法齐全、元信息与文档表格一致；
   `tools/check_docs_sync.py` 保证文档与夹具**逐字一致**（预检第 4 项）。
+
+### 🧪 测试 / Tests（新增 16 个用例）
+
+- `JSSourceHTMLBridgeTests`：用**真实源写法**（`html.parse` → `doc.select` →
+  `.text()`/`.attr()`/`.length`）端到端跑通列表 / 搜索 / 详情 / 章节 / 页列表；
+  选择器写错不中断且记日志；未匹配时单值取空串、集合取空数组；
+  空 HTML 不崩溃；重新装载清空句柄
+- `HTMLHandleStoreTests`：存取、释放、容量淘汰、清空、
+  按 `nodeID` 查元素、`selectJSON` 的失效句柄 / 非法选择器 / 正常返回 / 子树限定
 
 ### 🧪 测试 / Tests（新增 60 个用例）
 
