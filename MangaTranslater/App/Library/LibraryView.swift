@@ -11,6 +11,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import AppCore
 import SourceEngine
+import AppDatabase
 
 struct LibraryView: View {
 

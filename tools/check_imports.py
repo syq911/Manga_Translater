@@ -19,7 +19,8 @@ PKG_TYPES = {
         "Manga", "Chapter", "ComicPage", "SourceID", "SourceKind", "SourceMeta",
         "LibraryEntry", "MangaStatus", "MangaListPage", "AppSettings", "AppError",
         "DiagnosticsLog", "TranslationBackend", "ReaderMode", "TranslationLanguage",
-        "SettingsSnapshot", "ModelValidation",
+        "SettingsSnapshot", "ModelValidation", "PageDataProviding", "ReaderSession",
+        "ReaderAdvanceResult",
     ],
     "ComicNet": [
         "HTTPClient", "HTTPResponse", "HTTPTransporting", "CookieJar", "StoredCookie",
@@ -30,6 +31,13 @@ PKG_TYPES = {
         "SourceIndexParser", "SourceIndexEntry", "SourceIndexError", "SourceScriptValidator",
         "SourceScriptMeta", "SourceScriptValidationError", "SourceAPIContract", "SourceAPIMethod",
         "SourceRunnerError", "SourceRuntimeExecuting", "SourceRuntimeConfiguration",
+        "LocalSource", "LocalArchiveIndexer", "LocalChapterDescriptor", "LocalBookIndex",
+        "LocalSourceError",
+    ],
+    "AppDatabase": [
+        "LibraryStoring", "LibrarySortOrder", "ReadingHistoryEntry", "LibraryStoreError",
+        "DatabaseLibraryStore", "InMemoryLibraryStore", "AppDatabase", "DatabaseLocation",
+        "Migrations",
     ],
     "ComicDownload": [
         "DownloadQueue", "DownloadJob", "DownloadState", "DownloadQueueConfiguration",
@@ -135,12 +143,19 @@ def check_access_levels(problems):
     seen = set()
     for path in swift_files("MangaTranslater"):
         relative = os.path.relpath(path).replace("\\", "/")
-        code = strip_comments(io.open(path, encoding="utf-8").read())
+        raw = io.open(path, encoding="utf-8").read()
+        code = strip_comments(raw)
+        # `@testable import X` 会让 X 的 internal 成员也可访问 —— 对这类模块跳过检查
+        testable_modules = set(
+            re.findall(r"^\s*@testable\s+import\s+([A-Za-z_][A-Za-z0-9_]*)", raw, re.M)
+        )
         for match in re.finditer(r"\b([A-Z][A-Za-z0-9_]*)\.([a-z][A-Za-z0-9_]*)", code):
             type_name, member = match.group(1), match.group(2)
             module = type_to_module.get(type_name)
             if module is None or member in synthesized:
                 continue
+            if module in testable_modules:
+                continue  # @testable import 下 internal 也可见
             key = (type_name, member)
             if key not in members:
                 continue  # 找不到声明 → 视为枚举 case 或协议/语言合成，跳过

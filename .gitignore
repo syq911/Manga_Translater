@@ -39,5 +39,6 @@ Packages/*/.swiftpm/xcode/xcuserdata/
 
 # Local scratch
 _scratch/
+*Fixtures.txt
 tmp/
 *.log

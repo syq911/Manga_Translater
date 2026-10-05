@@ -42,7 +42,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **文档**：`docs/architecture.md`、`docs/development.md`、`docs/source-api.md`、`docs/testing.md`。
 - **合规**：`LICENSE`（Apache-2.0）、`NOTICE`（上游归属声明）、README 中性话术。
 
-### 🔧 修复 / Fixed
+### 🔧 修复 / Fixed（M1 第二段）
+
+- `LibraryView` 缺少 `import AppDatabase`（`LibrarySortOrder` 不在作用域）——
+  根因是**导入检查器的包类型表里没有 AppDatabase**，已补齐并通过反向验证。
+- `ReaderView.loadCurrentChapter` 在 `guard let` 的不可变绑定上调用 mutating 方法，
+  改为 var 副本、钳制后写回 `@State`。
+- 导入检查器新增 `@testable import` 语义：该模块下的 internal 成员应视为可见
+  （此前会把测试里的 internal 用法误报为错误），已双向验证。
+- 清理误入库的生成脚本中间产物 `LocalSourceFixtures.txt`，并在 `.gitignore` 忽略。
+
 
 - `BrowseView` 缺少 `import SourceEngine`，导致 App 与测试两个 target 编译失败。
 - `HTTPClient.parseRetryAfter` 由 internal 提升为 public（跨模块测试与自定义重试策略需要）。

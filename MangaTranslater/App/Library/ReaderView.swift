@@ -150,7 +150,9 @@ struct ReaderView: View {
 
     /// 载入当前章的页列表与预加载窗口。
     private func loadCurrentChapter() {
-        guard let session, let chapter = session.currentChapter else {
+        // 注意：`guard let session` 绑定的是不可变副本，mutating 调用必须用 var 副本，
+        // 改完再写回 @State。
+        guard var working = session, let chapter = working.currentChapter else {
             isLoading = false
             pages = []
             pageImages = [:]
@@ -160,8 +162,9 @@ struct ReaderView: View {
         do {
             let loaded = try environment.localSource.pages(for: chapter, manga: manga)
             pages = loaded
-            session.clampPageIndex(pageCount: loaded.count)
-            preload(around: session.pageIndex)
+            working.clampPageIndex(pageCount: loaded.count)
+            session = working
+            preload(around: working.pageIndex)
             isLoading = false
             saveProgress()
         } catch {
