@@ -51,6 +51,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - 导入检查器新增 `@testable import` 语义：该模块下的 internal 成员应视为可见
   （此前会把测试里的 internal 用法误报为错误），已双向验证。
 - 清理误入库的生成脚本中间产物 `LocalSourceFixtures.txt`，并在 `.gitignore` 忽略。
+- `IntegrationTests` 里 `AppEnvironment(...)` 仍是旧签名（改 init 后忘改调用方），
+  编译失败。为此新增预检 `tools/check_api_usage.py`：比对 `Type(...)` 调用与 init 声明，
+  缺少**无默认值**参数即报错（已双向验证：临时改回旧签名会被拦下）。
+  实现过程中修掉两个自身缺陷：空行会重置类型上下文、闭包默认值漏判。
 
 
 - `BrowseView` 缺少 `import SourceEngine`，导致 App 与测试两个 target 编译失败。

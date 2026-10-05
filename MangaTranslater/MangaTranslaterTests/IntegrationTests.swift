@@ -16,6 +16,7 @@ import AppCore
 import ComicNet
 import SourceEngine
 import ComicDownload
+import AppDatabase
 @testable import MangaTranslater
 
 @Suite("端到端集成")
@@ -195,7 +196,10 @@ struct IntegrationTests {
             sourceStore: sourceStore,
             cookieJar: cookieJar,
             diagnostics: DiagnosticsLog(directory: directory),
-            dataDirectory: directory
+            libraryStore: InMemoryLibraryStore(),
+            localSource: LocalSource(rootDirectory: directory.appendingPathComponent("LocalLibrary", isDirectory: true)),
+            dataDirectory: directory,
+            isLibraryPersistent: false
         )
 
         #expect(environment.repositories.isEmpty)
@@ -215,6 +219,25 @@ struct IntegrationTests {
         // NSFW 默认关闭且受年龄门槛约束
         #expect(environment.settings.showsNSFWSources == false)
         #expect(environment.settings.setShowsNSFWSources(true) == false)
+
+        // 书架：加入后立即可读，且不覆盖已有进度
+        let manga = Manga(sourceID: .local, url: "LocalLibrary/a-1234abcd.cbz", title: "本地作品")
+        let entry = try #require(environment.addToLibrary(manga))
+        #expect(entry.manga.title == "本地作品")
+        try environment.libraryStore.updateProgress(
+            mangaID: manga.id,
+            chapterID: "c1",
+            chapterName: "第 1 话",
+            pageIndex: 4,
+            at: Date()
+        )
+        _ = environment.addToLibrary(Manga(sourceID: .local, url: manga.url, title: "改名后"))
+        let reloaded = try #require(try environment.libraryStore.entry(mangaID: manga.id))
+        #expect(reloaded.manga.title == "改名后")      // 作品信息更新
+        #expect(reloaded.lastReadPageIndex == 4)       // 进度不被覆盖
+
+        // 本地源：空目录时没有作品，且不会因目录不存在而报错
+        #expect(environment.localBooks().isEmpty)
     }
 
     @Test("设置与 HTTP 客户端联动：超时与 User-Agent 可配置")

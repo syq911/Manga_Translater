@@ -11,34 +11,39 @@ if ! command -v "$PY" >/dev/null 2>&1; then
   PY=python
 fi
 
-echo "=== 1/6 工程文件完整性 ==="
+echo "=== 1/7 工程文件完整性 ==="
 "$PY" tools/check_project.py
 
 echo
-echo "=== 2/6 导入完整性与跨模块访问权限 ==="
+echo "=== 2/7 导入完整性与跨模块访问权限 ==="
 "$PY" tools/check_imports.py
 
 echo
-echo "=== 3/6 Swift 结构体检 ==="
+echo "=== 3/7 Swift 结构体检 ==="
 "$PY" tools/check_swift_syntax.py
 
 echo
-echo "=== 4/6 文档与测试夹具同步 ==="
+echo "=== 4/7 文档与测试夹具同步 ==="
 "$PY" tools/check_docs_sync.py
 
 echo
-echo "=== 5/6 Python 脚本语法 ==="
+echo "=== 5/7 构造调用与 init 签名一致性 ==="
+"$PY" tools/check_api_usage.py
+
+echo
+echo "=== 6/7 Python 脚本语法 ==="
 "$PY" -m py_compile \
   .github/scripts/build_altstore_source.py \
   tools/check_project.py \
   tools/check_imports.py \
   tools/check_swift_syntax.py \
   tools/check_docs_sync.py \
+  tools/check_api_usage.py \
   tools/check_redlines.py
 echo "OK"
 
 echo
-echo "=== 6/6 敏感信息与红线扫描 ==="
+echo "=== 7/7 敏感信息与红线扫描 ==="
 "$PY" tools/check_redlines.py
 
 echo

@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""
+构造调用与 init 声明的一致性检查（本地预检工具）。
+
+**动机**：本机没有 Swift 编译器，而"改了某类型的 init 签名、忘了同步调用方"
+是本项目实测出现过的一类错误（`AppEnvironment` 新增三个参数后，
+`IntegrationTests` 里的旧调用直到 CI 才报
+"missing arguments for parameters ..."）。这类问题纯靠文本即可判定。
+
+做法：
+1. 收集仓库内每个类型的 `init` 声明参数（仅当该类型**只有一个** init 时才检查，
+   多 init 视为重载、跳过）；
+2. 在 App 与测试代码里找 `Type(` 形式的构造调用；
+3. 若调用缺少任何**没有默认值**的参数，报错。
+
+已知刻意忽略的情况（避免误报）：
+- 类型没有显式 init（走结构体逐成员合成 init）；
+- 调用出现在被注释掉的代码里（注释已剥离）；
+- 泛型/闭包里的嵌套括号（按深度解析参数，不误切）。
+
+用法：python3 tools/check_api_usage.py
+"""
+
+import io
+import os
+import re
+import sys
+
+SKIP_DIRS = {".git", ".build", "DerivedData", "build", ".swiftpm", "__pycache__"}
+# 类型声明可能带属性（`@MainActor @Observable final class Foo`），
+# 也可能带访问级别与 final/open，这里统一前缀都允许。
+TYPE_DECL = re.compile(
+    r"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?\s+)*"
+    r"(?:public\s+|internal\s+|private\s+|fileprivate\s+|final\s+|open\s+)*"
+    r"(?:struct|class|enum|actor)\s+([A-Za-z_][A-Za-z0-9_]*)"
+)
+EXTENSION_DECL = re.compile(
+    r"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?\s+)*"
+    r"extension\s+([A-Za-z_][A-Za-z0-9_]*)"
+)
+
+
+def swift_files(*roots):
+    found = []
+    for root in roots:
+        for dirpath, dirnames, files in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+            for name in files:
+                if name.endswith(".swift"):
+                    found.append(os.path.join(dirpath, name))
+    return sorted(found)
+
+
+def strip_comments(text):
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return "\n".join(l for l in text.split("\n") if not l.strip().startswith("//"))
+
+
+def split_top_level(text):
+    """按顶层逗号切分（忽略括号 / 方括号 / 尖括号内的逗号）。"""
+    parts = []
+    depth = 0
+    current = ""
+    for ch in text:
+        if ch in "([{<":
+            depth += 1
+        elif ch in ")]}>":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append(current)
+            current = ""
+            continue
+        current += ch
+    if current.strip():
+        parts.append(current)
+    return parts
+
+
+def extract_paren_group(text, start):
+    """从 `text[start] == '('` 起取出配对括号内的内容；返回 (内容, 结束下标)。"""
+    assert text[start] == "("
+    depth = 0
+    for index in range(start, len(text)):
+        if text[index] == "(":
+            depth += 1
+        elif text[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[start + 1:index], index
+    return None, len(text)
+
+
+def parse_parameters(inner):
+    """解析参数列表 → [(label, has_default)]。"""
+    result = []
+    for chunk in split_top_level(inner):
+        piece = chunk.strip()
+        if not piece:
+            continue
+        # 只看顶层冒号前的标签
+        depth = 0
+        colon_at = None
+        for index, ch in enumerate(piece):
+            if ch in "([{<":
+                depth += 1
+            elif ch in ")]}>":
+                depth -= 1
+            elif ch == ":" and depth == 0:
+                colon_at = index
+                break
+        # 有默认值判据：该参数片段里出现 `=`。
+        # 不做括号深度判定 —— 默认值可能是闭包（含括号），逐字符判定容易漏，
+        # 而类型表达式本身不含 `=`，所以直接查字符就足够可靠。
+        has_default = "=" in piece
+        if colon_at is None:
+            # 无标签（如闭包参数的简写），无法判定，按有默认处理以免误报
+            result.append((None, True))
+            continue
+        label = piece[:colon_at].strip().split()[-1] if piece[:colon_at].strip() else None
+        result.append((label, has_default))
+    return result
+
+
+def collect_inits(files):
+    """类型名 → (参数列表, 出现次数)；只保留恰好一个 init 的类型。"""
+    collected = {}
+    for path in files:
+        text = strip_comments(io.open(path, encoding="utf-8").read())
+        lines = text.split("\n")
+        current_type = None
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped:
+                continue   # 空行不得重置类型上下文（曾因此漏掉全部带属性的类型）
+            if not line.startswith((" ", "\t")):
+                match = TYPE_DECL.match(line) or EXTENSION_DECL.match(line)
+                if match:
+                    current_type = match.group(1)
+                elif not stripped.startswith(("@", "}", ")", "#")):
+                    current_type = None
+
+            if "init(" not in stripped or current_type is None:
+                continue
+
+            # init 常常跨多行：逐行拼接直到括号配平
+            merged = stripped
+            inner, _ = extract_paren_group(merged, merged.find("init(") + len("init"))
+            cursor = index + 1
+            while inner is None and cursor < len(lines):
+                merged += " " + lines[cursor].strip()
+                cursor += 1
+                inner, _ = extract_paren_group(merged, merged.find("init(") + len("init"))
+            if inner is None:
+                continue
+            params = parse_parameters(inner)
+            collected.setdefault(current_type, []).append(params)
+    return {name: decls[0] for name, decls in collected.items() if len(decls) == 1}
+
+
+def collect_call_labels(code, type_name):
+    """找出 `TypeName(` 调用的实参标签集合；返回 [set(labels)]。"""
+    calls = []
+    for match in re.finditer(r"\b" + re.escape(type_name) + r"\s*\(", code):
+        # 排除声明本身（`init(` / 类型定义行）
+        prefix = code[max(0, match.start() - 6):match.start()]
+        if prefix.rstrip().endswith(("func", "class", "struct", "enum", "actor", "extension")):
+            continue
+        inner, _ = extract_paren_group(code, match.end() - 1)
+        if inner is None:
+            continue
+        labels = set()
+        for chunk in split_top_level(inner):
+            piece = chunk.strip()
+            depth = 0
+            for index, ch in enumerate(piece):
+                if ch in "([{<":
+                    depth += 1
+                elif ch in ")]}>":
+                    depth -= 1
+                elif ch == ":" and depth == 0:
+                    label = piece[:index].strip()
+                    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", label):
+                        labels.add(label)
+                    break
+        calls.append(labels)
+    return calls
+
+
+def main():
+    library_files = swift_files("Packages")
+    consumer_files = swift_files("MangaTranslater")
+
+    inits = collect_inits(library_files + consumer_files)
+    if not inits:
+        print("未收集到可检查的 init 声明")
+        return 0
+
+    problems = []
+    checked = 0
+    for path in consumer_files:
+        code = strip_comments(io.open(path, encoding="utf-8").read())
+        for type_name, params in inits.items():
+            required = {label for label, has_default in params if label and not has_default}
+            if not required:
+                continue
+            for labels in collect_call_labels(code, type_name):
+                checked += 1
+                missing = required - labels
+                if missing:
+                    problems.append(
+                        (
+                            os.path.relpath(path).replace("\\", "/"),
+                            f"{type_name}(...) 缺少必需参数：{', '.join(sorted(missing))}",
+                        )
+                    )
+
+    print(f"检查构造调用：{checked} 处（涉及 {len(inits)} 个类型）")
+    if problems:
+        print("\n❌ 发现问题：")
+        seen = set()
+        for path, message in problems:
+            key = (path, message)
+            if key in seen:
+                continue
+            seen.add(key)
+            print(f"  {path}: {message}")
+        return 1
+    print("✅ 构造调用的参数与 init 声明一致")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
