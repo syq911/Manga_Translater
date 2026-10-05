@@ -356,7 +356,12 @@ struct JSSourceRuntimeTests {
         #expect(call.headers["X-Token"] == "abc")
         #expect(call.headers["X-Page"] == "2")
         #expect(call.body == "{\"q\":\"query\"}")
-        #expect(result.contains("\"ok\":true"))
+
+        // 断言解析后的字段，而不是在序列化文本里找子串：
+        // echo 里存的是 JSON 文本，序列化后内层引号会变成 \"，
+        // 直接找 `"ok":true` 反而找不到。
+        let decoded = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any]
+        #expect(decoded?["echo"] as? String == "{\"ok\":true}")
     }
 
     @Test("net.fetch 失败时在 JS 侧抛错（脚本可捕获并降级）")
