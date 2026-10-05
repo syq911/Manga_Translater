@@ -76,9 +76,12 @@ public struct CSSSimpleSelector: Equatable, Sendable {
         self.attributes = attributes
     }
 
-    /// 是否为「无条件」选择器（`*`）。
+    /// 是否为「无条件」选择器（`*` 或全空）。
+    ///
+    /// 注意 `*` 会被解析成 `tag == "*"`（保留原始信息便于诊断），
+    /// 因此这里要把它与 `nil` 一并视为「任意标签」。
     public var isUniversal: Bool {
-        tag == nil && id == nil && classes.isEmpty && attributes.isEmpty
+        (tag == nil || tag == "*") && id == nil && classes.isEmpty && attributes.isEmpty
     }
 
     public func matches(_ element: HTMLElement) -> Bool {

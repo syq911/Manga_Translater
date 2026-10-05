@@ -66,7 +66,8 @@ struct HTMLParserTests {
         let list = try #require(try document.selectFirst("ul"))
         #expect(list.childElements.count == 2)
         #expect(list.childElements[1].childElements.first?.tag == "span")
-        #expect(list.textContent == "a b c")
+        // 元素之间没有空白字符，因此拼接结果里也不会凭空插入空格
+        #expect(list.textContent == "abc")
     }
 
     // MARK: 容错

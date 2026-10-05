@@ -211,21 +211,50 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
 
         let argsJSON = Self.jsonArrayLiteral(arguments)
         let timeout = configuration.callTimeoutSeconds
+        return try await performCallWithTimeout(method, argsJSON: argsJSON, seconds: timeout)
+    }
 
-        return try await withThrowingTaskGroup(of: String.self) { group in
-            group.addTask { [self] in
-                try await performCall(method, argsJSON: argsJSON)
+    /// 超时竞速：**谁先完成谁生效，超时后调用方立即返回**。
+    ///
+    /// 为什么不用 `withThrowingTaskGroup`：它在闭包抛错后必须**等所有子任务结束**
+    /// 才返回，而 JS 调用可能长时间不结束（脚本里的死循环 JSC 无法中断），
+    /// 于是「超时」变成「等满 JS 的时长再抛错」——实测在并行测试下出现过
+    /// 单次调用拖到 28 秒、还连累同 suite 其他用例饥饿超时的情况。
+    ///
+    /// 这里改成：工作放在 `Task.detached`（不继承当前任务树），
+    /// 计时器单独跑，两边都写同一个「一次性结果盒」；
+    /// 超时先到时立刻结算并返回，工作任务只做「尽力取消」，不等待。
+    private func performCallWithTimeout(
+        _ method: SourceAPIMethod,
+        argsJSON: String,
+        seconds: Int
+    ) async throws -> String {
+        let box = JSAsyncResultBox()
+
+        let work = Task.detached { [weak self] in
+            guard let self else {
+                box.fail(SourceRunnerError.notInstalled(method.rawValue))
+                return
             }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(timeout) * 1_000_000_000)
-                throw SourceRunnerError.executionTimeout(seconds: timeout)
+            do {
+                box.succeed(try await self.performCall(method, argsJSON: argsJSON))
+            } catch {
+                box.fail(error)
             }
-            guard let first = try await group.next() else {
-                throw SourceRunnerError.executionFailed("调用未产出结果")
-            }
-            group.cancelAll()
-            return first
         }
+
+        let timer = Task {
+            do {
+                try await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
+                box.fail(SourceRunnerError.executionTimeout(seconds: seconds))
+                work.cancel()      // 尽力取消，但不等待它结束
+            } catch {
+                // 正常完成时计时器被取消，忽略
+            }
+        }
+        defer { timer.cancel() }
+
+        return try await box.value()
     }
 
     private func performCall(_ method: SourceAPIMethod, argsJSON: String) async throws -> String {
@@ -267,7 +296,7 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
             box.succeed(value?.toString() ?? "null")
         }
         let onRejected: @convention(block) (JSValue?) -> Void = { error in
-            box.fail(error?.toString() ?? "未知错误")
+            box.fail(message: error?.toString() ?? "未知错误")
         }
         // `then` 返回新的 Promise（这里不需要链式），显式丢弃以避免未使用告警
         _ = promise.invokeMethod("then", withArguments: [onFulfilled as Any, onRejected as Any])
@@ -605,7 +634,12 @@ final class JSAsyncResultBox: @unchecked Sendable {
         resolve(.success(text))
     }
 
-    func fail(_ message: String) {
+    func fail(_ error: Error) {
+        resolve(.failure(error))
+    }
+
+    /// 便捷：用文案构造执行失败错误。
+    func fail(message: String) {
         resolve(.failure(SourceRunnerError.executionFailed(message)))
     }
 

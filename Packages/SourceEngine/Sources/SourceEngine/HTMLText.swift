@@ -132,7 +132,12 @@ public enum HTMLURL {
         if let url = URL(string: trimmed), url.scheme != nil {
             return trimmed
         }
-        guard let baseURL = URL(string: base) else { return nil }
+        // 基地址必须是真正可用的 http(s) 绝对地址：
+        // `URL(string:)` 对 "not a url" 之类也会返回非 nil，光靠它不足以校验。
+        guard let baseURL = URL(string: base),
+              let scheme = baseURL.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              baseURL.host?.isEmpty == false else { return nil }
         return URL(string: trimmed, relativeTo: baseURL)?.absoluteURL.absoluteString
     }
 

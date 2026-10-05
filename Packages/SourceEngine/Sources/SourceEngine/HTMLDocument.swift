@@ -218,11 +218,19 @@ public enum HTMLParser {
                 continue
             }
             let (tagName, attributes, selfClosing) = parseTag(tagText)
-            if !tagName.isEmpty {
+            // 合法标签名必须以字母开头，且标签内部不能再出现 `<`。
+            // 典型反例：文本 "3 < 4</p>" 里的 `<` 会被读到下一个 `>`，
+            // 得到 `" 4</p"` 这种「标签名」——必须当作文本，否则内容会凭空消失。
+            let isValidTag = (tagName.first?.isLetter ?? false) && !tagText.contains("<")
+            if isValidTag {
                 builder.openTag(tagName, attributes: attributes, selfClosing: selfClosing)
                 if rawTextTags.contains(tagName), !selfClosing {
                     rawTextTag = tagName
                 }
+            } else {
+                pendingText.append(character)
+                index = html.index(after: index)
+                continue
             }
             index = nextIndex
         }
