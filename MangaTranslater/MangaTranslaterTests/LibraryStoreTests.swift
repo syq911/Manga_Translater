@@ -587,6 +587,31 @@ struct LibraryStoreContractTests {
         return LibraryEntry(manga: manga, addedAt: Date(timeIntervalSince1970: addedAt))
     }
 
+    /// 单实现（GRDB）——与 `LibraryStoreTests` 里的同名辅助保持一致的返回形态。
+    private func makeStore() throws -> (DatabaseLibraryStore, AppDatabase) {
+        let database = try AppDatabase.open(.memory)
+        return (DatabaseLibraryStore(database: database), database)
+    }
+
+    /// 带分类的条目。
+    private func makeEntry(id: String, categoryID: String?) -> LibraryEntry {
+        let manga = Manga(
+            sourceID: SourceID("demo"),
+            url: "https://example.com/\(id)",
+            title: "作品 \(id)"
+        )
+        return LibraryEntry(
+            manga: manga,
+            addedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            categoryID: categoryID
+        )
+    }
+
+    /// 无分类的条目。
+    private func makeEntry(id: String) -> LibraryEntry {
+        makeEntry(id: id, categoryID: nil)
+    }
+
     @Test("两种实现的排序结果一致")
     func sortingMatches() throws {
         for (name, store) in try makeStores() {

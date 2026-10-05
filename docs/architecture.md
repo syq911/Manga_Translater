@@ -141,6 +141,11 @@ App（SwiftUI，MangaTranslater target）
 阅读区背景、页面留白、屏幕常亮都来自 `AppSettings`；
 单击区方向语义随 `readerMode` 变化（右到左模式下左侧是「下一页」）。
 
+### 3.9 沙箱与限流
+
+- 源运行时的调用超时、响应上限、是否允许联网集中在 `SourceRuntimeConfiguration`。
+- 每个来源一个 `RateLimiter`（遵守源声明的 `rateLimitMs`），避免触发站点风控。
+
 ### 3.10 分类独立成表（v2 迁移）
 
 早期分类只是条目上的一个自由字符串（`LibraryEntry.categoryID`）。这带来两个硬伤：
@@ -159,10 +164,6 @@ v2 迁移把分类升级为独立实体 `LibraryCategory { id, name, sortOrder }
   并返回受影响的条目数。
 - 名称查重忽略大小写与连续空白（`ModelValidation.categoryNameKey`）。
 
-### 3.9 沙箱与限流
-
-- 源运行时的调用超时、响应上限、是否允许联网集中在 `SourceRuntimeConfiguration`。
-- 每个来源一个 `RateLimiter`（遵守源声明的 `rateLimitMs`），避免触发站点风控。
 
 ## 4. 目录结构
 
