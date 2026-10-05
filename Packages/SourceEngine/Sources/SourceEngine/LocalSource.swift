@@ -87,6 +87,8 @@ struct LocalBookMeta: Codable, Equatable, Sendable {
     var chapterCount: Int
     var pageCount: Int
     var originalFileName: String
+    /// 内容指纹。用于**按内容去重**：同名不同内容、或同内容不同名都能正确处理。
+    var fingerprint: String?
 }
 
 /// 本地文件源。
@@ -96,7 +98,11 @@ public final class LocalSource: @unchecked Sendable {
     public let rootDirectory: URL
 
     private let fileManager: FileManager
+    /// 归档缓存锁。
     private let lock = NSLock()
+    /// 导入临界区锁。**必须与 `lock` 分开**：临界区内会调用 `store(reader:)`，
+    /// 而它同样要拿 `lock`，用同一把非递归锁会自锁死。
+    private let importLock = NSLock()
     /// 归档缓存：key = 作品相对地址。容量小，避免同时持有多个大文件。
     private var readerCache: [(key: String, reader: ZipArchiveReader)] = []
     private let readerCacheCapacity = 2
@@ -132,6 +138,30 @@ public final class LocalSource: @unchecked Sendable {
 
     private func metaURL(forArchiveAt url: URL) -> URL {
         url.appendingPathExtension("meta.json")
+    }
+
+    /// 由归档索引构造章节列表（导入与复用路径共用）。
+    private func makeChapters(for bookPath: String, index: LocalBookIndex) -> [Chapter] {
+        index.chapters.map { descriptor in
+            Chapter(
+                mangaID: Manga.makeID(sourceID: .local, url: bookPath),
+                url: Self.chapterURL(bookPath: bookPath, chapterPath: descriptor.path),
+                name: descriptor.name
+            )
+        }
+    }
+
+    /// 在已有归档里按内容指纹查找（用于导入幂等）。找不到返回 nil。
+    private func existingArchive(matchingFingerprint fingerprint: String) throws -> URL? {
+        guard fileManager.fileExists(atPath: rootDirectory.path) else { return nil }
+        let names = (try? fileManager.contentsOfDirectory(atPath: rootDirectory.path)) ?? []
+        for name in names where Self.supportedExtensions.contains((name as NSString).pathExtension.lowercased()) {
+            let url = rootDirectory.appendingPathComponent(name, isDirectory: false)
+            if readMeta(forArchiveAt: url)?.fingerprint == fingerprint {
+                return url
+            }
+        }
+        return nil
     }
 
     // MARK: 导入
@@ -181,6 +211,25 @@ public final class LocalSource: @unchecked Sendable {
 
         try ensureRootDirectory()
 
+        // 幂等判据是**内容指纹**而不是文件名：同一份文件用不同名字导入时，
+        // 直接复用已存在的那份，不产生第二份副本。
+        // 整段「查重 + 落盘 + 写侧车」放进同一把锁，避免并发导入同内容时各写一份。
+        let resolvedURL: URL
+        importLock.lock()
+        defer { importLock.unlock() }
+
+        if let existing = try? existingArchive(matchingFingerprint: fingerprint) {
+            resolvedURL = existing
+            store(reader: reader, forKey: relativePath(forFileName: existing.lastPathComponent))
+            diag("LocalSource: 内容已存在（指纹 \(fingerprint.prefix(8))），复用 \(existing.lastPathComponent)")
+            let manga = Manga(
+                sourceID: .local,
+                url: relativePath(forFileName: existing.lastPathComponent),
+                title: readMeta(forArchiveAt: existing)?.title ?? title
+            )
+            return (manga, makeChapters(for: manga.url, index: index))
+        }
+
         if !fileManager.fileExists(atPath: destination.path) {
             let temporary = rootDirectory.appendingPathComponent("\(fileName).importing", isDirectory: false)
             do {
@@ -191,28 +240,28 @@ public final class LocalSource: @unchecked Sendable {
                 throw LocalSourceError.importFailed(error.localizedDescription)
             }
         }
+        resolvedURL = destination
 
         let meta = LocalBookMeta(
             title: title,
             importedAt: now,
             chapterCount: index.chapters.count,
             pageCount: index.pageCount,
-            originalFileName: sourceURL.lastPathComponent
+            originalFileName: sourceURL.lastPathComponent,
+            fingerprint: fingerprint
         )
         try? writeMeta(meta, forArchiveAt: destination)
 
         // 归档已落盘：把刚解析过的 reader 放进缓存，导入后立刻阅读无需重读
-        store(reader: reader, forKey: relativePath(forFileName: fileName))
+        store(reader: reader, forKey: relativePath(forFileName: resolvedURL.lastPathComponent))
 
-        let manga = Manga(sourceID: .local, url: relativePath(forFileName: fileName), title: title)
-        let chapters = index.chapters.map { descriptor in
-            Chapter(
-                mangaID: manga.id,
-                url: Self.chapterURL(bookPath: manga.url, chapterPath: descriptor.path),
-                name: descriptor.name
-            )
-        }
-        diag("LocalSource: 导入 \(sourceURL.lastPathComponent) → \(fileName)，\(chapters.count) 章 / \(index.pageCount) 页")
+        let manga = Manga(
+            sourceID: .local,
+            url: relativePath(forFileName: resolvedURL.lastPathComponent),
+            title: title
+        )
+        let chapters = makeChapters(for: manga.url, index: index)
+        diag("LocalSource: 导入 \(sourceURL.lastPathComponent) → \(resolvedURL.lastPathComponent)，\(chapters.count) 章 / \(index.pageCount) 页")
         return (manga, chapters)
     }
 

@@ -131,28 +131,34 @@ public enum LocalArchiveIndexer {
         var i = 0
         var j = 0
 
-        /// 数字段上限，避免超长数字导致溢出
-        let digitCeiling = 1_000_000_000
-
         while i < left.count, j < right.count {
             let leftIsDigit = left[i].isNumber
             let rightIsDigit = right[j].isNumber
 
             if leftIsDigit, rightIsDigit {
-                var leftValue = 0
-                var rightValue = 0
-                while i < left.count, let digit = left[i].wholeNumberValue {
-                    leftValue = min(digitCeiling, leftValue * 10 + digit)
+                // 把数字段当**字符串**比较：先去前导零，再比长度、最后比字典序。
+                // 这样任意长度（几十位）都正确且不会整数溢出 ——
+                // 早先用「截断到上限」的办法会让超长数字无法区分。
+                var leftDigits = ""
+                var rightDigits = ""
+                while i < left.count, left[i].isNumber {
+                    leftDigits.append(left[i])
                     i += 1
                 }
-                while j < right.count, let digit = right[j].wholeNumberValue {
-                    rightValue = min(digitCeiling, rightValue * 10 + digit)
+                while j < right.count, right[j].isNumber {
+                    rightDigits.append(right[j])
                     j += 1
                 }
-                if leftValue != rightValue {
-                    return leftValue < rightValue ? .orderedAscending : .orderedDescending
+                let leftTrimmed = leftDigits.drop { $0 == "0" }
+                let rightTrimmed = rightDigits.drop { $0 == "0" }
+
+                if leftTrimmed.count != rightTrimmed.count {
+                    return leftTrimmed.count < rightTrimmed.count ? .orderedAscending : .orderedDescending
                 }
-                continue
+                if leftTrimmed != rightTrimmed {
+                    return leftTrimmed.lexicographicallyPrecedes(rightTrimmed) ? .orderedAscending : .orderedDescending
+                }
+                continue   // 数值相等（前导零不同），继续比较后续字符
             }
 
             if left[i] != right[j] {
