@@ -110,8 +110,6 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
     private var virtualMachine: JSVirtualMachine?
     private var context: JSContext?
     private var currentMeta: SourceScriptMeta?
-    /// 桥接期间的错误（JS 侧拿到的 reject 文案）。
-    private var lastException: String?
 
     public init(
         configuration: SourceRuntimeConfiguration = SourceRuntimeConfiguration(),
@@ -157,14 +155,13 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
 
         ctx.exceptionHandler = { [weak self] _, exception in
             let text = exception?.toString() ?? "未知 JavaScript 异常"
-            // 异常处理器是同步回调，写共享状态需要回到 actor
-            Task { await self?.recordException(text) }
+            // 异常处理器是同步回调，写日志需要回到 actor
+            Task { await self?.logJSException(text) }
         }
 
         self.virtualMachine = machine
         self.context = ctx
         self.currentMeta = meta
-        self.lastException = nil
 
         installBridge(context: ctx, meta: meta)
 
@@ -181,8 +178,9 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         }
     }
 
-    private func recordException(_ text: String) {
-        lastException = text
+    private func logJSException(_ text: String) {
+        let trimmed = text.count > 200 ? String(text.prefix(200)) + "…" : text
+        logSink("error", "[javascript] \(trimmed)")
     }
 
     // MARK: 调用
@@ -220,44 +218,56 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
 
     private func performCall(_ method: SourceAPIMethod, argsJSON: String) async throws -> String {
         guard let context else { throw SourceRunnerError.notInstalled(method.rawValue) }
-        lastException = nil
 
-        let body = """
-        const __args = JSON.parse(__argsJSON);
-        if (typeof \(method.rawValue) !== 'function') {
-            throw new Error('源未实现方法：\(method.rawValue)');
-        }
-        const __value = await \(method.rawValue)(...__args);
-        return JSON.stringify(__value === undefined ? null : __value);
+        // 说明：不使用 `callAsyncJavaScript`——它在该 SDK 上不可用（编译期缺失）。
+        // 这里自己在 JS 侧把 async 调用包成一个 Promise，再挂 then/catch 取结果。
+        // 好处是完全可控：Promise 的结算点、错误信息、取消都掌握在自己手里。
+        //
+        // 用「标识符」而不是 `globalThis[name]` 引用方法：脚本既可能写成
+        // `function getPopularManga(){}`（挂到 globalThis），也可能写成
+        // `const getPopularManga = …`（顶层词法绑定，不是 globalThis 属性）——
+        // 直接写标识符两种都能命中。
+        context.setObject(argsJSON, forKeyedSubscript: "__argsJSON" as NSString)
+        let source = """
+        (async function () {
+            if (typeof \(method.rawValue) !== 'function') {
+                throw new Error('源未实现方法：\(method.rawValue)');
+            }
+            const __args = JSON.parse(__argsJSON);
+            const __value = await \(method.rawValue).apply(null, __args);
+            return JSON.stringify(__value === undefined ? null : __value);
+        })()
         """
 
-        do {
-            let value = try await context.callAsyncJavaScript(
-                body,
-                arguments: ["__argsJSON": argsJSON],
-                in: nil,
-                contentWorld: .page
-            )
-            if let text = value.toString(), text != "undefined" {
-                if let failure = lastException {
-                    lastException = nil
-                    throw SourceRunnerError.executionFailed(failure)
-                }
-                return text
-            }
-            throw SourceRunnerError.invalidResponse("源返回了空结果")
-        } catch let error as SourceRunnerError {
-            throw error
-        } catch {
-            throw SourceRunnerError.executionFailed(error.localizedDescription)
+        guard let promise = context.evaluateScript(source) else {
+            throw SourceRunnerError.executionFailed("无法构造调用包装器")
         }
+        if let exception = context.exception {
+            let text = exception.toString() ?? "未知错误"
+            context.exception = nil
+            throw SourceRunnerError.executionFailed(text)
+        }
+        guard promise.isObject else {
+            throw SourceRunnerError.executionFailed("源返回的不是可等待对象")
+        }
+
+        let box = JSAsyncResultBox()
+        let onFulfilled: @convention(block) (JSValue?) -> Void = { value in
+            box.succeed(value?.toString() ?? "null")
+        }
+        let onRejected: @convention(block) (JSValue?) -> Void = { error in
+            box.fail(error?.toString() ?? "未知错误")
+        }
+        // `then` 返回新的 Promise（这里不需要链式），显式丢弃以避免未使用告警
+        _ = promise.invokeMethod("then", withArguments: [onFulfilled as Any, onRejected as Any])
+
+        return try await box.value()
     }
 
     public func teardown() {
         context = nil
         virtualMachine = nil
         currentMeta = nil
-        lastException = nil
     }
 
     // MARK: 桥接注入
@@ -330,7 +340,8 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
             }
             _ = semaphore.wait(timeout: .now() + 5)
             guard let value = box.value else { return JSValue(nullIn: context) }
-            return JSValue(object: value, in: context)
+            // `JSValue(object:in:)` 是可失败构造，失败时退回 null
+            return JSValue(object: value, in: context) ?? JSValue(nullIn: context)
         }
         bridge?.setObject(prefsGet as Any, forKeyedSubscript: "prefsGet" as NSString)
 
@@ -556,5 +567,53 @@ final class StringBox: @unchecked Sendable {
             storage = newValue
             lock.unlock()
         }
+    }
+}
+
+/// 承载「JS Promise → Swift async」的桥：Promise 结算时（可能在 JS 线程）
+/// 唤醒等待中的 Swift 任务；任务被取消时也会立刻唤醒，避免挂死。
+final class JSAsyncResultBox: @unchecked Sendable {
+
+    private let lock = NSLock()
+    private var result: Result<String, Error>?
+    private var continuation: CheckedContinuation<String, Error>?
+
+    func value() async throws -> String {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                lock.lock()
+                if let result {
+                    lock.unlock()
+                    continuation.resume(with: result)
+                    return
+                }
+                self.continuation = continuation
+                lock.unlock()
+            }
+        } onCancel: {
+            resolve(.failure(SourceRunnerError.cancelled))
+        }
+    }
+
+    func succeed(_ text: String) {
+        resolve(.success(text))
+    }
+
+    func fail(_ message: String) {
+        resolve(.failure(SourceRunnerError.executionFailed(message)))
+    }
+
+    /// 只允许结算一次（Promise 语义：后续调用被忽略）。
+    private func resolve(_ outcome: Result<String, Error>) {
+        lock.lock()
+        guard result == nil else {
+            lock.unlock()
+            return
+        }
+        result = outcome
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        pending?.resume(with: outcome)
     }
 }
