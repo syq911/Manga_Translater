@@ -10,6 +10,7 @@
 
 import SwiftUI
 import AppCore
+import SourceEngine
 
 struct BrowseView: View {
 

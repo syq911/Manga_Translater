@@ -24,6 +24,19 @@ xcodebuild build -project MangaTranslater.xcodeproj -scheme MangaTranslater \
 
 工作流：`.github/workflows/build-ipa.yml`，触发于**任意分支 push**、`v*` tag 与手动派发。
 
+### 推送前必跑本地预检
+
+```bash
+bash tools/preflight.sh
+```
+
+| 检查 | 作用 |
+|---|---|
+| `tools/check_project.py` | pbxproj 引用完整性（曾因结构非法导致包解析器崩溃）、例外集与磁盘测试文件一致性、包登记、配置文件语法、旧项目名残留 |
+| `tools/check_imports.py` | 「用了某包类型却没 import」——纯编译器错误，本地提前挡掉 |
+| Python 语法检查 | CI 里 `release` job 会执行的脚本 |
+| `tools/check_redlines.py` | 合规红线：不得出现第三方站点名、不得提交源脚本（`*.js`）、不得提交凭据 |
+
 | job | 作用 |
 |---|---|
 | `build-ipa` | 无签名 archive → `codesign --sign -`（ad-hoc）→ `ditto` 打 ipa → 上传 artifact |

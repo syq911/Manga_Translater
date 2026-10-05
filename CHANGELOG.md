@@ -46,3 +46,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 - 覆盖全部四个包的正常流程、异常分支与边界条件（空输入、超长文本、非法参数、
   网络超时、文件缺失 / 损坏、并发调用、资源清理与回滚）。
+- 13 个测试文件（含共享工具 `TestSupport.swift`）。
+
+### 🛠 工程工具 / Tooling
+
+- `tools/preflight.sh` —— 推送前预检入口，四步串跑：
+  - `check_project.py`：pbxproj 引用完整性、例外集一致性、包登记、配置语法
+  - `check_imports.py`：跨包 import 完整性（本地挡掉纯编译器错误）
+  - Python 脚本语法检查
+  - `check_redlines.py`：合规红线（无站点名 / 无源脚本 / 无凭据）
+
