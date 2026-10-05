@@ -108,10 +108,12 @@ public enum Migrations {
 
     /// 首次发布的 schema。
     public static let initial = "v1_initial"
+    /// 分类独立成表（此前分类只是条目上的自由字符串）。
+    public static let categories = "v2_categories"
 
     /// 全部迁移标识（按执行顺序）。新增迁移时**追加**到这里，
     /// 同时补一个 `registerMigration`。
-    public static let all: [String] = [initial]
+    public static let all: [String] = [initial, categories]
 
     public static func register(on migrator: inout DatabaseMigrator) {
         migrator.registerMigration(initial) { db in
@@ -164,6 +166,37 @@ public enum Migrations {
                 index: "idx_history_manga",
                 on: ReadingHistoryRecord.tableName,
                 columns: ["manga_id"]
+            )
+        }
+
+        migrator.registerMigration(categories) { db in
+            // 分类从「条目上的自由字符串」升级为独立表：
+            // 这样才能存在「暂无作品的分类」，也才能重命名与排序。
+            try db.create(table: LibraryCategoryRecord.tableName) { table in
+                table.primaryKey("id", .text)
+                table.column("name", .text).notNull()
+                table.column("sort_order", .integer).notNull().defaults(to: 0)
+                table.column("created_at", .double).notNull()
+            }
+            try db.create(
+                index: "idx_category_sort",
+                on: LibraryCategoryRecord.tableName,
+                columns: ["sort_order", "name"]
+            )
+
+            // 回填既有数据：把条目上出现过的分类名登记为分类。
+            // 这里**直接用旧分类名当 id**，于是既有的 `category_id` 引用无需改写，
+            // 迁移对用户完全无感。新建的分类才会使用 UUID。
+            try db.execute(
+                sql: """
+                INSERT INTO \(LibraryCategoryRecord.tableName) (id, name, sort_order, created_at)
+                SELECT category_id, category_id, 0, ?
+                  FROM \(LibraryEntryRecord.tableName)
+                 WHERE category_id IS NOT NULL AND category_id <> ''
+                 GROUP BY category_id
+                 ORDER BY category_id
+                """,
+                arguments: [Date().timeIntervalSince1970]
             )
         }
     }

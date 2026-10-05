@@ -71,6 +71,12 @@ public enum LibraryStoreError: Error, Equatable {
     case invalidLimit(Int)
     /// 数据库里的行不符合预期（列缺失 / 类型不符 / JSON 损坏）。
     case corruptRow(reason: String)
+    /// 分类不存在。
+    case categoryNotFound(String)
+    /// 分类名重复（比较时忽略大小写与首尾空白）。
+    case duplicateCategoryName(String)
+    /// 分类名不合法（清洗后为空，或超出长度上限）。
+    case invalidCategoryName(String)
 
     public var message: String {
         switch self {
@@ -78,6 +84,9 @@ public enum LibraryStoreError: Error, Equatable {
         case let .invalidPageIndex(index): return "页码不合法：\(index)"
         case let .invalidLimit(limit): return "数量参数不合法：\(limit)"
         case let .corruptRow(reason): return "数据损坏：\(reason)"
+        case let .categoryNotFound(id): return "分类不存在：\(id)"
+        case let .duplicateCategoryName(name): return "已有同名分类：\(name)"
+        case let .invalidCategoryName(name): return "分类名不合法：\(name)"
         }
     }
 
@@ -87,6 +96,9 @@ public enum LibraryStoreError: Error, Equatable {
         case let .invalidPageIndex(index): return .invalidInput("页码 \(index)")
         case let .invalidLimit(limit): return .invalidInput("数量 \(limit)")
         case let .corruptRow(reason): return .unknown("数据库行损坏：\(reason)")
+        case let .categoryNotFound(id): return .notFound("分类 \(id)")
+        case let .duplicateCategoryName(name): return .invalidInput("分类名重复：\(name)")
+        case let .invalidCategoryName(name): return .invalidInput("分类名不合法：\(name)")
         }
     }
 }
@@ -153,8 +165,30 @@ public protocol LibraryStoring: Sendable {
     /// 设置未读数（负数按 0 处理）。
     func setUnreadCount(mangaID: String, count: Int) throws
 
-    /// 现有分类列表（去重、按名称排序）。
-    func categories() throws -> [String]
+    // MARK: 分类
+
+    /// 分类列表（按 `sortOrder` 升序，其次按名称）。
+    ///
+    /// 分类是独立实体，因此**空分类也会出现**（用户新建后不会因没有作品而消失）。
+    func categories() throws -> [LibraryCategory]
+
+    /// 新建分类。
+    /// - Throws: `.invalidCategoryName`（清洗后为空）、`.duplicateCategoryName`（重名）
+    @discardableResult
+    func createCategory(name: String) throws -> LibraryCategory
+
+    /// 重命名分类。重命名不影响条目引用（`id` 不变）。
+    /// - Throws: `.categoryNotFound`、`.invalidCategoryName`、`.duplicateCategoryName`
+    @discardableResult
+    func renameCategory(id: String, to name: String) throws -> LibraryCategory
+
+    /// 删除分类：分类下的条目**移出分类但不删除**。返回受影响的条目数。
+    /// - Throws: `.categoryNotFound`
+    @discardableResult
+    func deleteCategory(id: String) throws -> Int
+
+    /// 按给定顺序重排分类；未出现在列表里的分类保持相对顺序并排在后面。
+    func reorderCategories(_ orderedIDs: [String]) throws
 
     // MARK: 阅读历史
 

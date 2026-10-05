@@ -24,6 +24,7 @@ import AppCore
 enum LibraryTable {
     static let entries = "library_entry"
     static let history = "reading_history"
+    static let categories = "library_category"
 }
 
 /// 书架条目表结构（供迁移引用）。
@@ -34,6 +35,11 @@ struct LibraryEntryRecord {
 /// 阅读历史表结构（供迁移引用）。
 struct ReadingHistoryRecord {
     static let tableName = LibraryTable.history
+}
+
+/// 分类表结构（供迁移引用）。
+struct LibraryCategoryRecord {
+    static let tableName = LibraryTable.categories
 }
 
 /// 书架持久化实现。
@@ -51,6 +57,9 @@ public final class DatabaseLibraryStore: LibraryStoring, @unchecked Sendable {
     public func save(_ entry: LibraryEntry) throws -> LibraryEntry {
         let payload = try Self.encode(entry)
         try database.queue.write { db in
+            // 条目引用了一个尚未登记的分类时自动补建，
+            // 否则会出现「条目指向不存在的分类」的孤立引用。
+            try Self.ensureCategoryExists(db, id: entry.categoryID)
             try db.execute(
                 sql: """
                 INSERT INTO \(LibraryTable.entries)
@@ -223,6 +232,9 @@ public final class DatabaseLibraryStore: LibraryStoring, @unchecked Sendable {
     }
 
     public func setCategory(mangaID: String, categoryID: String?) throws {
+        try database.queue.write { db in
+            try Self.ensureCategoryExists(db, id: categoryID)
+        }
         try mutateEntry(mangaID: mangaID) { $0.categoryID = categoryID }
     }
 
@@ -230,17 +242,152 @@ public final class DatabaseLibraryStore: LibraryStoring, @unchecked Sendable {
         try mutateEntry(mangaID: mangaID) { $0.unreadCount = max(0, count) }
     }
 
-    public func categories() throws -> [String] {
+    // MARK: 分类
+
+    public func categories() throws -> [LibraryCategory] {
         try database.queue.read { db in
-            try String.fetchAll(
+            try Self.fetchCategories(db)
+        }
+    }
+
+    @discardableResult
+    public func createCategory(name: String) throws -> LibraryCategory {
+        let clean = ModelValidation.sanitizeCategoryName(name)
+        guard !clean.isEmpty else { throw LibraryStoreError.invalidCategoryName(name) }
+
+        return try database.queue.write { db in
+            try Self.assertNameAvailable(db, name: clean, excludingID: nil)
+            let nextOrder = try Int.fetchOne(
                 db,
+                sql: "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM \(LibraryTable.categories)"
+            ) ?? 0
+            let category = LibraryCategory(name: clean, sortOrder: nextOrder)
+            try db.execute(
                 sql: """
-                SELECT DISTINCT category_id FROM \(LibraryTable.entries)
-                 WHERE category_id IS NOT NULL AND category_id <> ''
-                 ORDER BY category_id COLLATE NOCASE
-                """
+                INSERT INTO \(LibraryTable.categories) (id, name, sort_order, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                arguments: [category.id, category.name, category.sortOrder, Date().timeIntervalSince1970]
+            )
+            return category
+        }
+    }
+
+    @discardableResult
+    public func renameCategory(id: String, to name: String) throws -> LibraryCategory {
+        let clean = ModelValidation.sanitizeCategoryName(name)
+        guard !clean.isEmpty else { throw LibraryStoreError.invalidCategoryName(name) }
+
+        return try database.queue.write { db in
+            guard var current = try Self.category(db, id: id) else {
+                throw LibraryStoreError.categoryNotFound(id)
+            }
+            try Self.assertNameAvailable(db, name: clean, excludingID: id)
+            try db.execute(
+                sql: "UPDATE \(LibraryTable.categories) SET name = ? WHERE id = ?",
+                arguments: [clean, id]
+            )
+            current.name = clean
+            return current
+        }
+    }
+
+    @discardableResult
+    public func deleteCategory(id: String) throws -> Int {
+        try database.queue.write { db in
+            guard try Self.category(db, id: id) != nil else {
+                throw LibraryStoreError.categoryNotFound(id)
+            }
+            // 先让条目移出分类，再删分类；两步在同一事务内。
+            try db.execute(
+                sql: "UPDATE \(LibraryTable.entries) SET category_id = NULL WHERE category_id = ?",
+                arguments: [id]
+            )
+            let affected = try Int.fetchOne(db, sql: "SELECT changes()") ?? 0
+            try db.execute(
+                sql: "DELETE FROM \(LibraryTable.categories) WHERE id = ?",
+                arguments: [id]
+            )
+            return affected
+        }
+    }
+
+    public func reorderCategories(_ orderedIDs: [String]) throws {
+        try database.queue.write { db in
+            let existing = try Self.fetchCategories(db)
+            var ordered: [String] = []
+            for id in orderedIDs where existing.contains(where: { $0.id == id }) {
+                if !ordered.contains(id) { ordered.append(id) }
+            }
+            // 未列出的分类保持原有相对顺序，排在后面
+            for category in existing where !ordered.contains(category.id) {
+                ordered.append(category.id)
+            }
+            for (index, id) in ordered.enumerated() {
+                try db.execute(
+                    sql: "UPDATE \(LibraryTable.categories) SET sort_order = ? WHERE id = ?",
+                    arguments: [index, id]
+                )
+            }
+        }
+    }
+
+    private static func fetchCategories(_ db: Database) throws -> [LibraryCategory] {
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT id, name, sort_order FROM \(LibraryTable.categories)
+             ORDER BY sort_order ASC, name COLLATE NOCASE ASC
+            """
+        )
+        return rows.map { row in
+            LibraryCategory(
+                id: row["id"],
+                name: row["name"],
+                sortOrder: row["sort_order"]
             )
         }
+    }
+
+    private static func category(_ db: Database, id: String) throws -> LibraryCategory? {
+        guard let row = try Row.fetchOne(
+            db,
+            sql: "SELECT id, name, sort_order FROM \(LibraryTable.categories) WHERE id = ?",
+            arguments: [id]
+        ) else { return nil }
+        return LibraryCategory(id: row["id"], name: row["name"], sortOrder: row["sort_order"])
+    }
+
+    /// 分类名查重：忽略大小写与首尾/连续空白。
+    private static func assertNameAvailable(_ db: Database, name: String, excludingID: String?) throws {
+        let key = ModelValidation.categoryNameKey(name)
+        let rows = try Row.fetchAll(db, sql: "SELECT id, name FROM \(LibraryTable.categories)")
+        for row in rows {
+            let otherID: String = row["id"]
+            if let excludingID, otherID == excludingID { continue }
+            let otherName: String = row["name"]
+            if ModelValidation.categoryNameKey(otherName) == key {
+                throw LibraryStoreError.duplicateCategoryName(name)
+            }
+        }
+    }
+
+    /// 确保给定分类 id 已在分类表里；缺失则按 id 同名补建（沿用旧数据的习惯：
+    /// 早期版本用分类名当 id）。`nil` / 空串不做任何事。
+    private static func ensureCategoryExists(_ db: Database, id: String?) throws {
+        guard let id, !id.isEmpty else { return }
+        if try Self.category(db, id: id) != nil { return }
+        let nextOrder = try Int.fetchOne(
+            db,
+            sql: "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM \(LibraryTable.categories)"
+        ) ?? 0
+        try db.execute(
+            sql: """
+            INSERT OR IGNORE INTO \(LibraryTable.categories) (id, name, sort_order, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            arguments: [id, id, nextOrder, Date().timeIntervalSince1970]
+        )
     }
 
     // MARK: 阅读历史

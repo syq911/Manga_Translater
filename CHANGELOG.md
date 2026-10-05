@@ -160,6 +160,19 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **设置快照向后兼容**：`SettingsSnapshot` 改为 `decodeIfPresent + 默认值` 解码，
   旧版本导出的备份（缺新字段）仍可恢复。
 
+### ✨ 新增 / Added（M1 收尾：分类管理）
+
+- **分类升级为独立实体**（`AppCore.LibraryCategory` + 迁移 `v2_categories`）：
+  可以创建**空分类**、重命名、排序；迁移把旧的分类名直接当 id 回填，
+  既有条目引用无需改写，对用户无感。
+- `LibraryStoring` 新增 `categories()` / `createCategory` / `renameCategory` /
+  `deleteCategory`（条目移出但不删除，返回受影响数）/ `reorderCategories`。
+- `save` 与 `setCategory` 遇到未登记的分类 id 自动补建，避免孤立引用。
+- **书架分类筛选**：工具栏可选「全部作品」或某个分类；分类被删除后自动回退到全部。
+- **分类管理页**（`CategoryManagerView`）：新建 / 重命名 / 删除 / 拖动排序，
+  并显示每个分类的作品数。
+- **条目长按菜单**：移动到分类、置顶、移出书架。
+
 ### 📖 文档 / Docs
 
 - **`docs/source-api.md` 契约按实现细化**：补齐仓库/脚本校验的**精确规则表**
@@ -171,6 +184,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - 契约示例由**测试守护**：新增 `MangaTranslaterTests/SourceAPIDocTests.swift`
   逐项断言示例能过校验、方法齐全、元信息与文档表格一致；
   `tools/check_docs_sync.py` 保证文档与夹具**逐字一致**（预检第 4 项）。
+
+### 🧪 测试 / Tests（新增 13 个用例）
+
+- 分类：空分类可保存、名称清洗与截断、空名/重名被拒（忽略空白与大小写）、
+  重命名保持 id 与条目引用（含改自己大小写、撞他人被拒）、删除分类不删条目并返回
+  受影响数、重排（含非法/重复 id 稳健性）、`save`/`setCategory` 自动补建分类、
+  落盘重启后分类仍在；以上除落盘用例外均在 GRDB 与内存两个实现上各跑一遍。
 
 ### 🧪 测试 / Tests（新增 47 个用例）
 

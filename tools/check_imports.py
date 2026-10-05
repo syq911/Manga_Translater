@@ -20,7 +20,7 @@ PKG_TYPES = {
         "LibraryEntry", "MangaStatus", "MangaListPage", "AppSettings", "AppError",
         "DiagnosticsLog", "TranslationBackend", "ReaderMode", "TranslationLanguage",
         "SettingsSnapshot", "ModelValidation", "PageDataProviding", "ReaderSession",
-        "ReaderAdvanceResult", "ReaderTheme", "ZoomState",
+        "ReaderAdvanceResult", "ReaderTheme", "ZoomState", "LibraryCategory",
     ],
     "ComicNet": [
         "HTTPClient", "HTTPResponse", "HTTPTransporting", "CookieJar", "StoredCookie",
@@ -242,11 +242,28 @@ def main():
             imports = set(re.findall(r"^\s*(?:@testable\s+)?import\s+([A-Za-z_][A-Za-z0-9_]*)", text, re.M))
             scanned += 1
 
+            # 本文件自己声明的类型不算「跨模块使用」——
+            # 否则 AppCore/Models.swift 里定义 LibraryCategory 会被判成
+            # 「需要 import AppDatabase」，属假阳性。
+            declared_here = set(
+                re.findall(
+                    r"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?\s+)*"
+                    r"(?:public\s+|internal\s+|private\s+|fileprivate\s+|final\s+|open\s+)*"
+                    r"(?:struct|class|enum|actor)\s+([A-Za-z_][A-Za-z0-9_]*)",
+                    code,
+                    re.M,
+                )
+            )
+
             for module, types in PKG_TYPES.items():
                 # 包内文件使用自身模块的类型不需要 import
                 if owner is not None and module == owner:
                     continue
-                used = [t for t in types if re.search(r"\b" + re.escape(t) + r"\b", code)]
+                used = [
+                    t
+                    for t in types
+                    if t not in declared_here and re.search(r"\b" + re.escape(t) + r"\b", code)
+                ]
                 if not used:
                     continue
                 if module in imports:

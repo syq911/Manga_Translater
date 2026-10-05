@@ -173,7 +173,7 @@ struct LibraryStoreTests {
         #expect(try store.entries(sortedBy: .title, categoryID: "收藏").count == 1)
         #expect(try store.entries(sortedBy: .title, categoryID: "不存在").isEmpty)
         #expect(try store.entries(sortedBy: .title, categoryID: nil).count == 3)
-        #expect(try store.categories() == ["待读", "收藏"])
+        #expect(try store.categories().map(\.name) == ["收藏", "待读"], "顺序应为创建顺序")
     }
 
     // MARK: 组织
@@ -712,7 +712,7 @@ struct LibraryStoreContractTests {
             try store.save(second)
             try store.save(third)
 
-            #expect(try store.categories() == ["待读", "收藏"], "实现 \(name)：分类列举不一致")
+            #expect(try store.categories().map(\.name) == ["收藏", "待读"], "实现 \(name)：分类列举不一致")
             #expect(try store.entries(sortedBy: .title, categoryID: "收藏").count == 2)
         }
     }
@@ -727,5 +727,215 @@ struct LibraryStoreContractTests {
             try store.setUnreadCount(mangaID: entry.id, count: 12)
             #expect(try store.entry(mangaID: entry.id)?.unreadCount == 12, "实现 \(name)：未读未写入")
         }
+    }
+
+    // MARK: 分类（独立实体）
+
+    @Test("空分类也能保存：创建后立即出现在列表里")
+    func emptyCategoryPersists() throws {
+        for (name, store) in try makeStores() {
+            let category = try store.createCategory(name: "追更")
+            #expect(category.name == "追更")
+
+            let listed = try store.categories()
+            #expect(listed.count == 1, "实现 \(name)：空分类应保留")
+            #expect(listed.first?.id == category.id)
+            #expect(try store.count() == 0, "创建分类不应影响条目数")
+        }
+    }
+
+    @Test("分类名会被清洗：首尾与连续空白")
+    func categoryNameIsSanitized() throws {
+        let (store, _) = try makeStore()
+        let category = try store.createCategory(name: "  我的   收藏  ")
+        #expect(category.name == "我的 收藏")
+    }
+
+    @Test("超长分类名被截断")
+    func categoryNameIsTruncated() throws {
+        let (store, _) = try makeStore()
+        let category = try store.createCategory(name: String(repeating: "长", count: 200))
+        #expect(category.name.count == 60)
+    }
+
+    @Test("空分类名被拒绝", arguments: ["", "   ", "\n\t "])
+    func rejectsBlankCategoryName(name: String) throws {
+        let (store, _) = try makeStore()
+        do {
+            _ = try store.createCategory(name: name)
+            Issue.record("应当抛错")
+        } catch let error as LibraryStoreError {
+            guard case .invalidCategoryName = error else {
+                Issue.record("错误类型不符：\(error)")
+                return
+            }
+        }
+    }
+
+    @Test("重名分类被拒绝（忽略空白与大小写）")
+    func rejectsDuplicateCategoryName() throws {
+        let (store, _) = try makeStore()
+        _ = try store.createCategory(name: "收藏")
+        _ = try store.createCategory(name: "Favorites")
+
+        for duplicate in [" 收藏 ", "收藏", "favorites", " Favorites "] {
+            do {
+                _ = try store.createCategory(name: duplicate)
+                Issue.record("「\(duplicate)」应被判为重名")
+            } catch let error as LibraryStoreError {
+                guard case .duplicateCategoryName = error else {
+                    Issue.record("错误类型不符：\(error)")
+                    return
+                }
+            }
+        }
+    }
+
+    @Test("重命名：id 不变、条目引用不受影响")
+    func renameKeepsReferences() throws {
+        for (name, store) in try makeStores() {
+            let category = try store.createCategory(name: "旧名")
+            try store.save(makeEntry(id: "a", categoryID: category.id))
+
+            let renamed = try store.renameCategory(id: category.id, to: "新名")
+            #expect(renamed.id == category.id)
+            #expect(renamed.name == "新名")
+
+            #expect(
+                try store.entry(mangaID: "a")?.categoryID == category.id,
+                "实现 \(name)：重命名不应改变条目引用"
+            )
+            #expect(try store.categories().first?.name == "新名")
+        }
+    }
+
+    @Test("重命名允许改自己的大小写，但不允许撞别的分类")
+    func renameAllowsSelfButRejectsOthers() throws {
+        let (store, _) = try makeStore()
+        let a = try store.createCategory(name: "Alpha")
+        _ = try store.createCategory(name: "Beta")
+
+        let same = try store.renameCategory(id: a.id, to: "alpha")
+        #expect(same.name == "alpha")
+
+        do {
+            _ = try store.renameCategory(id: a.id, to: "Beta")
+            Issue.record("应当抛错")
+        } catch let error as LibraryStoreError {
+            guard case .duplicateCategoryName = error else {
+                Issue.record("错误类型不符：\(error)")
+                return
+            }
+        }
+    }
+
+    @Test("重命名不存在的分类抛 categoryNotFound")
+    func renameMissingCategory() throws {
+        let (store, _) = try makeStore()
+        do {
+            _ = try store.renameCategory(id: "ghost", to: "x")
+            Issue.record("应当抛错")
+        } catch let error as LibraryStoreError {
+            guard case .categoryNotFound = error else {
+                Issue.record("错误类型不符：\(error)")
+                return
+            }
+        }
+    }
+
+    @Test("删除分类：条目移出但不被删除")
+    func deleteCategoryKeepsEntries() throws {
+        for (name, store) in try makeStores() {
+            _ = try store.createCategory(name: "收藏")
+            let categoryID = try #require(try store.categories().first?.id)
+            try store.save(makeEntry(id: "a", categoryID: categoryID))
+            try store.save(makeEntry(id: "b", categoryID: categoryID))
+            try store.save(makeEntry(id: "c"))
+
+            let affected = try store.deleteCategory(id: categoryID)
+            #expect(affected == 2, "实现 \(name)：应报告 2 条受影响")
+
+            #expect(try store.categories().isEmpty)
+            #expect(try store.count() == 3, "条目本身应保留")
+            #expect(try store.entry(mangaID: "a")?.categoryID == nil)
+            #expect(try store.entry(mangaID: "b")?.categoryID == nil)
+            #expect(try store.entries(sortedBy: .title, categoryID: categoryID).isEmpty)
+        }
+    }
+
+    @Test("删除不存在的分类抛 categoryNotFound")
+    func deleteMissingCategory() throws {
+        let (store, _) = try makeStore()
+        do {
+            _ = try store.deleteCategory(id: "ghost")
+            Issue.record("应当抛错")
+        } catch let error as LibraryStoreError {
+            guard case .categoryNotFound = error else {
+                Issue.record("错误类型不符：\(error)")
+                return
+            }
+        }
+    }
+
+    @Test("重排分类：给定顺序生效，未列出的保持相对顺序排在后")
+    func reorderCategories() throws {
+        for (name, store) in try makeStores() {
+            let a = try store.createCategory(name: "A")
+            let b = try store.createCategory(name: "B")
+            let c = try store.createCategory(name: "C")
+
+            try store.reorderCategories([c.id, a.id])
+            #expect(
+                try store.categories().map(\.name) == ["C", "A", "B"],
+                "实现 \(name)：未列出的分类应排在后"
+            )
+
+            try store.reorderCategories([b.id, "ghost", b.id, c.id])
+            #expect(
+                try store.categories().map(\.name) == ["B", "C", "A"],
+                "实现 \(name)：非法与重复 id 应被忽略"
+            )
+        }
+    }
+
+    @Test("save 引用未登记的分类时自动补建，避免孤立引用")
+    func saveBackfillsCategory() throws {
+        for (name, store) in try makeStores() {
+            try store.save(makeEntry(id: "a", categoryID: "临时分类"))
+
+            let listed = try store.categories()
+            #expect(listed.map(\.name) == ["临时分类"], "实现 \(name)：应自动补建分类")
+            #expect(try store.entry(mangaID: "a")?.categoryID == listed.first?.id)
+        }
+    }
+
+    @Test("setCategory 同样补建分类；设为 nil 只是移出条目")
+    func setCategoryBackfills() throws {
+        for (name, store) in try makeStores() {
+            try store.save(makeEntry(id: "a"))
+            try store.setCategory(mangaID: "a", categoryID: "稍后读")
+            #expect(try store.categories().count == 1, "实现 \(name)：应补建分类")
+            #expect(try store.entry(mangaID: "a")?.categoryID != nil)
+
+            try store.setCategory(mangaID: "a", categoryID: nil)
+            #expect(try store.entry(mangaID: "a")?.categoryID == nil)
+            #expect(try store.categories().count == 1, "实现 \(name)：移出分类不应删掉分类本身")
+        }
+    }
+
+    @Test("分类落盘后重启仍在")
+    func categoriesPersist() throws {
+        let dir = try TestFileSystem.makeTemporaryDirectory()
+        defer { TestFileSystem.remove(dir) }
+        let file = dir.appendingPathComponent("lib.sqlite", isDirectory: false)
+
+        let first = DatabaseLibraryStore(database: try AppDatabase.open(.file(file)))
+        let created = try first.createCategory(name: "常年追")
+        try first.save(makeEntry(id: "a", categoryID: created.id))
+        _ = try first.createCategory(name: "空分类")
+
+        let second = DatabaseLibraryStore(database: try AppDatabase.open(.file(file)))
+        #expect(try second.categories().map(\.name) == ["常年追", "空分类"])
+        #expect(try second.entry(mangaID: "a")?.categoryID == created.id)
     }
 }

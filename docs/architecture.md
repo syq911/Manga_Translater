@@ -141,6 +141,24 @@ App（SwiftUI，MangaTranslater target）
 阅读区背景、页面留白、屏幕常亮都来自 `AppSettings`；
 单击区方向语义随 `readerMode` 变化（右到左模式下左侧是「下一页」）。
 
+### 3.10 分类独立成表（v2 迁移）
+
+早期分类只是条目上的一个自由字符串（`LibraryEntry.categoryID`）。这带来两个硬伤：
+
+1. **无法表达「暂无作品的分类」**——用户新建后一刷新就消失；
+2. 无法重命名与排序（字符串既是名字又是引用）。
+
+v2 迁移把分类升级为独立实体 `LibraryCategory { id, name, sortOrder }`：
+
+- **迁移对用户无感**：回填时直接用旧的分类名当 `id`，于是既有的 `category_id`
+  引用无需改写；新建的分类才使用 UUID。
+- **id 与 name 分离**：重命名只改 `name`，条目引用不受影响。
+- **不留孤立引用**：`save` / `setCategory` 遇到未登记的分类 id 会自动补建
+  （这样「直接设 categoryID」这种旧用法仍然工作）。
+- **删除分类不删书**：同一事务内先把条目的 `category_id` 置空，再删分类，
+  并返回受影响的条目数。
+- 名称查重忽略大小写与连续空白（`ModelValidation.categoryNameKey`）。
+
 ### 3.9 沙箱与限流
 
 - 源运行时的调用超时、响应上限、是否允许联网集中在 `SourceRuntimeConfiguration`。

@@ -256,6 +256,31 @@ public struct LibraryEntry: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
+// MARK: - 分类
+
+/// 书架分类。
+///
+/// 为什么需要独立实体而不是直接拿字符串当分类：字符串无法表达「暂无作品的分类」，
+/// 用户新建后一刷新就消失；也无法重命名与排序。
+///
+/// `id` 与 `name` 分离：重命名只改 `name`，条目对分类的引用（`categoryID`）不受影响。
+public struct LibraryCategory: Identifiable, Codable, Equatable, Hashable, Sendable {
+    public let id: String
+    public var name: String
+    /// 展示顺序；越小越靠前。
+    public var sortOrder: Int
+
+    public init(id: String = LibraryCategory.makeID(), name: String, sortOrder: Int = 0) {
+        self.id = id
+        self.name = name
+        self.sortOrder = sortOrder
+    }
+
+    public static func makeID() -> String {
+        UUID().uuidString
+    }
+}
+
 // MARK: - 校验
 
 /// 模型层输入校验。所有外部输入（用户输入、脚本返回值、仓库 JSON）
@@ -300,5 +325,21 @@ public enum ModelValidation {
     public static func isValidVersionString(_ value: String) -> Bool {
         let pattern = "^[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+)?$"
         return value.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    /// 清洗分类名：去首尾空白、折叠中间空白、限制长度。
+    /// 清洗后为空（例如只输入了空格）时返回空串，调用方应据此报「名称不能为空」。
+    public static func sanitizeCategoryName(_ value: String, maxLength: Int = 60) -> String {
+        let collapsed = value
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        if collapsed.count <= maxLength { return collapsed }
+        return String(collapsed.prefix(maxLength))
+    }
+
+    /// 分类名比较键：忽略大小写与首尾空白，用于查重。
+    public static func categoryNameKey(_ value: String) -> String {
+        sanitizeCategoryName(value).lowercased()
     }
 }

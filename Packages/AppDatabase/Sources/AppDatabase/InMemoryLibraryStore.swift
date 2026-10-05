@@ -21,6 +21,7 @@ public final class InMemoryLibraryStore: LibraryStoring, @unchecked Sendable {
 
     private var entries: [String: LibraryEntry] = [:]
     private var history: [String: ReadingHistoryEntry] = [:]
+    private var storedCategories: [String: LibraryCategory] = [:]
     private let lock = NSLock()
 
     public init() {}
@@ -30,6 +31,11 @@ public final class InMemoryLibraryStore: LibraryStoring, @unchecked Sendable {
     @discardableResult
     public func save(_ entry: LibraryEntry) throws -> LibraryEntry {
         lock.lock()
+        // 与 GRDB 实现保持一致：引用未登记的分类时自动补建，避免孤立引用
+        if let categoryID = entry.categoryID, !categoryID.isEmpty, storedCategories[categoryID] == nil {
+            let nextOrder = (storedCategories.values.map(\.sortOrder).max() ?? -1) + 1
+            storedCategories[categoryID] = LibraryCategory(id: categoryID, name: categoryID, sortOrder: nextOrder)
+        }
         entries[entry.id] = entry
         lock.unlock()
         return entry
@@ -144,6 +150,12 @@ public final class InMemoryLibraryStore: LibraryStoring, @unchecked Sendable {
     }
 
     public func setCategory(mangaID: String, categoryID: String?) throws {
+        lock.lock()
+        if let categoryID, !categoryID.isEmpty, storedCategories[categoryID] == nil {
+            let nextOrder = (storedCategories.values.map(\.sortOrder).max() ?? -1) + 1
+            storedCategories[categoryID] = LibraryCategory(id: categoryID, name: categoryID, sortOrder: nextOrder)
+        }
+        lock.unlock()
         try mutate(mangaID) { $0.categoryID = categoryID }
     }
 
@@ -151,11 +163,97 @@ public final class InMemoryLibraryStore: LibraryStoring, @unchecked Sendable {
         try mutate(mangaID) { $0.unreadCount = max(0, count) }
     }
 
-    public func categories() throws -> [String] {
+    // MARK: 分类
+
+    public func categories() throws -> [LibraryCategory] {
         lock.lock()
         defer { lock.unlock() }
-        let values = Set(entries.values.compactMap { $0.categoryID }.filter { !$0.isEmpty })
-        return values.sorted { $0.compare($1, options: .caseInsensitive) == .orderedAscending }
+        return Self.sortedCategories(storedCategories.values)
+    }
+
+    @discardableResult
+    public func createCategory(name: String) throws -> LibraryCategory {
+        let clean = ModelValidation.sanitizeCategoryName(name)
+        guard !clean.isEmpty else { throw LibraryStoreError.invalidCategoryName(name) }
+
+        lock.lock()
+        defer { lock.unlock() }
+        try Self.assertNameAvailable(storedCategories.values, name: clean, excludingID: nil)
+        let nextOrder = (storedCategories.values.map(\.sortOrder).max() ?? -1) + 1
+        let category = LibraryCategory(name: clean, sortOrder: nextOrder)
+        storedCategories[category.id] = category
+        return category
+    }
+
+    @discardableResult
+    public func renameCategory(id: String, to name: String) throws -> LibraryCategory {
+        let clean = ModelValidation.sanitizeCategoryName(name)
+        guard !clean.isEmpty else { throw LibraryStoreError.invalidCategoryName(name) }
+
+        lock.lock()
+        defer { lock.unlock() }
+        guard var current = storedCategories[id] else {
+            throw LibraryStoreError.categoryNotFound(id)
+        }
+        try Self.assertNameAvailable(storedCategories.values, name: clean, excludingID: id)
+        current.name = clean
+        storedCategories[id] = current
+        return current
+    }
+
+    @discardableResult
+    public func deleteCategory(id: String) throws -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        guard storedCategories[id] != nil else {
+            throw LibraryStoreError.categoryNotFound(id)
+        }
+        var affected = 0
+        for (key, var entry) in entries where entry.categoryID == id {
+            entry.categoryID = nil
+            entries[key] = entry
+            affected += 1
+        }
+        storedCategories[id] = nil
+        return affected
+    }
+
+    public func reorderCategories(_ orderedIDs: [String]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        let existing = Self.sortedCategories(storedCategories.values)
+        var ordered: [String] = []
+        for id in orderedIDs where existing.contains(where: { $0.id == id }) {
+            if !ordered.contains(id) { ordered.append(id) }
+        }
+        for category in existing where !ordered.contains(category.id) {
+            ordered.append(category.id)
+        }
+        for (index, id) in ordered.enumerated() {
+            storedCategories[id]?.sortOrder = index
+        }
+    }
+
+    private static func sortedCategories<S: Sequence>(_ values: S) -> [LibraryCategory]
+    where S.Element == LibraryCategory {
+        values.sorted { lhs, rhs in
+            if lhs.sortOrder != rhs.sortOrder { return lhs.sortOrder < rhs.sortOrder }
+            return lhs.name.compare(rhs.name, options: .caseInsensitive) == .orderedAscending
+        }
+    }
+
+    private static func assertNameAvailable<S: Sequence>(
+        _ values: S,
+        name: String,
+        excludingID: String?
+    ) throws where S.Element == LibraryCategory {
+        let key = ModelValidation.categoryNameKey(name)
+        for category in values {
+            if let excludingID, category.id == excludingID { continue }
+            if ModelValidation.categoryNameKey(category.name) == key {
+                throw LibraryStoreError.duplicateCategoryName(name)
+            }
+        }
     }
 
     // MARK: 历史
