@@ -63,7 +63,20 @@ Xcode 16 的「同步文件夹」机制下，`MangaTranslater/` 内的源码自�
 
 **只往已有测试文件里加用例不需要改工程。**
 
-## 7. 判定标准
+## 7. 契约文档守护（docs 即测试数据）
+
+`docs/source-api.md` 里的**契约示例源**不是"文档示意"，而是被测试守护的夹具：
+
+- 示例代码块以 `// canonical-example` 开头，测试文件
+  `MangaTranslaterTests/SourceAPIDocTests.swift` 内保存同一份文本；
+- 测试断言：示例能通过静态校验、实现全部必需方法、元信息与文档表格一致、
+  不含任何被禁用 API；
+- `tools/check_docs_sync.py` 在推送前比对**两侧逐字一致**。
+
+因此：**改 docs/source-api.md 的示例就必须同步改 SourceAPIDocTests.swift**
+（反之亦然），否则预检直接失败。
+
+## 8. 判定标准
 
 - `test` job 全绿 + `build-ipa` job 成功，二者缺一不可。
 - 新增或修改行为必须同步新增 / 更新测试；修 bug 时先写能复现的测试。

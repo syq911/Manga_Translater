@@ -35,6 +35,7 @@
 				Info.plist,
 				"MangaTranslaterTests/AppSettingsTests.swift",
 				"MangaTranslaterTests/TestSupport.swift",
+				"MangaTranslaterTests/SourceAPIDocTests.swift",
 				"MangaTranslaterTests/DiagnosticsTests.swift",
 				"MangaTranslaterTests/ModelTests.swift",
 				"MangaTranslaterTests/CookieJarTests.swift",
@@ -54,6 +55,7 @@
 			membershipExceptions = (
 				"MangaTranslaterTests/AppSettingsTests.swift",
 				"MangaTranslaterTests/TestSupport.swift",
+				"MangaTranslaterTests/SourceAPIDocTests.swift",
 				"MangaTranslaterTests/DiagnosticsTests.swift",
 				"MangaTranslaterTests/ModelTests.swift",
 				"MangaTranslaterTests/CookieJarTests.swift",
