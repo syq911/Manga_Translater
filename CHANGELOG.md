@@ -69,6 +69,23 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   - `ZipEntryInfo` 新增 `compressedSize` / `compressionMethod` / `isCompressed`
   - 为什么必须做：真实世界的 CBZ 绝大多数是 deflate 压缩，只支持 store 等于读不了别人的文件
 
+### ✨ 新增 / Added（M1 第二段：本地 CBZ 可读、进度可存）
+
+- **本地文件源（`SourceEngine/LocalSource` + `LocalArchiveIndexer`）**
+  - 导入 CBZ/ZIP：复制进沙盒、指纹幂等、原子写、失败清理
+  - 分章规则：多目录各一章 / 单目录单章 / 根目录存图则整体一章；过滤 macOS 与系统噪音
+  - 自然排序保证阅读顺序（`1.jpg < 2.jpg < 10.jpg`）
+  - 路径穿越防护；归档小容量缓存（导入后立刻可读、翻页不重复读盘）
+  - `books()` 以文件系统为事实来源，重启后仍能列出本地作品
+- **阅读器内核（`AppCore/ReaderSession`）**：翻页/翻章/预加载窗口的纯逻辑，
+  返回值明确区分「移动」「需要换章」「到头了」，杜绝 off-by-one
+- **页数据来源抽象（`AppCore/PageDataProviding`）**：本地源同步解压、在线源走 HTTP，
+  阅读器零分支
+- **内存版书架（`AppDatabase/InMemoryLibraryStore`）**：数据库不可用时降级（App 不崩、
+  仅不持久化并明确提示），同时作为协议测试的第二实现
+- **App 接线**：书架页（导入 / 排序 / 删除 / 进度显示 / 持久化降级提示）、阅读器页
+  （翻页、预加载、进度写回）、本地文件页（浏览 / 导入 / 直接阅读）
+
 ### 📖 文档 / Docs
 
 - **`docs/source-api.md` 契约按实现细化**：补齐仓库/脚本校验的**精确规则表**
@@ -80,6 +97,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - 契约示例由**测试守护**：新增 `MangaTranslaterTests/SourceAPIDocTests.swift`
   逐项断言示例能过校验、方法齐全、元信息与文档表格一致；
   `tools/check_docs_sync.py` 保证文档与夹具**逐字一致**（预检第 4 项）。
+
+### 🧪 测试 / Tests（新增 60 个用例）
+
+- `LocalSourceTests.swift`：噪音过滤、自然排序（含超长数字防溢出）、四种分章布局、
+  导入幂等、同名不同内容、非归档/无图片/文件缺失/扩展名非法、立即读取、异步与同步一致、
+  跨实例持久、删除、路径穿越防护、命名与slug/标题清洗/指纹、并发导入
+- `ReaderSessionTests.swift`：初始化钳制、空章节、章内前进后退、章末/章首/全书两端、
+  换章重置页码、边界换章失败、预加载窗口四种边界、进度标记、连续遍历恰好经过每一页
+- `LibraryStoreContractTests`（同文件）：排序 / 置顶 / 连带删除 / 进度 / 历史裁剪 /
+  分类 / 未读归零 —— 每一条都在 GRDB 与内存实现上各验一遍
 
 ### 🧪 测试 / Tests（新增 30 个用例）
 

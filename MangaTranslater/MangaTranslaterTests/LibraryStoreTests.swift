@@ -564,3 +564,168 @@ struct LibraryStoreTests {
         #expect(LibraryStoreError.invalidPageIndex(-1).toAppError == .invalidInput("页码 -1"))
     }
 }
+
+/// 协议一致性：同一批断言跑在**两个实现**上（GRDB 与内存），
+/// 保证 `LibraryStoring` 的语义不会在各实现之间漂移。
+@Suite("书架协议一致性")
+struct LibraryStoreContractTests {
+
+    private func makeStores() throws -> [(name: String, store: any LibraryStoring)] {
+        let database = try AppDatabase.open(.memory)
+        return [
+            ("GRDB", DatabaseLibraryStore(database: database)),
+            ("内存", InMemoryLibraryStore())
+        ]
+    }
+
+    private func makeEntry(id: String, title: String, addedAt: TimeInterval) -> LibraryEntry {
+        let manga = Manga(
+            sourceID: SourceID("demo"),
+            url: "https://example.com/\(id)",
+            title: title
+        )
+        return LibraryEntry(manga: manga, addedAt: Date(timeIntervalSince1970: addedAt))
+    }
+
+    @Test("两种实现的排序结果一致")
+    func sortingMatches() throws {
+        for (name, store) in try makeStores() {
+            try store.save(makeEntry(id: "b", title: "banana", addedAt: 200))
+            try store.save(makeEntry(id: "a", title: "Apple", addedAt: 100))
+            try store.save(makeEntry(id: "c", title: "cherry", addedAt: 300))
+
+            let byTitle = try store.entries(sortedBy: .title, categoryID: nil).map(\.manga.title)
+            #expect(byTitle == ["Apple", "banana", "cherry"], "实现 \(name) 的标题排序不一致")
+
+            let byAdded = try store.entries(sortedBy: .recentlyAdded, categoryID: nil).map(\.manga.title)
+            #expect(byAdded == ["cherry", "banana", "Apple"], "实现 \(name) 的加入时间排序不一致")
+        }
+    }
+
+    @Test("两种实现的置顶优先与最近阅读排序一致")
+    func pinnedAndLastReadMatch() throws {
+        let base = Date(timeIntervalSince1970: 1_000)
+        for (name, store) in try makeStores() {
+            try store.save(makeEntry(id: "unread", title: "U", addedAt: base.timeIntervalSince1970))
+            try store.save(makeEntry(id: "read", title: "R", addedAt: base.timeIntervalSince1970))
+            try store.save(makeEntry(id: "pinned", title: "P", addedAt: base.timeIntervalSince1970))
+            try store.setPinned(mangaID: Manga.makeID(sourceID: SourceID("demo"), url: "https://example.com/pinned"), isPinned: true)
+            try store.updateProgress(
+                mangaID: Manga.makeID(sourceID: SourceID("demo"), url: "https://example.com/read"),
+                chapterID: "c1",
+                chapterName: "第 1 话",
+                pageIndex: 3,
+                at: base
+            )
+
+            let titles = try store.entries(sortedBy: .lastRead, categoryID: nil).map(\.manga.title)
+            #expect(titles.first == "P", "实现 \(name)：置顶应排在最前")
+            #expect(titles[1] == "R", "实现 \(name)：已读应排在未读之前")
+            #expect(titles.last == "U", "实现 \(name)：未读应排在最后")
+        }
+    }
+
+    @Test("两种实现的连带删除一致")
+    func cascadeDeleteMatches() throws {
+        for (name, store) in try makeStores() {
+            let entry = makeEntry(id: "one", title: "One", addedAt: 1)
+            try store.save(entry)
+            try store.recordHistory(mangaID: entry.id, chapterID: "c1", chapterName: "1", pageIndex: 0, at: Date())
+
+            #expect(try store.remove(mangaID: entry.id), "实现 \(name)：首次删除应成功")
+            #expect(try store.remove(mangaID: entry.id) == false, "实现 \(name)：重复删除应返回 false")
+            #expect(try store.count() == 0)
+            #expect(try store.recentHistory(limit: 10).isEmpty, "实现 \(name)：历史应被连带删除")
+        }
+    }
+
+    @Test("两种实现的进度写入与错误一致")
+    func progressBehaviourMatches() throws {
+        for (name, store) in try makeStores() {
+            let entry = makeEntry(id: "one", title: "One", addedAt: 1)
+            try store.save(entry)
+
+            try store.updateProgress(
+                mangaID: entry.id,
+                chapterID: "c1",
+                chapterName: "第 1 话",
+                pageIndex: 5,
+                at: Date(timeIntervalSince1970: 9_999)
+            )
+            let loaded = try store.entry(mangaID: entry.id)
+            #expect(loaded?.lastReadPageIndex == 5, "实现 \(name)：进度未写入")
+            #expect(loaded?.lastReadChapterID == "c1", "实现 \(name)：章节未写入")
+            #expect(try store.recentHistory(limit: 5).count == 1, "实现 \(name)：历史未写入")
+
+            expectThrows(LibraryStoreError.entryNotFound("ghost")) {
+                try store.updateProgress(
+                    mangaID: "ghost",
+                    chapterID: "c",
+                    chapterName: "c",
+                    pageIndex: 0,
+                    at: Date()
+                )
+            }
+            expectThrows(LibraryStoreError.invalidPageIndex(-1)) {
+                try store.updateProgress(
+                    mangaID: entry.id,
+                    chapterID: "c",
+                    chapterName: "c",
+                    pageIndex: -1,
+                    at: Date()
+                )
+            }
+        }
+    }
+
+    @Test("两种实现的历史裁剪与清空一致")
+    func historyPruningMatches() throws {
+        for (name, store) in try makeStores() {
+            for index in 0..<5 {
+                try store.recordHistory(
+                    mangaID: "m",
+                    chapterID: "c\(index)",
+                    chapterName: "\(index)",
+                    pageIndex: 0,
+                    at: Date(timeIntervalSince1970: Double(index))
+                )
+            }
+            #expect(try store.pruneHistory(keep: 2) == 3, "实现 \(name)：裁剪数量不一致")
+            #expect(try store.recentHistory(limit: 10).count == 2, "实现 \(name)：裁剪后数量不一致")
+            #expect(try store.clearHistory() == 2, "实现 \(name)：清空数量不一致")
+            expectThrows(LibraryStoreError.invalidLimit(0)) {
+                _ = try store.recentHistory(limit: 0)
+            }
+        }
+    }
+
+    @Test("两种实现的分类列举一致")
+    func categoriesMatch() throws {
+        for (name, store) in try makeStores() {
+            var first = makeEntry(id: "a", title: "A", addedAt: 1)
+            first.categoryID = "收藏"
+            var second = makeEntry(id: "b", title: "B", addedAt: 2)
+            second.categoryID = "待读"
+            var third = makeEntry(id: "c", title: "C", addedAt: 3)
+            third.categoryID = "收藏"
+            try store.save(first)
+            try store.save(second)
+            try store.save(third)
+
+            #expect(try store.categories() == ["待读", "收藏"], "实现 \(name)：分类列举不一致")
+            #expect(try store.entries(sortedBy: .title, categoryID: "收藏").count == 2)
+        }
+    }
+
+    @Test("两种实现的未读数归零行为一致")
+    func unreadCountClampingMatches() throws {
+        for (name, store) in try makeStores() {
+            let entry = makeEntry(id: "a", title: "A", addedAt: 1)
+            try store.save(entry)
+            try store.setUnreadCount(mangaID: entry.id, count: -7)
+            #expect(try store.entry(mangaID: entry.id)?.unreadCount == 0, "实现 \(name)：负数未读未归零")
+            try store.setUnreadCount(mangaID: entry.id, count: 12)
+            #expect(try store.entry(mangaID: entry.id)?.unreadCount == 12, "实现 \(name)：未读未写入")
+        }
+    }
+}

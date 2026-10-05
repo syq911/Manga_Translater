@@ -33,6 +33,10 @@
 ## 4. 命名与组织
 
 - 一个模块一个文件：`ModelTests.swift`、`CookieJarTests.swift`、`LibraryStoreTests.swift`……
+- **协议一致性套件**：`LibraryStoreTests.swift` 里的「书架协议一致性」把同一批断言
+  跑在 GRDB 实现与内存实现上，防止两个实现的语义漂移。
+- **纯逻辑单测优先**：翻页/分章/自然排序等规则放在值类型里（`ReaderSession`、
+  `LocalArchiveIndexer`），不依赖 UI 与文件系统即可穷举边界。
 - **外部实现的夹具优先**：验证 ZIP deflate 解压时，夹具由 Python `zipfile` 生成并
   base64 内联（`ZipDeflateTests.swift`）——用自己的编码器造夹具验证自己的解码器
   是自证循环，独立实现才有意义。

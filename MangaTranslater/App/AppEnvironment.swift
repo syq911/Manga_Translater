@@ -2,7 +2,7 @@
 //  AppEnvironment.swift
 //  MangaTranslater
 //
-//  应用级依赖容器。集中持有设置、源仓库、Cookie、诊断日志等单例资源，
+//  应用级依赖容器。集中持有设置、源仓库、Cookie、书架存储、本地文件源与诊断日志，
 //  通过 SwiftUI Environment 下发给各视图，避免视图各自 new 一份。
 //
 
@@ -12,6 +12,7 @@ import AppCore
 import ComicNet
 import SourceEngine
 import ComicDownload
+import AppDatabase
 
 @MainActor
 @Observable
@@ -21,25 +22,36 @@ final class AppEnvironment {
     let sourceStore: SourceStore
     let cookieJar: CookieJar
     let diagnostics: DiagnosticsLog
-
+    /// 书架存储（正常为 GRDB；磁盘不可用时降级为内存实现）。
+    let libraryStore: LibraryStoring
+    /// 本地文件源（CBZ / ZIP）。
+    let localSource: LocalSource
     /// 应用数据根目录（Application Support/MangaTranslater）。
     let dataDirectory: URL
+    /// 书架是否持久化。false 表示已降级为内存存储（UI 应提示用户）。
+    let isLibraryPersistent: Bool
 
     init(
         settings: AppSettings,
         sourceStore: SourceStore,
         cookieJar: CookieJar,
         diagnostics: DiagnosticsLog,
-        dataDirectory: URL
+        libraryStore: LibraryStoring,
+        localSource: LocalSource,
+        dataDirectory: URL,
+        isLibraryPersistent: Bool
     ) {
         self.settings = settings
         self.sourceStore = sourceStore
         self.cookieJar = cookieJar
         self.diagnostics = diagnostics
+        self.libraryStore = libraryStore
+        self.localSource = localSource
         self.dataDirectory = dataDirectory
+        self.isLibraryPersistent = isLibraryPersistent
     }
 
-    /// 按默认路径构建。任一步失败都退回到临时目录，保证 App 一定能启动。
+    /// 按默认路径构建。任一步失败都降级而非崩溃，保证 App 一定能启动。
     static func makeDefault() -> AppEnvironment {
         let fileManager = FileManager.default
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -55,16 +67,36 @@ final class AppEnvironment {
         let settings = AppSettings()
         let sourceStore = SourceStore(rootDirectory: root.appendingPathComponent("SourcesRoot", isDirectory: true))
         let cookieJar = CookieJar(storageURL: root.appendingPathComponent("cookies.json", isDirectory: false))
+        let localSource = LocalSource(rootDirectory: root.appendingPathComponent("LocalLibrary", isDirectory: true))
 
-        diag("AppEnvironment: 启动，数据目录 = \(root.path)")
+        // 书架：优先持久化；失败则降级为内存并明确告知 UI
+        var libraryStore: LibraryStoring
+        var isPersistent = true
+        do {
+            let database = try AppDatabase.open(
+                .file(root.appendingPathComponent("library.sqlite", isDirectory: false))
+            )
+            libraryStore = DatabaseLibraryStore(database: database)
+        } catch {
+            diag("AppEnvironment: 书架数据库不可用，降级为内存存储 —— \(error.localizedDescription)")
+            libraryStore = InMemoryLibraryStore()
+            isPersistent = false
+        }
+
+        diag("AppEnvironment: 启动，数据目录 = \(root.path)，书架持久化 = \(isPersistent)")
         return AppEnvironment(
             settings: settings,
             sourceStore: sourceStore,
             cookieJar: cookieJar,
             diagnostics: .shared,
-            dataDirectory: root
+            libraryStore: libraryStore,
+            localSource: localSource,
+            dataDirectory: root,
+            isLibraryPersistent: isPersistent
         )
     }
+
+    // MARK: 便捷访问
 
     /// 已在设置页与浏览页重复使用的「已安装源」快照。
     var installedSources: [InstalledSource] {
@@ -74,5 +106,29 @@ final class AppEnvironment {
     /// 已添加的源仓库（出厂为空）。
     var repositories: [String] {
         sourceStore.repositories
+    }
+
+    /// 文件系统里的本地作品（不依赖数据库）。
+    func localBooks() -> [Manga] {
+        (try? localSource.books()) ?? []
+    }
+
+    /// 加入书架。已存在时只更新作品信息，**不覆盖阅读进度**。
+    @discardableResult
+    func addToLibrary(_ manga: Manga, categoryID: String? = nil) -> LibraryEntry? {
+        if let existing = try? libraryStore.entry(mangaID: manga.id) {
+            var updated = existing
+            updated.manga = manga
+            try? libraryStore.save(updated)
+            return updated
+        }
+        let entry = LibraryEntry(manga: manga, categoryID: categoryID)
+        do {
+            try libraryStore.save(entry)
+            return entry
+        } catch {
+            diag("AppEnvironment: 加入书架失败 —— \(error.localizedDescription)")
+            return nil
+        }
     }
 }

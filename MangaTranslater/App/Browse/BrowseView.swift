@@ -36,8 +36,8 @@ struct BrowseView: View {
                 }
 
                 Section(L("browse.section.local")) {
-                    Button {
-                        showsComingSoon = true
+                    NavigationLink {
+                        LocalBooksView()
                     } label: {
                         Label(L("browse.section.local"), systemImage: "folder")
                     }
