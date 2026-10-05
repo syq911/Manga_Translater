@@ -32,20 +32,56 @@ def swift_files(root):
 
 
 def strip_literals_and_comments(text):
-    """返回 (去字面量后的文本, 括号计数)。"""
+    """
+    去掉字面量与注释，只保留「代码骨架」。
+
+    为什么需要状态机：Swift 的字符串插值 `"\\(expr)"` 里是**代码**，
+    而这段代码里又可以有字符串（例如
+    `output += " \\(key)=\\"\\(value.replacingOccurrences(of: "\\"", ...))\\""`）。
+    早先的实现把插值整体当字符串内容跳过，于是插值里那几个 `)` 被漏掉、
+    `)` 反而在代码模式下被多计，最终报出虚假的「圆括号不配平」。
+
+    现在用上下文栈处理：进入字符串压栈，遇到 `\\(` 视为进入代码上下文
+    （并把 `(` 计入，保证配平），遇到配对的 `)` 出栈回到字符串。
+    多行字符串（`\"\"\"`）整体跳过——它的括号不进不出，天然配平。
+    """
     out = []
     i = 0
     n = len(text)
+    # 上下文栈：("code", 本层括号深度) / ("string", 0)
+    # 记录深度是必要的：插值里可能还有函数调用（`\(foo(a))`），
+    # 只有当深度回到 0 时遇到的 `)` 才是「插值结束」。
+    stack = [("code", 0)]
+
     while i < n:
         ch = text[i]
         nxt = text[i + 1] if i + 1 < n else ""
+        mode = stack[-1][0]
 
-        # 行注释
+        # ---------- 字符串内部 ----------
+        if mode == "string":
+            if ch == "\\":
+                if nxt == "(":
+                    # 字符串插值：进入代码上下文，`(` 计入配平
+                    out.append("(")
+                    stack.append(("code", 0))
+                    i += 2
+                    continue
+                i += 2            # 普通转义
+                continue
+            if ch == '"':
+                stack.pop()
+                i += 1
+                continue
+            i += 1
+            continue
+
+        # ---------- 代码 ----------
         if ch == "/" and nxt == "/":
             while i < n and text[i] != "\n":
                 i += 1
             continue
-        # 块注释（Swift 支持嵌套）
+
         if ch == "/" and nxt == "*":
             depth = 1
             i += 2
@@ -60,29 +96,51 @@ def strip_literals_and_comments(text):
                     continue
                 i += 1
             continue
-        # 三引号字符串
+
         if text.startswith('"""', i):
             i += 3
             while i < n and not text.startswith('"""', i):
                 i += 1
             i += 3
             continue
-        # 普通字符串
-        if ch == '"':
-            i += 1
-            while i < n:
-                if text[i] == "\\":
-                    i += 2
-                    continue
-                if text[i] == '"':
-                    i += 1
-                    break
-                if text[i] == "\n":
-                    break
-                i += 1
+
+        # raw string：`#"..."#` / `##"..."##`（内容里的反斜杠不转义，
+        # 因此正则里的 `[\[\(]` 这类字符不该被计入括号）。
+        raw_match = re.match(r'(#+)"', text[i:])
+        if raw_match:
+            closer = '"' + raw_match.group(1)
+            j = i + len(raw_match.group(0))
+            while j < n and not text.startswith(closer, j):
+                j += 1
+            i = min(j + len(closer), n)
             continue
+
+        if ch == '"':
+            stack.append(("string", 0))
+            i += 1
+            continue
+
+        if ch == "(":
+            current = stack[-1]
+            stack[-1] = (current[0], current[1] + 1)
+            out.append("(")
+            i += 1
+            continue
+
+        if ch == ")":
+            current = stack[-1]
+            if current[1] > 0:
+                # 本层还有未闭合的括号（如插值里的函数调用）
+                stack[-1] = (current[0], current[1] - 1)
+            elif len(stack) > 1:
+                stack.pop()       # 插值结束，回到字符串
+            out.append(")")
+            i += 1
+            continue
+
         out.append(ch)
         i += 1
+
     return "".join(out)
 
 

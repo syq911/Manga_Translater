@@ -194,6 +194,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   只允许 http/https，`http` 仅限本机；请求方法与体积在此收口
 - **`SourcePreferencesStoring`**：`UserDefaults` 版与内存版
 
+### ✨ 新增 / Added（M2 第二批：HTML 选择器引擎）
+
+- **HTML 解析器**（零依赖）：标签 / 属性（双引号、单引号、无引号、布尔）/
+  嵌套与自动闭合 / 不匹配结束标签忽略 / void 标签 / 注释与 DOCTYPE 跳过 /
+  script·style 原文 / 实体解码 / 空白折叠 / `outerHTML` 序列化
+- **CSS 选择器**：类型、`#id`、`.class`、属性（存在 / 相等 / 前缀 / 后缀 / 包含）、
+  通配 `*`、后代与直接子代组合子、多级链；结果按文档顺序去重；
+  非法选择器给出明确错误（空 / 悬空组合子 / 不完整属性）
+- **文本与 URL 工具**：实体解码（命名 + 数字）、空白折叠、转义、
+  `absolute`（四种相对地址）、`queryValue` / `settingQuery` / `host` / 反斜杠还原
+- 选择器支持在**元素子树内**继续查询（源提取列表项的常见写法）
+
 ### 📖 文档 / Docs
 
 - **`docs/source-api.md` 契约按实现细化**：补齐仓库/脚本校验的**精确规则表**
@@ -205,6 +217,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - 契约示例由**测试守护**：新增 `MangaTranslaterTests/SourceAPIDocTests.swift`
   逐项断言示例能过校验、方法齐全、元信息与文档表格一致；
   `tools/check_docs_sync.py` 保证文档与夹具**逐字一致**（预检第 4 项）。
+
+### 🧪 测试 / Tests（新增 60 个用例）
+
+- `HTMLParserTests`：四种属性写法、大小写规范化、嵌套、void 标签、自闭合、
+  多余结束标签、未闭合自动闭合、跨层级补闭合、注释/DOCTYPE、raw text、
+  非法尖括号、空输入、空白折叠、`outerHTML` 往返、`nodeID` 唯一性
+- `CSSSelectorTests`：四类简单选择器、两种组合子（含无空格 `a>b`）、
+  多级链、结果顺序与去重、子树范围、典型字段提取、五类非法输入、解析细节
+- `HTMLTextTests`：命名/数字实体与未知实体、解析期解码、空白折叠、转义、
+  URL 绝对化四种形式、查询参数读改、host、反斜杠还原
 
 ### 🧪 测试 / Tests（新增 27 个用例）
 
@@ -268,6 +290,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - 覆盖全部四个包的正常流程、异常分支与边界条件（空输入、超长文本、非法参数、
   网络超时、文件缺失 / 损坏、并发调用、资源清理与回滚）。
 - 13 个测试文件（含共享工具 `TestSupport.swift`）。
+
+### 🛠 工程工具 / Tooling
+
+- `check_swift_syntax.py` 的「去字面量」扫描器重写为**带上下文栈的状态机**：
+  早先它把字符串插值 `\(…)` 整体当字符串内容，导致插值里的括号漏计、
+  在复杂行上报出虚假的「圆括号不配平」；现在正确区分
+  「插值内的代码」与「插值内的字符串」，并记录括号深度以识别插值结束点。
+  同时补上 **raw string（`#"…"#`）** 的识别——正则里的 `[\[\(]` 不再被计入括号。
 
 ### 🛠 工程工具 / Tooling
 
