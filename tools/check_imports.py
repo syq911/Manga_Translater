@@ -174,6 +174,59 @@ def check_access_levels(problems):
             )
 
 
+def check_coregraphics_import(problems):
+    """
+    检查几何类型是否真的可用。
+
+    坑点（已实测踩过）：`CGSize` 等类型经 `Foundation` 就**可见**，
+    但 `.zero`、`Equatable` 一致性等成员定义在 **CoreGraphics** 模块里。
+    只 `import Foundation` 时会写出「类型存在却没有 .zero」的编译错误，
+    而这类错误在本地没有编译器时很难靠肉眼发现。
+
+    规则：
+    - 文件里出现 CG* 几何类型时，必须显式 import 能提供它们的模块；
+    - `Packages/` 下的文件只接受 `CoreGraphics`（包不依赖 UIKit）；
+    - App / 测试文件接受 `CoreGraphics`、`UIKit`、`SwiftUI`、`AppKit`。
+    """
+    geometry = re.compile(r"\b(CGSize|CGFloat|CGPoint|CGRect|CGVector|CGAffineTransform)\b")
+    package_providers = {"CoreGraphics"}
+    app_providers = {"CoreGraphics", "UIKit", "SwiftUI", "AppKit"}
+
+    for root in ("Packages", "MangaTranslater"):
+        for path in swift_files(root):
+            relative = os.path.relpath(path).replace("\\", "/")
+            raw = io.open(path, encoding="utf-8").read()
+            code = strip_comments(raw)
+            if not geometry.search(code):
+                continue
+            imports = set(
+                re.findall(r"^\s*(?:@testable\s+)?import\s+([A-Za-z_][A-Za-z0-9_]*)", raw, re.M)
+            )
+            if relative.startswith("Packages/"):
+                # 包内文件：只要用了几何类型就必须 CoreGraphics
+                if owning_package(relative) is None:
+                    continue
+                if not (imports & package_providers):
+                    problems.append(
+                        (
+                            relative,
+                            "使用了 CG* 几何类型但没有 `import CoreGraphics`"
+                            "（`.zero` / `Equatable` 等成员定义在该模块，"
+                            "只 import Foundation 会编译失败）",
+                            ["CoreGraphics"],
+                        )
+                    )
+            else:
+                if not (imports & app_providers):
+                    problems.append(
+                        (
+                            relative,
+                            "使用了 CG* 几何类型但没有 import CoreGraphics / UIKit / SwiftUI",
+                            ["CoreGraphics"],
+                        )
+                    )
+
+
 def main():
     problems = []
     scanned = 0
@@ -201,6 +254,7 @@ def main():
                 problems.append((relative, f"需要 import {module}", sorted(used)[:6]))
 
     check_access_levels(problems)
+    check_coregraphics_import(problems)
 
     print(f"扫描 Swift 文件：{scanned} 个")
     if problems:
@@ -215,7 +269,7 @@ def main():
             print(f"  {path}\n      → {reason}{detail}")
         return 1
 
-    print("✅ import 完整、跨模块访问权限正确")
+    print("✅ import 完整、跨模块访问权限正确、几何类型导入正确")
     return 0
 
 

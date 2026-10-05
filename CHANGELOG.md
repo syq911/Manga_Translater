@@ -44,6 +44,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 🔧 修复 / Fixed（M1 收尾）
 
+- **`AppCore` 缺 `import CoreGraphics`**：`CGSize`/`CGFloat` 经 Foundation 可见，
+  但 `.zero` 与 `Equatable` 一致性定义在 CoreGraphics 模块里，导致
+  「type 'CGSize' has no member 'zero'」与「ZoomState 不符合 Equatable」编译失败。
+  已加 import，并把该盲区固化为预检规则（见下）。
+
+
 - 本地文件列表在每个 cell 渲染时同步解析 ZIP 取章节数，文件多时会明显卡顿；
   改为在 `reload()` 时**一次算好**（并放到后台任务）。
 - 阅读器原来没有恢复「上次读到的页码」（只恢复了章节），进入时总从第 1 页开始；

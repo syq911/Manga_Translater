@@ -11,6 +11,7 @@
 
 import Testing
 import Foundation
+import CoreGraphics
 import AppCore
 
 @Suite("阅读器缩放状态")

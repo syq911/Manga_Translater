@@ -11,8 +11,14 @@
 //  坐标系约定：`scale` 是相对「已按比例适配容器后的尺寸」的倍数，
 //  因此 scale = 1 就是「完整显示整页」；`offset` 是相对容器的位移（点）。
 //
+//  注意：必须先 `import CoreGraphics`。`CGSize` 类型本身经 Foundation 可见，
+//  但 `.zero` 与 `Equatable` 一致性定义在 CoreGraphics 模块里 —— 不 import 时
+//  会报 "type 'CGSize' has no member 'zero'"。CoreGraphics 是纯几何基础库，
+//  不含 UI，仍满足「包可跑在无 UI 的测试环境」这一约束。
+//
 
 import Foundation
+import CoreGraphics
 
 public struct ZoomState: Equatable, Sendable {
 
