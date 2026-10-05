@@ -1,0 +1,455 @@
+//
+//  DatabaseLibraryStore.swift
+//  AppDatabase
+//
+//  书架持久化的 GRDB 实现。
+//
+//  **为什么用「查询列 + JSON payload」而不是逐列映射**：
+//  - 逐列映射需要读多列窄表（`row["a"]`、`row["b"]`…），对 GRDB 的取值 API
+//    形态依赖较重；本文件只使用最稳定的四个入口：
+//    `db.execute(sql:arguments:)`、`String.fetchOne/fetchAll`、`Int.fetchOne`
+//    以及自己的 JSON 编解码。接口面窄 = 不容易因库升级/取值歧义而产生编译问题。
+//  - 模型演进时（比如给 `Manga` 加字段）**不需要写迁移**：payload 里自然带上。
+//  - 仍然保留真正需要 SQL 能力的列（排序、筛选、置顶、清理），并建了索引。
+//
+//  一致性策略：payload 是**唯一事实来源**；查询列只是它的投影，任何写入都在
+//  同一个事务里同时更新两者，避免出现"列与 payload 不一致"的中间态。
+//
+
+import Foundation
+import GRDB
+import AppCore
+
+/// 表名与列名常量（迁移与实现共用，避免两处写错字符串）。
+enum LibraryTable {
+    static let entries = "library_entry"
+    static let history = "reading_history"
+}
+
+/// 书架条目表结构（供迁移引用）。
+struct LibraryEntryRecord {
+    static let tableName = LibraryTable.entries
+}
+
+/// 阅读历史表结构（供迁移引用）。
+struct ReadingHistoryRecord {
+    static let tableName = LibraryTable.history
+}
+
+/// 书架持久化实现。
+public final class DatabaseLibraryStore: LibraryStoring, @unchecked Sendable {
+
+    private let database: AppDatabase
+
+    public init(database: AppDatabase) {
+        self.database = database
+    }
+
+    // MARK: 书架
+
+    @discardableResult
+    public func save(_ entry: LibraryEntry) throws -> LibraryEntry {
+        let payload = try Self.encode(entry)
+        try database.queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO \(LibraryTable.entries)
+                    (manga_id, source_id, title, added_at, last_read_at, is_pinned, category_id, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(manga_id) DO UPDATE SET
+                    source_id = excluded.source_id,
+                    title = excluded.title,
+                    last_read_at = excluded.last_read_at,
+                    is_pinned = excluded.is_pinned,
+                    category_id = excluded.category_id,
+                    payload = excluded.payload
+                """,
+                arguments: [
+                    entry.id,
+                    entry.manga.sourceID.rawValue,
+                    entry.manga.title,
+                    entry.addedAt.timeIntervalSince1970,
+                    entry.lastReadAt?.timeIntervalSince1970,
+                    entry.isPinned,
+                    entry.categoryID,
+                    payload,
+                ]
+            )
+        }
+        return entry
+    }
+
+    public func entry(mangaID: String) throws -> LibraryEntry? {
+        let payload: String? = try database.queue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT payload FROM \(LibraryTable.entries) WHERE manga_id = ?",
+                arguments: [mangaID]
+            )
+        }
+        guard let payload else { return nil }
+        return try Self.decodeEntry(payload)
+    }
+
+    public func entries(sortedBy order: LibrarySortOrder, categoryID: String?) throws -> [LibraryEntry] {
+        var sql = "SELECT payload FROM \(LibraryTable.entries)"
+        if categoryID != nil {
+            sql += " WHERE category_id = ?"
+        }
+
+        // 置顶始终优先，其余按所选字段排序
+        switch order {
+        case .lastRead:
+            sql += " ORDER BY is_pinned DESC, (last_read_at IS NULL) ASC, last_read_at DESC, added_at DESC"
+        case .title:
+            sql += " ORDER BY is_pinned DESC, title COLLATE NOCASE ASC, added_at DESC"
+        case .recentlyAdded:
+            sql += " ORDER BY is_pinned DESC, added_at DESC"
+        }
+
+        let payloads: [String] = try database.queue.read { db in
+            if let categoryID {
+                return try String.fetchAll(db, sql: sql, arguments: [categoryID])
+            }
+            return try String.fetchAll(db, sql: sql)
+        }
+        return try payloads.map(Self.decodeEntry)
+    }
+
+    public func contains(mangaID: String) throws -> Bool {
+        try database.queue.read { db in
+            let count = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM \(LibraryTable.entries) WHERE manga_id = ?",
+                arguments: [mangaID]
+            )
+            return (count ?? 0) > 0
+        }
+    }
+
+    public func count() throws -> Int {
+        try database.queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(LibraryTable.entries)") ?? 0
+        }
+    }
+
+    @discardableResult
+    public func remove(mangaID: String) throws -> Bool {
+        try database.queue.write { db in
+            let existed = (try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM \(LibraryTable.entries) WHERE manga_id = ?",
+                arguments: [mangaID]
+            ) ?? 0) > 0
+            guard existed else { return false }
+
+            try db.execute(
+                sql: "DELETE FROM \(LibraryTable.entries) WHERE manga_id = ?",
+                arguments: [mangaID]
+            )
+            // 条目删除时连带清理它的历史，避免孤儿数据
+            try db.execute(
+                sql: "DELETE FROM \(LibraryTable.history) WHERE manga_id = ?",
+                arguments: [mangaID]
+            )
+            return true
+        }
+    }
+
+    @discardableResult
+    public func removeAll() throws -> Int {
+        try database.queue.write { db in
+            let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(LibraryTable.entries)") ?? 0
+            try db.execute(sql: "DELETE FROM \(LibraryTable.entries)")
+            try db.execute(sql: "DELETE FROM \(LibraryTable.history)")
+            return count
+        }
+    }
+
+    // MARK: 阅读进度
+
+    public func updateProgress(
+        mangaID: String,
+        chapterID: String,
+        chapterName: String,
+        pageIndex: Int,
+        at date: Date
+    ) throws {
+        guard pageIndex >= 0 else { throw LibraryStoreError.invalidPageIndex(pageIndex) }
+
+        try database.queue.write { db in
+            let payload: String? = try String.fetchOne(
+                db,
+                sql: "SELECT payload FROM \(LibraryTable.entries) WHERE manga_id = ?",
+                arguments: [mangaID]
+            )
+            guard let payload else { throw LibraryStoreError.entryNotFound(mangaID) }
+
+            var entry = try Self.decodeEntry(payload)
+            entry.lastReadChapterID = chapterID
+            entry.lastReadPageIndex = pageIndex
+            entry.lastReadAt = date
+
+            try db.execute(
+                sql: """
+                UPDATE \(LibraryTable.entries)
+                   SET payload = ?, last_read_at = ?, category_id = ?, is_pinned = ?
+                 WHERE manga_id = ?
+                """,
+                arguments: [
+                    try Self.encode(entry),
+                    date.timeIntervalSince1970,
+                    entry.categoryID,
+                    entry.isPinned,
+                    mangaID,
+                ]
+            )
+
+            try Self.upsertHistory(
+                db: db,
+                mangaID: mangaID,
+                chapterID: chapterID,
+                chapterName: chapterName,
+                pageIndex: pageIndex,
+                date: date
+            )
+        }
+    }
+
+    // MARK: 组织
+
+    public func setPinned(mangaID: String, isPinned: Bool) throws {
+        try mutateEntry(mangaID: mangaID) { $0.isPinned = isPinned }
+    }
+
+    public func setCategory(mangaID: String, categoryID: String?) throws {
+        try mutateEntry(mangaID: mangaID) { $0.categoryID = categoryID }
+    }
+
+    public func setUnreadCount(mangaID: String, count: Int) throws {
+        try mutateEntry(mangaID: mangaID) { $0.unreadCount = max(0, count) }
+    }
+
+    public func categories() throws -> [String] {
+        try database.queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: """
+                SELECT DISTINCT category_id FROM \(LibraryTable.entries)
+                 WHERE category_id IS NOT NULL AND category_id <> ''
+                 ORDER BY category_id COLLATE NOCASE
+                """
+            )
+        }
+    }
+
+    // MARK: 阅读历史
+
+    public func recordHistory(
+        mangaID: String,
+        chapterID: String,
+        chapterName: String,
+        pageIndex: Int,
+        at date: Date
+    ) throws {
+        guard pageIndex >= 0 else { throw LibraryStoreError.invalidPageIndex(pageIndex) }
+        try database.queue.write { db in
+            try Self.upsertHistory(
+                db: db,
+                mangaID: mangaID,
+                chapterID: chapterID,
+                chapterName: chapterName,
+                pageIndex: pageIndex,
+                date: date
+            )
+        }
+    }
+
+    public func recentHistory(limit: Int) throws -> [ReadingHistoryEntry] {
+        guard limit > 0 else { throw LibraryStoreError.invalidLimit(limit) }
+        let payloads: [String] = try database.queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT payload FROM \(LibraryTable.history) ORDER BY read_at DESC LIMIT ?",
+                arguments: [limit]
+            )
+        }
+        return try payloads.map(Self.decodeHistory)
+    }
+
+    public func history(mangaID: String) throws -> [ReadingHistoryEntry] {
+        let payloads: [String] = try database.queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: """
+                SELECT payload FROM \(LibraryTable.history)
+                 WHERE manga_id = ? ORDER BY read_at DESC
+                """,
+                arguments: [mangaID]
+            )
+        }
+        return try payloads.map(Self.decodeHistory)
+    }
+
+    @discardableResult
+    public func removeHistory(mangaID: String, chapterID: String) throws -> Bool {
+        let id = ReadingHistoryEntry.makeID(mangaID: mangaID, chapterID: chapterID)
+        return try database.queue.write { db in
+            let existed = (try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM \(LibraryTable.history) WHERE id = ?",
+                arguments: [id]
+            ) ?? 0) > 0
+            guard existed else { return false }
+            try db.execute(sql: "DELETE FROM \(LibraryTable.history) WHERE id = ?", arguments: [id])
+            return true
+        }
+    }
+
+    @discardableResult
+    public func clearHistory() throws -> Int {
+        try database.queue.write { db in
+            let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(LibraryTable.history)") ?? 0
+            try db.execute(sql: "DELETE FROM \(LibraryTable.history)")
+            return count
+        }
+    }
+
+    @discardableResult
+    public func pruneHistory(keep: Int) throws -> Int {
+        guard keep >= 0 else { throw LibraryStoreError.invalidLimit(keep) }
+        return try database.queue.write { db in
+            let total = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(LibraryTable.history)") ?? 0
+            guard total > keep else { return 0 }
+
+            try db.execute(
+                sql: """
+                DELETE FROM \(LibraryTable.history) WHERE id NOT IN (
+                    SELECT id FROM \(LibraryTable.history) ORDER BY read_at DESC LIMIT ?
+                )
+                """,
+                arguments: [keep]
+            )
+            return total - keep
+        }
+    }
+
+    // MARK: 内部
+
+    /// 读出条目、就地修改、写回（payload 与投影列同一个 UPDATE）。
+    private func mutateEntry(mangaID: String, _ mutate: (inout LibraryEntry) -> Void) throws {
+        try database.queue.write { db in
+            let payload: String? = try String.fetchOne(
+                db,
+                sql: "SELECT payload FROM \(LibraryTable.entries) WHERE manga_id = ?",
+                arguments: [mangaID]
+            )
+            guard let payload else { throw LibraryStoreError.entryNotFound(mangaID) }
+
+            var entry = try Self.decodeEntry(payload)
+            mutate(&entry)
+
+            try db.execute(
+                sql: """
+                UPDATE \(LibraryTable.entries)
+                   SET payload = ?, title = ?, last_read_at = ?, is_pinned = ?, category_id = ?
+                 WHERE manga_id = ?
+                """,
+                arguments: [
+                    try Self.encode(entry),
+                    entry.manga.title,
+                    entry.lastReadAt?.timeIntervalSince1970,
+                    entry.isPinned,
+                    entry.categoryID,
+                    mangaID,
+                ]
+            )
+        }
+    }
+
+    private static func upsertHistory(
+        db: Database,
+        mangaID: String,
+        chapterID: String,
+        chapterName: String,
+        pageIndex: Int,
+        date: Date
+    ) throws {
+        let entry = ReadingHistoryEntry(
+            mangaID: mangaID,
+            chapterID: chapterID,
+            chapterName: chapterName,
+            pageIndex: pageIndex,
+            readAt: date
+        )
+        let payload = try encodeHistory(entry)
+
+        try db.execute(
+            sql: """
+            INSERT INTO \(LibraryTable.history)
+                (id, manga_id, chapter_id, chapter_name, page_index, read_at, payload)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                chapter_name = excluded.chapter_name,
+                page_index = excluded.page_index,
+                read_at = excluded.read_at,
+                payload = excluded.payload
+            """,
+            arguments: [
+                entry.id,
+                mangaID,
+                chapterID,
+                chapterName,
+                max(0, pageIndex),
+                date.timeIntervalSince1970,
+                payload,
+            ]
+        )
+    }
+
+    // MARK: 编解码
+
+    static func encode(_ entry: LibraryEntry) throws -> String {
+        do {
+            let data = try JSONEncoder().encode(entry)
+            guard let text = String(data: data, encoding: .utf8) else {
+                throw LibraryStoreError.corruptRow(reason: "条目 JSON 无法转为 UTF-8")
+            }
+            return text
+        } catch let error as LibraryStoreError {
+            throw error
+        } catch {
+            throw LibraryStoreError.corruptRow(reason: "条目编码失败：\(error.localizedDescription)")
+        }
+    }
+
+    static func decodeEntry(_ payload: String) throws -> LibraryEntry {
+        do {
+            return try JSONDecoder().decode(LibraryEntry.self, from: Data(payload.utf8))
+        } catch {
+            throw LibraryStoreError.corruptRow(reason: "条目解码失败：\(error.localizedDescription)")
+        }
+    }
+
+    static func encodeHistory(_ entry: ReadingHistoryEntry) throws -> String {
+        do {
+            let data = try JSONEncoder().encode(entry)
+            guard let text = String(data: data, encoding: .utf8) else {
+                throw LibraryStoreError.corruptRow(reason: "历史 JSON 无法转为 UTF-8")
+            }
+            return text
+        } catch let error as LibraryStoreError {
+            throw error
+        } catch {
+            throw LibraryStoreError.corruptRow(reason: "历史编码失败：\(error.localizedDescription)")
+        }
+    }
+
+    static func decodeHistory(_ payload: String) throws -> ReadingHistoryEntry {
+        do {
+            return try JSONDecoder().decode(ReadingHistoryEntry.self, from: Data(payload.utf8))
+        } catch {
+            throw LibraryStoreError.corruptRow(reason: "历史解码失败：\(error.localizedDescription)")
+        }
+    }
+}

@@ -230,6 +230,8 @@ public struct LibraryEntry: Identifiable, Hashable, Codable, Sendable {
     public var categoryID: String?
     public var lastReadChapterID: String?
     public var lastReadPageIndex: Int?
+    /// 最近一次阅读时间（用于「最近阅读」排序；从未阅读为 nil）。
+    public var lastReadAt: Date?
     public var unreadCount: Int
     public var isPinned: Bool
 
@@ -239,6 +241,7 @@ public struct LibraryEntry: Identifiable, Hashable, Codable, Sendable {
         categoryID: String? = nil,
         lastReadChapterID: String? = nil,
         lastReadPageIndex: Int? = nil,
+        lastReadAt: Date? = nil,
         unreadCount: Int = 0,
         isPinned: Bool = false
     ) {
@@ -247,6 +250,7 @@ public struct LibraryEntry: Identifiable, Hashable, Codable, Sendable {
         self.categoryID = categoryID
         self.lastReadChapterID = lastReadChapterID
         self.lastReadPageIndex = lastReadPageIndex
+        self.lastReadAt = lastReadAt
         self.unreadCount = unreadCount
         self.isPinned = isPinned
     }

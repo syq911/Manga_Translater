@@ -32,7 +32,10 @@
 
 ## 4. 命名与组织
 
-- 一个模块一个文件：`ModelTests.swift`、`CookieJarTests.swift`……
+- 一个模块一个文件：`ModelTests.swift`、`CookieJarTests.swift`、`LibraryStoreTests.swift`……
+- **外部实现的夹具优先**：验证 ZIP deflate 解压时，夹具由 Python `zipfile` 生成并
+  base64 内联（`ZipDeflateTests.swift`）——用自己的编码器造夹具验证自己的解码器
+  是自证循环，独立实现才有意义。
 - 套件名用中文短语描述被测对象：`@Suite("Cookie 存储")`。
 - 用例名描述**行为**而非实现：`@Test("未确认年龄时无法开启 NSFW 源")`。
 - 参数化用例优先用 `arguments:` 覆盖同类分支。

@@ -52,6 +52,23 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   改为显式驱动 `processPending()` + `Task.detached` 的 `start()`，
   取消改为协作式（页边界生效），并把测试改为确定性推进。
 
+### ✨ 新增 / Added（M1 第一段）
+
+- **`Packages/AppDatabase`（新包，GRDB/SQLite）**：书架持久层
+  - `LibraryStoring` 协议 + `DatabaseLibraryStore` 实现：条目 upsert/读取/移除、
+    三种排序（最近阅读/标题/最近加入，置顶恒优先、未读最后）、分类筛选与列举、
+    置顶、未读数（负数归零）、删除条目连带清理历史
+  - 阅读进度：`updateProgress` 原子更新条目 + 写历史（同章节覆盖，不新增）
+  - 阅读历史：倒序查询、按作品查询、删单条、清空、`pruneHistory(keep:)`
+  - 迁移：`Migrations.initial`（v1 schema + 5 个索引），打开时自动执行，可查询已应用迁移
+  - 设计：**查询列 + JSON payload**（payload 是唯一事实来源，加字段无需迁移）
+  - GRDB 作为**本地包的远程依赖**引入（`from: 7.11.0`），工程文件仍只登记本地包
+- **CBZ 读能力（ComicDownload）**：`ZipArchiveReader` 新增 **deflate（方法 8）解压**
+  - 用系统 `Compression` 框架（`COMPRESSION_ZLIB` = 裸 DEFLATE），零第三方依赖
+  - 正确区分「压缩后大小」（切片）与「解压后大小」（校验），CRC 校验在解压后数据上
+  - `ZipEntryInfo` 新增 `compressedSize` / `compressionMethod` / `isCompressed`
+  - 为什么必须做：真实世界的 CBZ 绝大多数是 deflate 压缩，只支持 store 等于读不了别人的文件
+
 ### 📖 文档 / Docs
 
 - **`docs/source-api.md` 契约按实现细化**：补齐仓库/脚本校验的**精确规则表**
@@ -63,6 +80,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - 契约示例由**测试守护**：新增 `MangaTranslaterTests/SourceAPIDocTests.swift`
   逐项断言示例能过校验、方法齐全、元信息与文档表格一致；
   `tools/check_docs_sync.py` 保证文档与夹具**逐字一致**（预检第 4 项）。
+
+### 🧪 测试 / Tests（新增 30 个用例）
+
+- `LibraryStoreTests.swift`：CRUD、upsert、三种排序与置顶、分类筛选、
+  进度与历史一致性、历史覆盖/裁剪/清空、非法参数（负页码 / 非法 limit）、
+  对不存在条目的原子性（失败不留痕）、500 条批量、并发读写、落盘重启后仍在、
+  重复打开不重复迁移、损坏 payload 报 `corruptRow` 而非崩溃
+- `ZipDeflateTests.swift`：deflate 条目读取、store/deflate 混合归档、空内容、
+  CRC 由外部实现写入的逐字节校验、不支持的方法被拒、声明尺寸不符、
+  压缩流被破坏、缺失条目
 
 ### 🧪 测试 / Tests
 

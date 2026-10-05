@@ -11,6 +11,7 @@
 		ABCDEF000000000000000072 /* ComicNet in Frameworks */ = {isa = PBXBuildFile; productRef = ABCDEF000000000000000062 /* ComicNet */; };
 		ABCDEF000000000000000073 /* SourceEngine in Frameworks */ = {isa = PBXBuildFile; productRef = ABCDEF000000000000000063 /* SourceEngine */; };
 		ABCDEF000000000000000074 /* ComicDownload in Frameworks */ = {isa = PBXBuildFile; productRef = ABCDEF000000000000000064 /* ComicDownload */; };
+		ABCDEF000000000000000075 /* AppDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = ABCDEF000000000000000065 /* AppDatabase */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,6 +37,8 @@
 				"MangaTranslaterTests/AppSettingsTests.swift",
 				"MangaTranslaterTests/TestSupport.swift",
 				"MangaTranslaterTests/SourceAPIDocTests.swift",
+				"MangaTranslaterTests/LibraryStoreTests.swift",
+				"MangaTranslaterTests/ZipDeflateTests.swift",
 				"MangaTranslaterTests/DiagnosticsTests.swift",
 				"MangaTranslaterTests/ModelTests.swift",
 				"MangaTranslaterTests/CookieJarTests.swift",
@@ -56,6 +59,8 @@
 				"MangaTranslaterTests/AppSettingsTests.swift",
 				"MangaTranslaterTests/TestSupport.swift",
 				"MangaTranslaterTests/SourceAPIDocTests.swift",
+				"MangaTranslaterTests/LibraryStoreTests.swift",
+				"MangaTranslaterTests/ZipDeflateTests.swift",
 				"MangaTranslaterTests/DiagnosticsTests.swift",
 				"MangaTranslaterTests/ModelTests.swift",
 				"MangaTranslaterTests/CookieJarTests.swift",
@@ -90,6 +95,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				ABCDEF000000000000000074 /* ComicDownload in Frameworks */,
+				ABCDEF000000000000000075 /* AppDatabase in Frameworks */,
 				ABCDEF000000000000000073 /* SourceEngine in Frameworks */,
 				ABCDEF000000000000000072 /* ComicNet in Frameworks */,
 				ABCDEF000000000000000071 /* AppCore in Frameworks */,
@@ -147,6 +153,7 @@
 				ABCDEF000000000000000062 /* ComicNet */,
 				ABCDEF000000000000000063 /* SourceEngine */,
 				ABCDEF000000000000000064 /* ComicDownload */,
+				ABCDEF000000000000000065 /* AppDatabase */,
 			);
 			productName = MangaTranslater;
 			productReference = ABCDEF000000000000000011 /* MangaTranslater.app */;
@@ -206,6 +213,7 @@
 				ABCDEF000000000000000052 /* XCLocalSwiftPackageReference "Packages/ComicNet" */,
 				ABCDEF000000000000000053 /* XCLocalSwiftPackageReference "Packages/SourceEngine" */,
 				ABCDEF000000000000000054 /* XCLocalSwiftPackageReference "Packages/ComicDownload" */,
+				ABCDEF000000000000000055 /* XCLocalSwiftPackageReference "Packages/AppDatabase" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = ABCDEF000000000000000003 /* Products */;
@@ -532,6 +540,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/ComicDownload;
 		};
+		ABCDEF000000000000000055 /* XCLocalSwiftPackageReference "Packages/AppDatabase" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/AppDatabase;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -554,6 +566,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = ABCDEF000000000000000054 /* XCLocalSwiftPackageReference "Packages/ComicDownload" */;
 			productName = ComicDownload;
+		};
+		ABCDEF000000000000000065 /* AppDatabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ABCDEF000000000000000055 /* XCLocalSwiftPackageReference "Packages/AppDatabase" */;
+			productName = AppDatabase;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

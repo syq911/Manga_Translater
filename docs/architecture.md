@@ -15,12 +15,17 @@ MangaTranslater 是一个**通用漫画阅读器**：不自带任何在线源，
 
 ```
 App（SwiftUI，MangaTranslater target）
- ├─ ComicDownload   下载队列 / CBZ 打包
+ ├─ AppDatabase     书架持久化（GRDB / SQLite）  ── 远程依赖 GRDB
+ ├─ ComicDownload   下载队列 / CBZ 打包 / ZIP 读写（store + deflate）
  ├─ SourceEngine    源脚本校验 / 仓库索引 / 仓库管理 / 运行时契约
  ├─ ComicNet        HTTP 客户端 / CookieJar / 节流器
  └─ AppCore         数据模型 / 设置 / 错误 / 诊断日志
-        ↑ ComicNet、SourceEngine、ComicDownload 都依赖 AppCore
+        ↑ 其余四个包都依赖 AppCore
 ```
+
+> **GRDB 为什么放在本地包的依赖里**：工程文件只登记本地包（该引用格式已被 CI 反复验证），
+> 远程依赖由 `Packages/AppDatabase/Package.swift` 声明后由 SwiftPM 传递解析，
+> 避免在 `project.pbxproj` 里手工新增 `XCRemoteSwiftPackageReference`（多一类失败面）。
 
 | 模块 | 职责 | 依赖 | 是否依赖 UI 框架 |
 |---|---|---|---|
@@ -28,6 +33,7 @@ App（SwiftUI，MangaTranslater target）
 | `ComicNet` | `HTTPClient`（重试 / 超时 / 大小保护）、`CookieJar`（按来源隔离）、`RateLimiter` | AppCore | 否 |
 | `SourceEngine` | `SourceScriptValidator`、`SourceIndexParser`、`SourceStore`、`SourceAPIContract`、`SourceRuntimeExecuting` | AppCore、ComicNet | 否 |
 | `ComicDownload` | `DownloadQueue`（actor）、`PageFetching`/`PageStoring`、`ZipArchiveWriter/Reader`、`CbzExporter` | AppCore、ComicNet | 否 |
+| `AppDatabase` | `LibraryStoring` 协议 + `DatabaseLibraryStore`（GRDB）：书架条目、阅读进度、阅读历史、分类、置顶、迁移 | AppCore、GRDB | 否 |
 | App target | 四 Tab UI、`AppEnvironment`、本地化、后续接入阅读器与翻译 | 全部四包 | 是（SwiftUI） |
 
 ## 3. 关键设计决策
@@ -59,6 +65,21 @@ App（SwiftUI，MangaTranslater target）
 - 安装源：临时文件 → 备份旧版本 → 就位 → 写元数据 → 删备份；任一步失败都恢复原状。
 - 下载：任务失败或取消时清理已落盘的页，不留半成品。
 - Cookie：持久化用原子写；损坏文件备份为 `.corrupt` 后重置，绝不阻塞启动。
+
+### 3.5 书架持久化：查询列 + JSON payload（0.2.0 起）
+
+`DatabaseLibraryStore` 用「**一列 payload（完整模型 JSON）+ 若干投影列**」存书架：
+
+- payload 是**唯一事实来源**；投影列（`title` / `added_at` / `last_read_at` /
+  `is_pinned` / `category_id` / `source_id`）只为排序、筛选、置顶服务，并建了索引；
+- 两者在**同一个事务**里更新（`mutateEntry` / `updateProgress`），不会出现
+  "列与 payload 不一致"的中间态；
+- 好处：给 `Manga` 加字段**不需要写迁移**；读路径只依赖
+  `String.fetchOne/fetchAll` + `Int.fetchOne` + 自己的 JSON 编解码——对外部库的
+  API 依赖面窄，不容易因库升级产生编译问题。
+
+失败必须无痕：`updateProgress` 对不存在的条目抛 `entryNotFound` 时，
+不应写入任何历史（有专门用例断言）。
 
 ### 3.5 队列由调用方驱动（0.2.0 起）
 
@@ -101,7 +122,7 @@ MangaTranslater/
 
 | 依赖 | 用途 | 许可证 | 状态 |
 |---|---|---|---|
-| GRDB.swift | 本地数据库（书架 / 历史 / 下载） | MIT | 计划于 M1 引入 |
+| GRDB.swift | 本地数据库（书架 / 历史 / 下载） | MIT | **已引入**（`Packages/AppDatabase`，`from: 7.11.0`） |
 | SwiftSoup | 源脚本 HTML 解析桥 | MIT | 计划于 M2 引入 |
 
 引入新依赖前请同步更新本表、`NOTICE` 与 `README`。

@@ -2,17 +2,21 @@
 //  ZipArchive.swift
 //  ComicDownload
 //
-//  最小 ZIP 读写实现（仅「存储 / store，无压缩」模式）。
+//  ZIP 读写实现。
 //
-//  为什么自己写而不是引第三方：CBZ 本质就是 ZIP，漫画页图（JPEG/PNG）
-//  本身已压缩，再 deflate 收益很小；用 store 模式可以做到
-//  零第三方依赖、字节级可预测、完全离线可测。
+//  读：支持 store（方法 0）与 **deflate（方法 8）** 两种条目 ——
+//  真实世界的 CBZ 绝大多数用 deflate 压缩，只支持 store 等于读不了别人的文件。
+//  deflate 用系统 `Compression` 框架（`COMPRESSION_ZLIB` 即裸 DEFLATE），
+//  零第三方依赖。
 //
-//  兼容性：写出标准本地头 + 中央目录 + EOCD，文件名统一打 UTF-8 标志位，
-//  主流阅读器（含 iOS「文件」App、各家漫画阅读器）均可正常打开。
+//  写：只写 store（方法 0）。漫画页图（JPEG/PNG）本身已压缩，再 deflate 收益很小；
+//  store 模式字节级可预测、易于测试，且所有阅读器都能打开。
+//
+//  兼容性：写出标准本地头 + 中央目录 + EOCD，文件名统一打 UTF-8 标志位。
 //
 
 import Foundation
+import Compression
 
 /// ZIP 相关错误。
 public enum ZipArchiveError: Error, Equatable {
@@ -50,8 +54,69 @@ extension ZipArchiveError: LocalizedError {
 /// 条目元信息。
 public struct ZipEntryInfo: Equatable, Sendable {
     public let name: String
+    /// 解压后的原始大小。
     public let uncompressedSize: Int
+    /// 归档内的压缩后大小（store 时与 `uncompressedSize` 相同）。
+    public let compressedSize: Int
     public let crc32: UInt32
+    /// 压缩方式：0 = store，8 = deflate。
+    public let compressionMethod: UInt16
+
+    public init(
+        name: String,
+        uncompressedSize: Int,
+        compressedSize: Int? = nil,
+        crc32: UInt32,
+        compressionMethod: UInt16 = 0
+    ) {
+        self.name = name
+        self.uncompressedSize = uncompressedSize
+        self.compressedSize = compressedSize ?? uncompressedSize
+        self.crc32 = crc32
+        self.compressionMethod = compressionMethod
+    }
+
+    /// 是否为压缩存储。
+    public var isCompressed: Bool { compressionMethod != 0 }
+}
+
+// MARK: - DEFLATE 解压
+
+/// 裸 DEFLATE 解压（ZIP 方法 8）。
+enum Deflate {
+    /// 解压。
+    /// - Parameters:
+    ///   - payload: 压缩数据（不含 zlib 头尾，ZIP 就是裸流）。
+    ///   - expectedSize: 中央目录声明的解压后大小。
+    ///   - entryName: 仅用于错误信息。
+    /// - Throws: `ZipArchiveError.corruptEntry`——解压失败或结果大小与声明不符。
+    static func inflate(_ payload: Data, expectedSize: Int, entryName: String) throws -> Data {
+        guard expectedSize > 0 else { return Data() }
+        guard !payload.isEmpty else { throw ZipArchiveError.corruptEntry(entryName) }
+
+        var destination = Data(count: expectedSize)
+        let written = destination.withUnsafeMutableBytes { destinationBuffer -> Int in
+            payload.withUnsafeBytes { sourceBuffer -> Int in
+                guard let destinationPointer = destinationBuffer.bindMemory(to: UInt8.self).baseAddress,
+                      let sourcePointer = sourceBuffer.bindMemory(to: UInt8.self).baseAddress else {
+                    return 0
+                }
+                return compression_decode_buffer(
+                    destinationPointer,
+                    expectedSize,
+                    sourcePointer,
+                    payload.count,
+                    nil,
+                    COMPRESSION_ZLIB
+                )
+            }
+        }
+
+        guard written == expectedSize else {
+            throw ZipArchiveError.corruptEntry(entryName)
+        }
+        return destination
+    }
 }
 
 // MARK: - 写入
@@ -219,14 +284,16 @@ public struct ZipArchiveReader {
     private struct CentralEntry {
         let name: String
         let crc: UInt32
-        let size: Int
+        /// 解压后大小（中央目录偏移 +24）。
+        let uncompressedSize: Int
+        /// 压缩后大小（中央目录偏移 +20）。
+        let compressedSize: Int
         let localHeaderOffset: Int
         let compression: UInt16
     }
 
     private let data: Data
     private let centralEntries: [CentralEntry]
-    private let dataStartOffset: Int
 
     /// 解析归档。
     /// - Throws: `ZipArchiveError`
@@ -259,7 +326,8 @@ public struct ZipArchiveReader {
             }
             let compression = data.readUInt16(at: cursor + 10)
             let crc = data.readUInt32(at: cursor + 16)
-            let size = Int(data.readUInt32(at: cursor + 24))
+            let compressedSize = Int(data.readUInt32(at: cursor + 20))
+            let uncompressedSize = Int(data.readUInt32(at: cursor + 24))
             let nameLength = Int(data.readUInt16(at: cursor + 28))
             let extraLength = Int(data.readUInt16(at: cursor + 30))
             let commentLength = Int(data.readUInt16(at: cursor + 32))
@@ -275,7 +343,8 @@ public struct ZipArchiveReader {
                 CentralEntry(
                     name: name,
                     crc: crc,
-                    size: size,
+                    uncompressedSize: uncompressedSize,
+                    compressedSize: compressedSize,
                     localHeaderOffset: localOffset,
                     compression: compression
                 )
@@ -284,25 +353,29 @@ public struct ZipArchiveReader {
         }
 
         self.centralEntries = entries
-        self.dataStartOffset = 0
     }
 
     /// 全部条目元信息。
     public var entries: [ZipEntryInfo] {
-        centralEntries.map { ZipEntryInfo(name: $0.name, uncompressedSize: $0.size, crc32: $0.crc) }
+        centralEntries.map {
+            ZipEntryInfo(
+                name: $0.name,
+                uncompressedSize: $0.uncompressedSize,
+                compressedSize: $0.compressedSize,
+                crc32: $0.crc,
+                compressionMethod: $0.compression
+            )
+        }
     }
 
     /// 条目名列表（保持归档内顺序）。
     public var entryNames: [String] { centralEntries.map(\.name) }
 
-    /// 读取指定条目的数据。
+    /// 读取指定条目的数据（store 与 deflate 都支持）。
     /// - Throws: `ZipArchiveError.entryNotFound` / `.unsupportedCompression` / `.corruptEntry`
     public func data(for name: String) throws -> Data {
         guard let entry = centralEntries.first(where: { $0.name == name }) else {
             throw ZipArchiveError.entryNotFound(name)
-        }
-        guard entry.compression == 0 else {
-            throw ZipArchiveError.unsupportedCompression(entry.compression)
         }
 
         // 本地头：30 字节固定 + 名称长度 + 扩展长度
@@ -315,9 +388,26 @@ public struct ZipArchiveReader {
         let nameLength = Int(data.readUInt16(at: local + 26))
         let extraLength = Int(data.readUInt16(at: local + 28))
         let start = local + 30 + nameLength + extraLength
-        guard start + entry.size <= data.count else { throw ZipArchiveError.dataTruncated }
 
-        let payload = data.subdata(in: start..<(start + entry.size))
+        // store 时压缩大小与原始大小相同；deflate 时必须用压缩大小切片
+        let sliceLength = entry.compression == 0 ? entry.uncompressedSize : entry.compressedSize
+        guard start + sliceLength <= data.count else { throw ZipArchiveError.dataTruncated }
+        let raw = data.subdata(in: start..<(start + sliceLength))
+
+        let payload: Data
+        switch entry.compression {
+        case 0:
+            payload = raw
+        case 8:
+            payload = try Deflate.inflate(raw, expectedSize: entry.uncompressedSize, entryName: name)
+        default:
+            throw ZipArchiveError.unsupportedCompression(entry.compression)
+        }
+
+        guard payload.count == entry.uncompressedSize else {
+            throw ZipArchiveError.corruptEntry(name)
+        }
+        // CRC 校验的是**解压后**的数据（ZIP 规范语义）
         guard Crc32.checksum(payload) == entry.crc else {
             throw ZipArchiveError.corruptEntry(name)
         }
