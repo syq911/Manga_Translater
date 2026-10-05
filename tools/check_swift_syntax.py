@@ -160,12 +160,77 @@ def check_codable_consistency(files):
     return problems
 
 
+def check_multiline_string_indentation(path):
+    """
+    多行字符串字面量的缩进规则：Swift 要求结束定界符之前的**每一行**
+    缩进不少于结束定界符本身，否则编译报
+    "Insufficient indentation of line in multi-line string literal"。
+
+    动机：CI 上曾因生成器把首行写在 0 缩进而失败，白跑一轮。
+    注释行先跳过，避免文档注释里的 `\"\"\"` 干扰判定。
+    """
+    problems = []
+    raw = io.open(path, encoding="utf-8").read()
+    lines = raw.split("\n")
+
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        if stripped.startswith("//") or stripped.startswith("*") or stripped.startswith("/*"):
+            index += 1
+            continue
+
+        marker = line.find('"""')
+        if marker == -1:
+            index += 1
+            continue
+
+        # 单行字面量（同行还有一组 """）直接跳过
+        if '"""' in line[marker + 3:]:
+            index += 1
+            continue
+
+        # 找结束定界符所在行与其缩进
+        closing_index = index + 1
+        closing_indent = None
+        while closing_index < len(lines):
+            position = lines[closing_index].find('"""')
+            if position != -1 and not lines[closing_index].strip().startswith("//"):
+                closing_indent = position
+                break
+            closing_index += 1
+
+        if closing_indent is None:
+            problems.append(f"第 {index + 1} 行开始的多行字符串缺少结束定界符")
+            index += 1
+            continue
+
+        for cursor in range(index + 1, closing_index):
+            content = lines[cursor]
+            if content.strip() == "":
+                continue
+            indent = len(content) - len(content.lstrip(" "))
+            if indent < closing_indent:
+                problems.append(
+                    f"第 {cursor + 1} 行多行字符串缩进不足（{indent} < 结束定界符的 {closing_indent}）"
+                )
+                break
+
+        index = closing_index + 1
+
+    return problems
+
+
 def main():
     files = swift_files("MangaTranslater") + swift_files("Packages")
     all_problems = []
     for path in files:
+        relative = os.path.relpath(path).replace("\\", "/")
         for problem in check_file(path):
-            all_problems.append((os.path.relpath(path).replace("\\", "/"), problem))
+            all_problems.append((relative, problem))
+        for problem in check_multiline_string_indentation(path):
+            all_problems.append((relative, problem))
     for problem in check_codable_consistency(files):
         all_problems.append(problem)
 
@@ -175,7 +240,7 @@ def main():
         for path, problem in all_problems:
             print(f"  {path}: {problem}")
         return 1
-    print("✅ 括号配平、条件编译指令配对、JSON 编解码类型一致")
+    print("✅ 括号配平、条件编译配对、多行字符串缩进、JSON 编解码类型均正常")
     return 0
 
 

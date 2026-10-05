@@ -95,7 +95,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 - `ReadingHistoryEntry` 缺少 `Codable`（被 JSON payload 编解码使用），编译失败；
   并把这类问题固化为预检规则：`decode(X.self …)` 涉及的自有类型必须声明 `Codable`
-  （`tools/check_swift_syntax.py`，已实测能抓到该缺陷）。
+  （已实测能抓到该缺陷）。
+- `ZipDeflateTests` 的多行 base64 字面量首行缺缩进，编译报
+  "Insufficient indentation of line in multi-line string literal"；
+  修正生成逻辑（每行含首行都按结束定界符缩进 + `.ignoreUnknownCharacters` 跳过换行），
+  并把「多行字符串缩进规则」加进预检（已实测能抓到该缺陷）。
 
 ### 🧪 测试 / Tests
 
