@@ -22,6 +22,7 @@
 
 import Foundation
 import AppCore
+import ComicNet
 
 /// 下载状态。
 public enum DownloadState: String, Codable, Sendable {
@@ -337,8 +338,12 @@ public actor DownloadQueue {
                     break
                 } catch {
                     let normalized = AppError.normalize(error)
-                    lastMessage = normalized.localizedDescription
-                    let canRetry = normalized.isRetryable && attempt < configuration.maxRetriesPerPage
+                    // 错误信息与可重试判定都用网络层的精细表述：
+                    // AppCore 不认识 NetworkError（依赖方向不允许反向 import），
+                    // 只靠 AppError 会把 timeout 退化成不可重试的 .unknown。
+                    lastMessage = Self.describe(error) ?? normalized.localizedDescription
+                    let retryable = Self.isRetryable(error)
+                    let canRetry = retryable && attempt < configuration.maxRetriesPerPage
                     guard canRetry else { break }
 
                     let waitIndex = min(attempt, configuration.retryBackoff.count - 1)
@@ -372,6 +377,25 @@ public actor DownloadQueue {
         }
 
         finish(jobID: jobID, state: .completed, message: nil)
+    }
+
+    // MARK: 错误判定
+
+    /// 是否可重试。网络层的错误类型携带更精细的判定
+    /// （4xx 不重试、429/5xx/超时/离线可重试），优先使用它。
+    public static func isRetryable(_ error: Error) -> Bool {
+        if let networkError = error as? NetworkError {
+            return networkError.isRetryable
+        }
+        return AppError.normalize(error).isRetryable
+    }
+
+    /// 人类可读的错误描述。网络错误用它自己的本地化文案。
+    public static func describe(_ error: Error) -> String? {
+        if let networkError = error as? NetworkError {
+            return networkError.errorDescription
+        }
+        return nil
     }
 
     private func finish(jobID: String, state: DownloadState, message: String?) {

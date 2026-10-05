@@ -181,6 +181,88 @@ struct DownloadQueueTests {
         #expect(store.storedPageCount(jobID: job.id) == 0)
     }
 
+    // MARK: 网络错误的重试判定（回归：曾把 timeout 退化成不可重试的 .unknown）
+
+    @Test("超时错误会重试")
+    func timeoutIsRetried() async throws {
+        let store = InMemoryPageStore()
+        let fetcher = StubPageFetcher(scriptedResults: [
+            .failure(NetworkError.timeout(seconds: 15)),
+            .success(Data([0x01])),
+        ])
+        let queue = makeQueue(
+            configuration: DownloadQueueConfiguration(maxRetriesPerPage: 1, retryBackoff: [0.01]),
+            fetcher: fetcher,
+            store: store
+        )
+
+        let job = try await queue.enqueue(makeJob(pages: ["https://example.com/1.jpg"]))
+        await queue.processPending()
+
+        #expect(await queue.job(job.id)?.state == .completed)
+        #expect(fetcher.calls(for: "https://example.com/1.jpg") == 2)
+    }
+
+    @Test("服务端错误会重试")
+    func serverErrorIsRetried() async throws {
+        let store = InMemoryPageStore()
+        let fetcher = StubPageFetcher(scriptedResults: [
+            .failure(NetworkError.httpStatus(code: 500, retryAfterSeconds: nil)),
+            .success(Data([0x01])),
+        ])
+        let queue = makeQueue(
+            configuration: DownloadQueueConfiguration(maxRetriesPerPage: 1, retryBackoff: [0.01]),
+            fetcher: fetcher,
+            store: store
+        )
+
+        let job = try await queue.enqueue(makeJob(pages: ["https://example.com/1.jpg"]))
+        await queue.processPending()
+
+        #expect(await queue.job(job.id)?.state == .completed)
+        #expect(fetcher.calls(for: "https://example.com/1.jpg") == 2)
+    }
+
+    @Test("客户端错误不重试")
+    func clientErrorIsNotRetried() async throws {
+        let store = InMemoryPageStore()
+        let fetcher = StubPageFetcher(scriptedResults: [
+            .failure(NetworkError.httpStatus(code: 404, retryAfterSeconds: nil)),
+        ])
+        let queue = makeQueue(
+            configuration: DownloadQueueConfiguration(maxRetriesPerPage: 3, retryBackoff: [0.01]),
+            fetcher: fetcher,
+            store: store
+        )
+
+        let job = try await queue.enqueue(makeJob(pages: ["https://example.com/1.jpg"]))
+        await queue.processPending()
+
+        #expect(await queue.job(job.id)?.state == .failed)
+        #expect(fetcher.calls(for: "https://example.com/1.jpg") == 1)
+        #expect(await queue.recordedRetryWaits().isEmpty)
+    }
+
+    @Test("错误判定：网络错误走精细规则，其他错误回退到 AppError")
+    func retryClassification() {
+        #expect(DownloadQueue.isRetryable(NetworkError.timeout(seconds: 1)))
+        #expect(DownloadQueue.isRetryable(NetworkError.offline))
+        #expect(DownloadQueue.isRetryable(NetworkError.httpStatus(code: 429, retryAfterSeconds: nil)))
+        #expect(DownloadQueue.isRetryable(NetworkError.httpStatus(code: 503, retryAfterSeconds: nil)))
+        #expect(!DownloadQueue.isRetryable(NetworkError.httpStatus(code: 404, retryAfterSeconds: nil)))
+        #expect(!DownloadQueue.isRetryable(NetworkError.invalidURL("bad")))
+        #expect(!DownloadQueue.isRetryable(NetworkError.cancelled))
+        #expect(DownloadQueue.isRetryable(AppError.fileSystem("磁盘错误")))
+        #expect(!DownloadQueue.isRetryable(AppError.invalidInput("参数")))
+    }
+
+    @Test("错误描述优先使用网络层文案")
+    func errorDescriptionPrefersNetworkText() {
+        let described = DownloadQueue.describe(NetworkError.timeout(seconds: 15))
+        #expect(described?.contains("超时") == true)
+        #expect(DownloadQueue.describe(AppError.invalidInput("x")) == nil)
+    }
+
     // MARK: 暂停 / 恢复
 
     @Test("暂停的任务不被调度，恢复后继续完成")
