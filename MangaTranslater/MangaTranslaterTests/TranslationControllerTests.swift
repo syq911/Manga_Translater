@@ -492,23 +492,33 @@ struct TranslationControllerTests {
         let root = try TestFileSystem.makeTemporaryDirectory()
         defer { TestFileSystem.remove(root) }
 
+        // 两个作品分别由**两个会话**翻译（`toggle` 是开关：同一个会话里再点一次
+        // 是「显示原文」，不是「开始翻译另一个作品」）。
         let store = TranslationStore(root: root)
-        let controller = Self.makeController(
+        let other = Manga(sourceID: SourceID("demo"), url: "https://example.com/m/2", title: "Other")
+
+        let first = Self.makeController(
             settings: settings,
             recognizer: StubRecognizer(lineCount: 1),
             translator: StubTranslator(),
             store: store
         )
-        let other = Manga(sourceID: SourceID("demo"), url: "https://example.com/m/2", title: "Other")
+        first.toggle(manga: Self.manga, currentPage: 0, preloaded: Self.preloaded(pages: 0...0))
+        await Self.settle(first)
 
-        controller.toggle(manga: Self.manga, currentPage: 0, preloaded: Self.preloaded(pages: 0...0))
-        await Self.settle(controller)
-        controller.toggle(manga: other, currentPage: 0, preloaded: Self.preloaded(pages: 0...0, seed: 0.7))
-        await Self.settle(controller)
-        #expect(controller.completedCount == 2)
+        let second = Self.makeController(
+            settings: settings,
+            recognizer: StubRecognizer(lineCount: 1),
+            translator: StubTranslator(),
+            store: store
+        )
+        second.toggle(manga: other, currentPage: 0, preloaded: Self.preloaded(pages: 0...0, seed: 0.7))
+        await Self.settle(second)
+        #expect(second.completedCount == 1)
 
-        controller.purgeCache(for: Self.manga)
-        #expect(!controller.hasTranslation(for: Self.manga, page: 0))
-        #expect(controller.hasTranslation(for: other, page: 0))
+        #expect(second.hasTranslation(for: Self.manga, page: 0))
+        second.purgeCache(for: Self.manga)
+        #expect(!second.hasTranslation(for: Self.manga, page: 0))
+        #expect(second.hasTranslation(for: other, page: 0))
     }
 }

@@ -368,11 +368,17 @@ struct TranslationCoreTests {
         #expect(request.url?.absoluteString == "https://api.example.com/chat/completions")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer demo-key")
         #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
-        // 用户提示词必须是纯 JSON 数组，模型才不会自作主张加解释
+        // 用户提示词必须是纯 JSON 数组，模型才不会自作主张加解释。
+        // 注意要在**解码后**看 content：原始报文里那对引号是被转义过的
+        // （`[\"…\"]`），直接对字符串做 contains 会漏判。
         let body = try #require(request.httpBody)
-        let text = String(decoding: body, as: UTF8.self)
-        #expect(text.contains("deepseek-v4-flash"))
-        #expect(text.contains("[\"こんにちは\",\"世界\"]"))
+        let object = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(object["model"] as? String == "deepseek-v4-flash")
+        let messages = try #require(object["messages"] as? [[String: Any]])
+        #expect(messages.count == 2)
+        #expect(messages.first?["role"] as? String == "system")
+        #expect(messages.last?["role"] as? String == "user")
+        #expect(messages.last?["content"] as? String == "[\"こんにちは\",\"世界\"]")
     }
 
     @Test func translateTrailingSlashBaseURLIsHandled() async throws {
