@@ -19,6 +19,24 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - M4 翻译与云服务：页内翻译接入、BYOK、邮箱验证码账号、额度、Lemon Squeezy 订阅
 - M5 发布：中英双语文案、隐私政策、AltStore 源上线
 
+### 🔧 修复 / Fixed（M4 期间）
+
+- **云客户端不该建在 `HTTPClient` 之上**：后者的语义是「非 2xx 就抛 `NetworkError`」，
+  而它的错误里**不带响应体**；API 客户端必须同时拿到状态码与错误体才能分类
+  （401 → 退回未登录、402 + `quota_exceeded` → 给升级入口）。
+  实测后果是所有业务错误被压成 `transport("服务器返回 401")`，
+  `mapFailure` 成了死代码、12 条错误分类断言全红。
+  改为直接用可注入的 `HTTPTransporting` 发请求。`HTTPClient` 是给抓站用的
+  （Cookie 注入、按源限流、正文上限），API 客户端用不上。
+- **真机 Vision 用例必须串行**：现代 `RecognizeTextRequest` 并行超过 2 个会死锁，
+  而 Swift Testing 默认并行；3 个真机 OCR 用例同跑会把测试进程卡死到 job 超时。
+  给该套件加 `.serialized`，并在 `docs/testing.md` 固化这条约定。
+- 顺带修掉两个只在编译期暴露的问题：转义闭包里的隐式 `self`（类里必须写 `self.`）、
+  三元表达式里两个隐式成员分属不同 `ShapeStyle`（`.orange` vs `.secondary`）。
+- 「译文条数必须与输入一致」的校验统一到翻译层：各层只抛自己那一层的错误类型，
+  避免界面文案分裂。
+- 测试 job 的 30 分钟上限放宽到 50 分钟（测试目标文件数随里程碑增长）。
+
 ---
 
 ## [Unreleased] · M4 翻译与云服务
