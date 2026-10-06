@@ -192,6 +192,13 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
             teardown()
             throw SourceRunnerError.scriptRejected("脚本执行出错：\(text)")
         }
+
+        // 能力补齐（§7 的 `source.getPreference`）。失败不致命，只记日志。
+        exceptionBox.reset()
+        ctx.evaluateScript(Self.sourceAugmentationScript)
+        if let text = exceptionBox.consume() {
+            logSink("warn", "[javascript] 无法为 source 补 getPreference：\(text)")
+        }
     }
 
     private func logJSException(_ text: String) {
@@ -439,6 +446,30 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
                     body: parsed.body,
                     text: parsed.body
                 };
+            },
+
+            // §7 冻结的 `net.get(url, headers?)` / `net.post(url, body, headers?)`。
+            // 两者都是 `fetch` 的薄包装：参数拼装写在 JS 侧，Swift 侧只认
+            // `{ method, headers, body, contentType }` 这一种请求描述。
+            get: async function (url, headers) {
+                return await globalThis.net.fetch(url, {
+                    method: "GET",
+                    headers: headers || {}
+                });
+            },
+
+            post: async function (url, body, headers) {
+                var extra = headers || {};
+                var contentType = "application/x-www-form-urlencoded";
+                for (var name in extra) {
+                    if (String(name).toLowerCase() === "content-type") { contentType = extra[name]; }
+                }
+                return await globalThis.net.fetch(url, {
+                    method: "POST",
+                    headers: extra,
+                    body: (body === undefined || body === null) ? "" : String(body),
+                    contentType: contentType
+                });
             }
         };
 
@@ -459,6 +490,21 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
                 return (value === null || value === undefined) ? fallback : value;
             },
             set: function (key, value) { bridge.prefsSet(String(key), String(value)); }
+        };
+
+        // §7 冻结的 `source.getPreference(key)` 的裸函数形式。
+        // `source` 是脚本自己声明的对象，宿主只能在脚本求值之后补方法
+        // （见 `sourceAugmentationScript`），这里先提供同一能力的独立入口，
+        // 便于脚本在辅助函数里直接使用。
+        globalThis.getPreference = function (key, fallback) {
+            return globalThis.prefs.get(key, fallback);
+        };
+
+        // §7 冻结的 `json.parse(text)`。原生 `JSON` 一直可用，
+        // 这里只是把契约里的名字显式对齐，避免源作者以为宿主要求别的写法。
+        globalThis.json = {
+            parse: function (text) { return JSON.parse(String(text)); },
+            stringify: function (value) { return JSON.stringify(value); }
         };
 
         globalThis.log = {
@@ -534,6 +580,31 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
                 };
             }
         };
+    })();
+    """
+
+    /// 脚本求值之后的「能力补齐」。
+    ///
+    /// `docs/source-api.md` §7 把 `source.getPreference(key)` 列为冻结接口，
+    /// 但 `source` 是**脚本自己声明的普通对象**（`const source = { … }`），
+    /// 宿主在桥接阶段拿不到它——桥接跑在脚本之前，而且顶层 `const` 挂在
+    /// 全局**词法**环境里，不是 `globalThis` 的属性。
+    ///
+    /// 因此在脚本求值完成后，用另一个脚本在同一个全局词法环境里补上这个方法：
+    /// 只有脚本确实声明了对象型 `source` 且尚未自带同名方法时才补，
+    /// 失败（例如脚本 `Object.freeze(source)`）只记日志，不影响载入。
+    static let sourceAugmentationScript = """
+    (function () {
+        try {
+            if (typeof source === 'object' && source !== null
+                && typeof source.getPreference !== 'function') {
+                source.getPreference = function (key, fallback) {
+                    return globalThis.prefs.get(key, fallback);
+                };
+            }
+        } catch (error) {
+            // 脚本没有声明 `source`，或对象被冻结 —— 都不该让载入失败
+        }
     })();
     """
 

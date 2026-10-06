@@ -137,3 +137,205 @@ public protocol SourceRuntimeExecuting: Sendable {
     /// 释放沙箱资源。
     func teardown() async
 }
+
+// MARK: - 类型化门面
+
+/// 源的**类型化门面**：把「调用脚本 + 解码 JSON」合成一次可读的调用。
+///
+/// 分层理由是刻意的：
+/// - `JSSourceRuntime` 只知道「怎么跑 JS」，对模型一无所知；
+/// - `SourceResponseDecoder` 只知道「怎么把 JSON 变成模型」，不碰 JS；
+/// - 本类型是两者的粘合处，也是**降级策略**的唯一落点
+///   （`getLatestUpdates` 缺失时回退热门、`getFilters` 缺失时返回空数组、
+///   参数编码、丢弃项写日志）。
+///
+/// 线程模型：`actor`。同一来源的调用天然串行——JS 上下文不是可重入的，
+/// 并发调用同一源只会让状态互相打架。需要并行时请为每个来源各建一个 runner。
+public actor SourceRunner {
+
+    private let runtime: SourceRuntimeExecuting
+    private let meta: SourceScriptMeta
+    private let logSink: @Sendable (String, String) -> Void
+
+    /// 脚本实际实现的方法（静态预检结果；可选方法要靠它做降级）。
+    private var supportedMethods: Set<SourceAPIMethod> = []
+    private var isLoaded = false
+
+    public init(
+        runtime: SourceRuntimeExecuting,
+        meta: SourceScriptMeta,
+        logSink: @escaping @Sendable (String, String) -> Void = { _, _ in }
+    ) {
+        self.runtime = runtime
+        self.meta = meta
+        self.logSink = logSink
+    }
+
+    /// 该来源的 ID。
+    public var sourceID: SourceID { meta.id }
+
+    /// 该来源的元信息。
+    public var sourceMeta: SourceScriptMeta { meta }
+
+    /// 是否已成功载入脚本。
+    public var loaded: Bool { isLoaded }
+
+    /// 脚本实现的方法列表（已排序，便于展示与断言）。
+    public var implementedMethods: [SourceAPIMethod] {
+        SourceAPIMethod.allCases.filter { supportedMethods.contains($0) }
+    }
+
+    // MARK: 生命周期
+
+    /// 载入脚本。失败时抛 `SourceRunnerError`（与运行时同一套错误语义）。
+    public func load(script: String) async throws {
+        supportedMethods = Set(
+            SourceAPIMethod.allCases.filter { method in
+                method.functionPatterns.contains { script.contains($0) }
+            }
+        )
+        try await runtime.load(script: script, meta: meta)
+        isLoaded = true
+    }
+
+    /// 释放沙箱；之后任何调用都会抛 `notInstalled`。
+    public func teardown() async {
+        await runtime.teardown()
+        isLoaded = false
+        supportedMethods = []
+    }
+
+    // MARK: 契约方法
+
+    /// 热门列表（`getPopularManga`）。分页从 1 开始。
+    public func popularManga(page: Int = 1) async throws -> MangaListPage {
+        try await listPage(method: .popularManga, arguments: [Self.pageArgument(page)])
+    }
+
+    /// 最新更新（`getLatestUpdates`）。脚本未实现时**回退到热门列表**（契约 §5.2）。
+    public func latestUpdates(page: Int = 1) async throws -> MangaListPage {
+        guard supportedMethods.contains(.latestUpdates) else {
+            logSink("info", "[源 \(sourceID.rawValue)] 未实现 getLatestUpdates，回退到热门列表")
+            return try await popularManga(page: page)
+        }
+        return try await listPage(method: .latestUpdates, arguments: [Self.pageArgument(page)])
+    }
+
+    /// 搜索（`getSearchManga`）。参数顺序严格按契约 §5.1：`(page, query, filters)`。
+    public func search(
+        page: Int = 1,
+        query: String,
+        filters: SourceFilterValues = [:]
+    ) async throws -> MangaListPage {
+        let arguments = [
+            Self.pageArgument(page),
+            Self.stringArgument(query),
+            Self.objectArgument(filters),
+        ]
+        return try await listPage(method: .searchManga, arguments: arguments)
+    }
+
+    /// 作品详情（`getMangaDetails`）。
+    public func mangaDetails(url: String) async throws -> Manga {
+        let json = try await invoke(.mangaDetails, arguments: [Self.stringArgument(url)])
+        return try decoder.mangaDetails(from: json, fallbackURL: url)
+    }
+
+    /// 章节列表（`getChapterList`）。
+    ///
+    /// - Parameter mangaID: 作品主键；省略时按 `"<sourceID>|<mangaURL>"` 派生
+    ///   （与 `Manga.makeID` 一致，保证章节主键能对上书架条目）。
+    public func chapterList(mangaURL: String, mangaID: String? = nil) async throws -> [Chapter] {
+        let json = try await invoke(.chapterList, arguments: [Self.stringArgument(mangaURL)])
+        let identifier = mangaID ?? Manga.makeID(sourceID: sourceID, url: mangaURL)
+        let outcome = try decoder.chapters(from: json, mangaID: identifier, mangaURL: mangaURL)
+        reportSkipped(outcome.skippedItems, method: .chapterList)
+        return outcome.value
+    }
+
+    /// 页面列表（`getPageList`）。返回顺序即阅读顺序。
+    public func pageList(chapterURL: String) async throws -> [ComicPage] {
+        let json = try await invoke(.pageList, arguments: [Self.stringArgument(chapterURL)])
+        let outcome = try decoder.pages(from: json, chapterURL: chapterURL)
+        reportSkipped(outcome.skippedItems, method: .pageList)
+        return outcome.value
+    }
+
+    /// 筛选项（`getFilters`）。脚本未实现时返回空数组，搜索页照常可用。
+    public func filters() async throws -> [SourceFilter] {
+        guard supportedMethods.contains(.filters) else { return [] }
+        let json = try await invoke(.filters, arguments: [])
+        let outcome = try decoder.filters(from: json)
+        reportSkipped(outcome.skippedItems, method: .filters)
+        return outcome.value
+    }
+
+    // MARK: 内部
+
+    private var decoder: SourceResponseDecoder {
+        SourceResponseDecoder(sourceID: meta.id, baseURL: meta.baseURL)
+    }
+
+    private func listPage(
+        method: SourceAPIMethod,
+        arguments: [String]
+    ) async throws -> MangaListPage {
+        let json = try await invoke(method, arguments: arguments)
+        let outcome = try decoder.mangaList(from: json)
+        reportSkipped(outcome.skippedItems, method: method)
+        return outcome.value
+    }
+
+    private func invoke(_ method: SourceAPIMethod, arguments: [String]) async throws -> String {
+        guard isLoaded else {
+            throw SourceRunnerError.notInstalled(sourceID.rawValue)
+        }
+        do {
+            return try await runtime.call(method, arguments: arguments)
+        } catch let error as SourceRunnerError {
+            throw error
+        } catch is CancellationError {
+            throw SourceRunnerError.cancelled
+        } catch {
+            throw SourceRunnerError.executionFailed(error.localizedDescription)
+        }
+    }
+
+    private func reportSkipped(_ count: Int, method: SourceAPIMethod) {
+        guard count > 0 else { return }
+        logSink(
+            "warn",
+            "[源 \(sourceID.rawValue)] \(method.rawValue) 返回的 \(count) 条数据不完整，已跳过"
+        )
+    }
+
+    // MARK: 参数编码
+
+    /// 契约规定「参数一律以 JSON 片段传递」，因此这里逐个拼字面量。
+    ///
+    /// 踩过的坑：曾把整个参数数组交给 `JSONSerialization` 编码，
+    /// 结果字符串参数被多编码一层（`query` 变成 `"\"query\""`），
+    /// 源脚本拿到的是带引号的文本。
+    static func pageArgument(_ page: Int) -> String {
+        String(max(1, page))
+    }
+
+    static func stringArgument(_ value: String) -> String {
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: value,
+            options: [.fragmentsAllowed]
+        ), let text = String(data: data, encoding: .utf8) else {
+            return "\"\""
+        }
+        return text
+    }
+
+    static func objectArgument(_ values: SourceFilterValues) -> String {
+        guard !values.isEmpty else { return "{}" }
+        guard let data = try? JSONSerialization.data(withJSONObject: values),
+              let text = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return text
+    }
+}
