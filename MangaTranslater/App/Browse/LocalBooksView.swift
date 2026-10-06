@@ -33,7 +33,10 @@ struct LocalBooksView: View {
                 } else {
                     ForEach(books, id: \.id) { book in
                         NavigationLink {
-                            ReaderView(manga: book)
+                            ReaderView(
+                                manga: book,
+                                readingSource: environment.readingSource(for: book)
+                            )
                         } label: {
                             row(for: book)
                         }

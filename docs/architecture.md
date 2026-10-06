@@ -372,9 +372,7 @@ BrowseView（源列表，读 visibleInstalledSources）
   `submittedQuery`。把输入框直接接到 `.task(id:)` 上会让每个字符都打一次网络，
   既是无谓流量，也会让结果列表来回闪。
 
-本批**不包含在线阅读**：它要求阅读器支持异步取图，随下载一起做。
-在那之前，来源作品的章节列表是只读展示 + 页脚明确说明，书架里的在线作品
-在阅读器里给出明确提示（而不是抛一个「归档损坏」的底层错误）。
+在线阅读在 §3.20 接入：章节行直接进阅读器。
 
 
 ## 4. 目录结构
@@ -410,3 +408,38 @@ MangaTranslater/
 - 构建与发布：`docs/development.md`
 - 测试规范：`docs/testing.md`
 - 贡献规范：`CONTRIBUTING.md`
+
+### 3.20 阅读数据来源：阅读器只有一个入口（M2 第七批）
+
+阅读器需要的三件事——章节列表、页列表、页图字节——被收进一个协议：
+
+```swift
+public protocol MangaReadingSource: ChapterListProviding, PageDataProviding {}
+```
+
+于是阅读器里**没有任何「本地还是在线」的分支**，两端的差异在实现里消化：
+
+| | `LocalReadingSource` | `RemoteReadingSource` |
+|---|---|---|
+| 章节 / 页 | `LocalSource` 同步 API | 源脚本 `getChapterList` / `getPageList` |
+| 页图 | 归档解压 | `SourceImageLoader`（20 MB、Referer、Cookie） |
+| 线程 | 内部 `Task.detached`（解压不能占主线程） | 并发 `withTaskGroup` |
+| 缓存 | 不需要（数据在沙盒里） | 章节 / 页列表 LRU（各 8 / 16 条） |
+
+三个刻意的决定：
+
+- **本地解压放到后台**：阅读器的加载入口跑在主线程（SwiftUI 的 `.task`），
+  大归档直接同步解压会把耗时算进主线程——本地翻页卡顿的来源就是它。
+- **在线缓存要能按来源失效**：脚本更新后旧结果就是错的。
+  `invalidate(sourceID:)` 按主键前缀（`"<sourceID>|"`）清，
+  安装 / 更新 / 卸载源之后由 App 调用。
+- **`imageData` 标 `nonisolated`**：这条路完全不碰 actor 状态（缓存里只有元数据），
+  而图片下载可能持续几百毫秒，没必要让它们排队经过同一个 actor。
+
+阅读器侧的两个配套规则：
+
+- **预加载要能取消**：换页 / 换章时先取消上一次预加载任务，否则快速翻页会把
+  多批下载叠起来；并发取窗口内的页，单页失败只跳过该页。
+- **只有作品在书架里才写进度**：`updateProgress` 对不在书架的作品会抛
+  `entryNotFound`，翻一页记一条失败日志毫无意义。因此阅读器顶部放了星标按钮，
+  一键加入书架后立即开始记录（并顺手记一次当前进度）。

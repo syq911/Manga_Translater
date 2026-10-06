@@ -4,9 +4,9 @@
 //
 //  来源作品详情：作品信息 + 章节列表 + 加入书架。
 //
-//  本批范围说明：**在线阅读尚未接入**（它需要阅读器支持异步取图，随下载一起做）。
-//  因此章节行是只读展示 + 页脚明确说明，而不是给一个点了没反应的按钮——
-//  「点了没反应」比「明确告知还要等等」糟糕得多。
+//  章节行直接进入阅读器（在线来源走 `RemoteReadingSource`：脚本取页列表 +
+//  图片加载器取字节）。阅读进度只有作品在书架里时才记录，所以这里把
+//  「加入书架」放在显眼位置。
 //
 //  数据来源：详情与章节各调一次契约方法；两者分别处理失败，
 //  详情失败就整页失败，章节失败只在章节区提示（作品信息仍然有用）。
@@ -155,28 +155,40 @@ struct SourceMangaDetailView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(chapters) { chapter in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(chapter.name)
-                            .lineLimit(2)
-                        HStack(spacing: 6) {
-                            if let number = chapter.chapterNumber, number > 0 {
-                                Text("#\(format(number))")
-                            }
-                            if let date = chapter.dateUploaded {
-                                Text(date.formatted(date: .numeric, time: .omitted))
-                            }
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    NavigationLink {
+                        ReaderView(
+                            manga: displayed,
+                            readingSource: environment.readingSource(for: displayed),
+                            startChapterID: chapter.id
+                        )
+                    } label: {
+                        chapterRow(chapter)
                     }
-                    .padding(.vertical, 2)
                 }
             }
         } header: {
             Text(L("source.detail.chapters"))
         } footer: {
-            Text(L("source.detail.onlineReadingFooter"))
+            Text(L("source.detail.chapterFooter"))
         }
+    }
+
+    private func chapterRow(_ chapter: Chapter) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(chapter.name)
+                .lineLimit(2)
+            HStack(spacing: 6) {
+                if let number = chapter.chapterNumber, number > 0 {
+                    Text("#\(format(number))")
+                }
+                if let date = chapter.dateUploaded {
+                    Text(date.formatted(date: .numeric, time: .omitted))
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
     }
 
     // MARK: 行为

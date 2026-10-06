@@ -78,7 +78,10 @@ struct LibraryView: View {
 
             ForEach(entries) { entry in
                 NavigationLink {
-                    ReaderView(manga: entry.manga)
+                    ReaderView(
+                        manga: entry.manga,
+                        readingSource: environment.readingSource(for: entry.manga)
+                    )
                 } label: {
                     row(for: entry)
                 }

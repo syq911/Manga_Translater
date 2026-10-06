@@ -94,12 +94,16 @@
 "source.detail.chapters" = "章节";
 "source.detail.chaptersFailed" = "章节列表加载失败";
 "source.detail.noChapters" = "这个源没有返回任何章节。";
-"source.detail.onlineReadingFooter" = "在线阅读与下载将在下一批接入；当前可以先把作品加入书架。";
 "source.detail.addToLibrary" = "加入书架";
 "source.detail.inLibrary" = "已在书架";
 "source.detail.libraryFooter" = "加入书架后可查看上次读到哪一话。";
 "source.detail.added" = "已加入书架。";
 "source.detail.addFailed" = "加入书架失败，请稍后再试。";
+
+"source.detail.chapterFooter" = "点任意一话开始阅读。已在书架中的作品会记住上次读到的位置。";
+"reader.noChapters" = "这个源没有返回任何章节。";
+"reader.atEnd" = "已经是最后一页了。";
+"reader.atStart" = "已经是第一页了。";
 
 "source.status.unknown" = "状态未知";
 "source.status.ongoing" = "连载中";
@@ -108,4 +112,3 @@
 "source.status.cancelled" = "已腰斩";
 "source.status.hiatus" = "休载中";
 
-"reader.remoteNotReady" = "该作品来自在线源。在线阅读将在下一批接入，届时可直接翻页阅读。";

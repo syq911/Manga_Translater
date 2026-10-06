@@ -338,6 +338,32 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 范围说明：**在线阅读尚未接入**（需要阅读器支持异步取图，随下载一起做）。
 在线作品在阅读器里给出明确提示，而不是抛「归档损坏」这种让人误解的底层错误。
 
+### ✨ 新增 / Added（M2 第七批：在线阅读接入）
+
+- **`MangaReadingSource`**（`AppCore`）：阅读器唯一的数据入口 =
+  `ChapterListProviding` + `PageDataProviding`。阅读器里**不再有任何**
+  「本地还是在线」的分支。
+- **`LocalReadingSource`**（`SourceEngine`）：把本地文件源的同步接口包成异步，
+  内部用 `Task.detached`——大归档解压不该占主线程（本地翻页卡顿的来源）。
+- **`RemoteReadingSource`**（`SourceEngine`，actor）：源脚本取章节 / 页列表 +
+  `SourceImageLoader` 取图；章节列表与页列表各带 LRU 缓存（默认 8 / 16 条）；
+  `invalidate(sourceID:)` 按主键前缀清缓存（安装 / 更新 / 卸载源后由 App 调用）；
+  `imageData` 标 `nonisolated`，图片下载不排队经过 actor。
+- **阅读器接入两端**：`ReaderView` 改为注入数据来源（`readingSource:` +
+  可选 `startChapterID`），加载链路全部异步化；预加载改为并发 + **可取消**
+  （换页前取消上一次，避免快速翻页叠起多批下载）；
+  来源作品的章节行直接进入阅读器。
+- **进度规则收敛**：只有作品在书架里才写进度（`updateProgress` 对不在书架的作品
+  会抛 `entryNotFound`，翻一页记一条失败日志毫无意义）。阅读器顶部新增星标，
+  一键加入书架并立即记录当前进度。
+- 提示文案统一走 `L(…)`（阅读器的提示标题与按钮此前是硬编码中文）。
+
+### 🧪 测试 / Tests（M2 第七批新增 1 个套件 / 10 个用例）
+
+- `ReadingSourcesTests`：在线来源（章节 / 页列表缓存命中、图片带章节页 Referer、
+  单页请求头优先、按来源失效、LRU 淘汰、失败不写缓存）
+  与本地适配（章节 / 页序与同步实现一致、取图、找不到作品时的错误传递）
+
 ### 🧪 测试 / Tests（M2 第六批新增 2 个套件 / 19 个用例）
 
 - `SourceImageLoaderTests`（9 例）：取回字节、页级 Referer 优先级、来源 Cookie、

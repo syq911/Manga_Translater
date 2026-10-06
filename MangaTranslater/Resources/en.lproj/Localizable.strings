@@ -94,12 +94,16 @@
 "source.detail.chapters" = "Chapters";
 "source.detail.chaptersFailed" = "Failed to load chapter list";
 "source.detail.noChapters" = "This source returned no chapters.";
-"source.detail.onlineReadingFooter" = "Online reading and downloads arrive in the next batch; for now you can add the title to your library.";
 "source.detail.addToLibrary" = "Add to library";
 "source.detail.inLibrary" = "In library";
 "source.detail.libraryFooter" = "Once in your library, you can see where you left off.";
 "source.detail.added" = "Added to library.";
 "source.detail.addFailed" = "Could not add to library. Please try again.";
+
+"source.detail.chapterFooter" = "Tap a chapter to start reading. Titles in your library remember where you left off.";
+"reader.noChapters" = "This source returned no chapters.";
+"reader.atEnd" = "This is the last page.";
+"reader.atStart" = "This is the first page.";
 
 "source.status.unknown" = "Unknown";
 "source.status.ongoing" = "Ongoing";
@@ -108,4 +112,3 @@
 "source.status.cancelled" = "Cancelled";
 "source.status.hiatus" = "On hiatus";
 
-"reader.remoteNotReady" = "This title comes from an online source. Online reading arrives in the next batch.";

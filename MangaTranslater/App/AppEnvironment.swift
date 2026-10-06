@@ -38,6 +38,10 @@ final class AppEnvironment {
     let runtimePool: SourceRuntimePool
     /// 图片字节加载器（封面 / 漫画页）。走来源 Cookie 与 20 MB 上限。
     let imageLoader: SourceImageLoader
+    /// 本地文件源的阅读适配器。
+    private let localReadingSource: LocalReadingSource
+    /// 在线来源的阅读适配器（章节 / 页列表缓存 + 图片加载）。
+    private let remoteReadingSource: RemoteReadingSource
 
     init(
         settings: AppSettings,
@@ -63,7 +67,9 @@ final class AppEnvironment {
         self.isLibraryPersistent = isLibraryPersistent
         // 默认按数据目录派生，测试可注入替身
         self.coverCache = coverCache ?? CoverThumbnailCache(dataDirectory: dataDirectory)
-        self.imageLoader = imageLoader ?? SourceImageLoader(cookieJar: cookieJar)
+
+        let resolvedImageLoader = imageLoader ?? SourceImageLoader(cookieJar: cookieJar)
+        self.imageLoader = resolvedImageLoader
 
         // 源侧依赖：仓库请求走一个独立的 HTTP 客户端（不带任何来源 Cookie——
         // 拉索引时用户还没选定来源，带上 Cookie 既无意义也泄露面更大）。
@@ -72,13 +78,14 @@ final class AppEnvironment {
             client: HTTPClient(transport: URLSessionTransport())
         )
 
+        let resolvedPool: SourceRuntimePool
         if let runtimePool {
-            self.runtimePool = runtimePool
+            resolvedPool = runtimePool
         } else {
             // 所有来源共用一个 `DefaultSourceTransport`：它内部已按来源
             // 分别持有 HTTPClient 与限速器，源之间互不影响。
             let transport = DefaultSourceTransport(cookieJar: cookieJar)
-            self.runtimePool = SourceRuntimePool(
+            resolvedPool = SourceRuntimePool(
                 store: sourceStore,
                 logSink: { level, message in
                     diagnostics.log("[源运行时] \(level): \(message)")
@@ -94,6 +101,11 @@ final class AppEnvironment {
                 }
             )
         }
+        self.runtimePool = resolvedPool
+
+        // 阅读适配器：本地走 LocalSource（同步 → 异步），在线走运行时池 + 图片加载器。
+        self.localReadingSource = LocalReadingSource(localSource: localSource)
+        self.remoteReadingSource = RemoteReadingSource(pool: resolvedPool, imageLoader: resolvedImageLoader)
     }
 
     /// 按默认路径构建。任一步失败都降级而非崩溃，保证 App 一定能启动。
@@ -173,23 +185,35 @@ final class AppEnvironment {
         await repositoryService.catalogs()
     }
 
-    /// 安装仓库里的某个源；成功后回收同 key 的旧运行时（脚本内容已变）。
+    /// 安装仓库里的某个源；成功后回收同 key 的旧运行时与阅读缓存（脚本内容已变）。
     @discardableResult
     func installSource(_ entry: RepositoryEntry) async throws -> InstalledSource {
         let installed = try await repositoryService.install(entry)
         await runtimePool.invalidate(installed.key)
+        await remoteReadingSource.invalidate(sourceID: SourceID(installed.key))
         diag("AppEnvironment: 已安装源 \(installed.key) v\(installed.version ?? "-")")
         return installed
     }
 
-    /// 卸载源并回收其运行时。
+    /// 卸载源并回收其运行时与阅读缓存。
     @discardableResult
     func uninstallSource(_ key: String) async throws -> Bool {
         let removed = try sourceStore.uninstall(key: key)
         if removed {
             await runtimePool.invalidate(key)
+            await remoteReadingSource.invalidate(sourceID: SourceID(key))
         }
         return removed
+    }
+
+    // MARK: 阅读数据来源
+
+    /// 取某个作品的阅读数据来源：本地文件源或在线来源。
+    ///
+    /// 阅读器只认 `MangaReadingSource`，因此这里的分支是**唯一**一处
+    /// 「本地 / 在线」的判定。
+    func readingSource(for manga: Manga) -> MangaReadingSource {
+        manga.sourceID == .local ? localReadingSource : remoteReadingSource
     }
 
     // MARK: 源运行
@@ -207,9 +231,10 @@ final class AppEnvironment {
         await runtimePool.release(key)
     }
 
-    /// 回收全部源运行时（设置页「全部重载」、或内存吃紧时调用）。
+    /// 回收全部源运行时与阅读缓存（设置页「全部重载」、或内存吃紧时调用）。
     func releaseAllSourceRuntimes() async {
         await runtimePool.invalidateAll()
+        await remoteReadingSource.invalidateAll()
     }
 
     /// 文件系统里的本地作品（不依赖数据库）。

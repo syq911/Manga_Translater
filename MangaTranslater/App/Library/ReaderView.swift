@@ -2,15 +2,24 @@
 //  ReaderView.swift
 //  MangaTranslater
 //
-//  阅读器（M1 范围：本地文件源）。
+//  阅读器（本地文件源与在线来源共用）。
 //
 //  职责划分：
 //  - 翻页/翻章/预加载范围的**规则**在 `AppCore.ReaderSession`（可单元测试）；
 //  - 缩放/平移的**规则**在 `AppCore.ZoomState`（可单元测试）；
+//  - 「数据从哪来」在 `MangaReadingSource`（本地 / 在线各自实现，见
+//    `SourceEngine.ReadingSources`）；
 //  - 本视图只做三件事：把当前页画出来、把手势转成「前进/后退/缩放」、把进度写回书架。
 //
-//  远程源的页加载会在 M2 接入（走 `PageDataProviding` 的异步实现），
-//  本地源因为数据就在沙盒里，直接同步读取即可。
+//  因此这里**没有**任何「本地还是在线」的分支：本地解压与在线下载
+//  对阅读器都是「取第 N 页的数据」。
+//
+//  两个容易踩的点：
+//  1. 预加载是并发的（`withTaskGroup`），换页/换章时要**取消上一次预加载**，
+//     否则快速翻页会把多批下载叠起来；
+//  2. 只有作品在书架里才写进度——`updateProgress` 对不在书架的作品会抛
+//     `entryNotFound`，翻一页记一条失败日志毫无意义。阅读器顶部提供星标，
+//     一键加入书架后进度才会被记录。
 //
 
 import SwiftUI
@@ -21,6 +30,10 @@ import SourceEngine
 struct ReaderView: View {
 
     let manga: Manga
+    /// 阅读数据来源（本地文件源 / 在线来源）。
+    let readingSource: MangaReadingSource
+    /// 进入时定位到的章节（在线来源从章节列表点进来时用）。
+    var startChapterID: String?
 
     @Environment(AppEnvironment.self) private var environment
 
@@ -29,6 +42,10 @@ struct ReaderView: View {
     @State private var pageImages: [Int: Data] = [:]
     @State private var message: String?
     @State private var isLoading = true
+    /// 是否已在书架（决定要不要写进度）。
+    @State private var isInLibrary = false
+    /// 正在进行的预加载任务（换页前先取消，避免多批下载叠加）。
+    @State private var preloadTask: Task<Void, Never>?
 
     /// 缩放 / 平移状态。
     @State private var zoom = ZoomState()
@@ -56,14 +73,27 @@ struct ReaderView: View {
         }
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .task { bootstrap() }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    addToLibrary()
+                } label: {
+                    Image(systemName: isInLibrary ? "star.fill" : "star")
+                }
+                .disabled(isInLibrary)
+            }
+        }
+        .task { await bootstrap() }
         .onAppear { applyIdleTimerSetting() }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
-        .alert("提示", isPresented: Binding(
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+            preloadTask?.cancel()
+        }
+        .alert(L("common.notice"), isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
         )) {
-            Button("好", role: .cancel) { message = nil }
+            Button(L("common.ok"), role: .cancel) { message = nil }
         } message: {
             Text(message ?? "")
         }
@@ -242,24 +272,26 @@ struct ReaderView: View {
     // MARK: 行为
 
     /// 首次进入：读取章节、恢复进度、载入当前章。
-    private func bootstrap() {
+    private func bootstrap() async {
         guard session == nil else { return }
 
-        // 在线来源的阅读需要「异步取图」的页数据实现，随下载一起接入。
-        // 这里明确告知，而不是让本地文件源抛一个「找不到归档」的底层错误——
-        // 用户从书架点进来看到「归档损坏」会以为是自己操作错了。
-        guard manga.sourceID == .local else {
-            isLoading = false
-            message = L("reader.remoteNotReady")
-            return
-        }
-
+        isInLibrary = libraryEntryExists()
         do {
-            let chapters = try environment.localSource.chapters(for: manga)
+            let chapters = try await readingSource.chapters(for: manga)
+            guard !chapters.isEmpty else {
+                isLoading = false
+                message = L("reader.noChapters")
+                return
+            }
             let entry = try? environment.libraryStore.entry(mangaID: manga.id)
             var restored = ReaderSession(manga: manga, chapters: chapters)
-            if let chapterID = entry?.lastReadChapterID,
-               let index = chapters.firstIndex(where: { $0.id == chapterID }) {
+
+            // 定位优先级：调用方指定的章节 > 上次读到的章节 > 第一章
+            if let startChapterID,
+               let index = chapters.firstIndex(where: { $0.id == startChapterID }) {
+                restored.moveToChapter(index)
+            } else if let chapterID = entry?.lastReadChapterID,
+                      let index = chapters.firstIndex(where: { $0.id == chapterID }) {
                 restored.moveToChapter(index)
                 // 恢复上次读到的页码（越界会在载入章节时被钳制）
                 if let page = entry?.lastReadPageIndex {
@@ -267,15 +299,15 @@ struct ReaderView: View {
                 }
             }
             session = restored
-            loadCurrentChapter()
+            await loadCurrentChapter()
         } catch {
             isLoading = false
-            message = (error as? LocalSourceError)?.message ?? error.localizedDescription
+            message = Self.message(for: error)
         }
     }
 
     /// 载入当前章的页列表与预加载窗口。
-    private func loadCurrentChapter() {
+    private func loadCurrentChapter() async {
         // 注意：`guard let session` 绑定的是不可变副本，mutating 调用必须用 var 副本，
         // 改完再写回 @State。
         guard var working = session, let chapter = working.currentChapter else {
@@ -286,31 +318,53 @@ struct ReaderView: View {
         }
         isLoading = true
         do {
-            let loaded = try environment.localSource.pages(for: chapter, manga: manga)
+            let loaded = try await readingSource.pages(for: chapter, manga: manga)
             pages = loaded
             working.clampPageIndex(pageCount: loaded.count)
             session = working
-            preload(around: working.pageIndex)
             isLoading = false
+            schedulePreload(around: working.pageIndex)
             saveProgress()
         } catch {
             isLoading = false
-            message = (error as? LocalSourceError)?.message ?? error.localizedDescription
+            message = Self.message(for: error)
         }
     }
 
+    /// 调度一次预加载（先取消上一次，避免快速翻页叠起多批下载）。
+    private func schedulePreload(around pageIndex: Int) {
+        preloadTask?.cancel()
+        preloadTask = Task { await preload(around: pageIndex) }
+    }
+
     /// 预加载当前页前后各 N 页（N 取自设置里的预加载窗口）。
-    private func preload(around pageIndex: Int) {
-        guard let session, !pages.isEmpty else { return }
+    ///
+    /// 并发取图：窗口通常只有 2–4 页，直接并发即可；每页失败只跳过该页
+    /// （单页挂掉不该让整章读不了）。窗口外的缓存立即释放，避免长时间阅读内存膨胀。
+    private func preload(around pageIndex: Int) async {
+        guard let session, let chapter = session.currentChapter, !pages.isEmpty else { return }
         let range = session.preloadRange(pageCount: pages.count, window: environment.settings.preloadWindow)
-        for index in range where pageImages[index] == nil {
-            if let data = try? environment.localSource.imageDataSync(for: pages[index], manga: manga) {
-                pageImages[index] = data
+        let missing = range.filter { pageImages[$0] == nil }
+        let source = readingSource
+        let manga = manga
+
+        if !missing.isEmpty {
+            let targets = missing.map { ($0, pages[$0]) }
+            await withTaskGroup(of: (Int, Data?).self) { group in
+                for (index, page) in targets {
+                    group.addTask {
+                        let data = try? await source.imageData(for: page, manga: manga, chapter: chapter)
+                        return (index, data)
+                    }
+                }
+                for await (index, data) in group {
+                    if let data { pageImages[index] = data }
+                }
             }
         }
-        // 释放窗口外的缓存，避免长时间阅读内存膨胀
-        let keep = range
-        pageImages = pageImages.filter { keep.contains($0.key) }
+
+        // 释放窗口外的缓存
+        pageImages = pageImages.filter { range.contains($0.key) }
     }
 
     private func advance(forward: Bool) {
@@ -324,26 +378,28 @@ struct ReaderView: View {
         switch result {
         case let .moved(toPage):
             self.session = session
-            preload(around: toPage)
+            schedulePreload(around: toPage)
             saveProgress()
 
         case .needsNextChapter:
             guard session.moveToNextChapter() else { return }
             self.session = session
-            loadCurrentChapter()
+            Task { await loadCurrentChapter() }
 
         case .needsPreviousChapter:
             guard session.moveToPreviousChapter() else { return }
             self.session = session
             // 回到上一章时停在**末页**，符合「往回翻」的直觉
-            loadCurrentChapter()
-            jumpToLastPageIfPossible()
+            Task {
+                await loadCurrentChapter()
+                jumpToLastPageIfPossible()
+            }
 
         case .atEnd:
-            message = "已经是最后一页了。"
+            message = L("reader.atEnd")
 
         case .atStart:
-            message = "已经是第一页了。"
+            message = L("reader.atStart")
         }
     }
 
@@ -352,13 +408,16 @@ struct ReaderView: View {
         guard var working = session, !pages.isEmpty else { return }
         working.moveToLastPage(pageCount: pages.count)
         session = working
-        preload(around: working.pageIndex)
+        schedulePreload(around: working.pageIndex)
         saveProgress()
     }
 
-    /// 写回阅读进度（失败只提示，不打断阅读）。
+    /// 写回阅读进度。
+    ///
+    /// 只有作品在书架里才写：`updateProgress` 对不在书架的作品会抛 `entryNotFound`，
+    /// 翻一页记一条失败日志既没用也吵。用户在阅读器里点星标加入书架后即开始记录。
     private func saveProgress() {
-        guard let mark = session?.progressMark else { return }
+        guard isInLibrary, let mark = session?.progressMark else { return }
         do {
             try environment.libraryStore.updateProgress(
                 mangaID: manga.id,
@@ -370,5 +429,31 @@ struct ReaderView: View {
         } catch {
             diag("ReaderView: 保存进度失败 —— \(error.localizedDescription)")
         }
+    }
+
+    // MARK: 书架
+
+    private func libraryEntryExists() -> Bool {
+        let entry: LibraryEntry? = try? environment.libraryStore.entry(mangaID: manga.id)
+        return entry != nil
+    }
+
+    /// 一键加入书架：加入后进度才会被记录。
+    private func addToLibrary() {
+        guard environment.addToLibrary(manga) != nil else {
+            message = L("source.detail.addFailed")
+            return
+        }
+        isInLibrary = true
+        message = L("source.detail.added")
+        // 立刻记一次当前进度，避免用户下次进来从头开始
+        saveProgress()
+    }
+
+    /// 统一错误文案：来源错误优先用自己的 `message`。
+    private static func message(for error: Error) -> String {
+        if let runnerError = error as? SourceRunnerError { return runnerError.message }
+        if let localError = error as? LocalSourceError { return localError.message }
+        return error.localizedDescription
     }
 }
