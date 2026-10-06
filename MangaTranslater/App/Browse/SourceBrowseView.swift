@@ -31,11 +31,13 @@ struct SourceBrowseView: View {
 
     enum Mode: String, CaseIterable {
         case popular
+        case latest
         case search
 
         var title: String {
             switch self {
             case .popular: return L("source.mode.popular")
+            case .latest: return L("source.mode.latest")
             case .search: return L("source.mode.search")
             }
         }
@@ -176,6 +178,14 @@ struct SourceBrowseView: View {
             return SourceBrowseModel { page in
                 try await pool.withRunner(for: key) { runner in
                     try await runner.popularManga(page: page)
+                }
+            }
+        case .latest:
+            // 契约里 `getLatestUpdates` 是可选方法；源没实现时宿主回退到热门，
+            // 因此这里不需要额外的分支（回退发生在 SourceRunner 里）。
+            return SourceBrowseModel { page in
+                try await pool.withRunner(for: key) { runner in
+                    try await runner.latestUpdates(page: page)
                 }
             }
         case .search:

@@ -13,9 +13,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 计划中 / Planned
 
-- M1 地基：泛化数据模型（Manga / Chapter / Page）、GRDB 书架、本地文件源、阅读器
-- M2 源引擎：JavaScriptCore 单文件 JS 源、仓库管理（添加 / 安装 / 更新 / NSFW 开关）
-- M3 补全：批量下载 + 后台续传 + CBZ 导出、Komga / Kavita、WebView 登录、Cloudflare 兜底
+- ~~M1 地基：泛化数据模型（Manga / Chapter / Page）、GRDB 书架、本地文件源、阅读器~~ ✅ 已完成
+- ~~M2 源引擎：JavaScriptCore 单文件 JS 源、仓库管理（添加 / 安装 / 更新 / NSFW 开关）~~ ✅ 已完成（契约 v1 冻结）
+- M3 补全：批量下载 + 后台续传 + CBZ 导出、Komga / Kavita、WebView 登录 + Cookie 收割、Cloudflare 兜底
 - M4 翻译与云服务：页内翻译接入、BYOK、邮箱验证码账号、额度、Lemon Squeezy 订阅
 - M5 发布：中英双语文案、隐私政策、AltStore 源上线
 
@@ -357,6 +357,41 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   会抛 `entryNotFound`，翻一页记一条失败日志毫无意义）。阅读器顶部新增星标，
   一键加入书架并立即记录当前进度。
 - 提示文案统一走 `L(…)`（阅读器的提示标题与按钮此前是硬编码中文）。
+
+### ✨ 新增 / Added（M2 收尾：自测仓库 + 契约 v1 冻结）
+
+**M2 验收标准的落地**：「加一个自建的中性测试仓库，能看在线漫画」。
+
+- **`tools/make_demo_repo.py`**：现场生成一个完全中性的静态「漫画站」+ 配套源脚本
+  （`index.json`、`demo.js`、8 个页面、5 张 PNG），供本机联调走完
+  「添加仓库 → 安装 → 热门/最新/搜索 → 详情 → 章节 → 阅读」。
+  - **不写入本仓库**：生成物含 `.js`，会触发合规红线；写到仓库目录内会被**拒绝**
+    （须显式 `--allow-in-repo`）。默认输出到系统临时目录。
+  - `--check <目录>` 自检（脚本静态规则、索引字段、页面引用资源是否存在），
+    把「http.server 少个文件 → 页面 404」这类时间黑洞提前挡住。
+  - `--emit-swift <路径>` 把语料写进 CI 夹具，避免手抄。
+- **`tools/check_demo_repo.py`**（预检第 8 项）：生成器与
+  `MangaTranslaterTests/DemoCorpus.swift` 的 10 个文本块**逐字比对**、
+  图片文件名集合比对。已反向验证（改一个词 / 换一个图片名均被拦下）。
+- **契约 v1 冻结**（`docs/source-api.md`）：状态由「草案」改为「v1.0 已冻结」，
+  写明「冻结意味着什么」与「可做 / 不可做」边界表；
+  §8（登录收割）状态由「M2 进行中」修正为「M3 待补」（接口已冻结，实现后补）。
+- **浏览页新增「最新更新」**（`getLatestUpdates`）；源未实现时由 `SourceRunner`
+  自动回退到热门列表。
+
+### 🧪 测试 / Tests（M2 收尾新增 1 个套件 / 9 个用例）
+
+- **`DemoRepositoryTests`（M2 验收）**：用自测仓库的真实脚本与页面，一次跑通
+  「拉 index.json → 安装落盘 → 载入沙箱 → 热门分页 → 最新/搜索 → 详情 →
+  章节（含数字字符串编号与两种日期写法）→ 页列表 → 取图（真 PNG 字节 + Referer）
+  → 阅读来源缓存命中 → 筛选项」。
+
+### 🔧 修复 / Fixed（M2 收尾）
+
+- `tools/check_imports.py` 此前只剥离注释、不剥离字符串字面量：
+  夹具里内联的 HTML 出现「Demo Manga One」就被判成用了 `Manga`，
+  误报「需要 import AppCore」。现在复用 `check_swift_syntax` 的字面量剥离
+  （它会保留插值里的代码），不再误报。
 
 ### 🧪 测试 / Tests（M2 第七批新增 1 个套件 / 10 个用例）
 

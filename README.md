@@ -57,8 +57,26 @@ Continuous integration builds and tests run on GitHub Actions
 
 ## Writing a source
 
-The source API contract is documented in [docs/source-api.md](docs/source-api.md).
-Sources are plain JavaScript files distributed through a repository `index.json`.
+The source API contract is documented in [docs/source-api.md](docs/source-api.md)
+(**v1.0, frozen**). Sources are plain JavaScript files distributed through a
+repository `index.json`.
+
+Want to see one running end to end? Generate a fully neutral demo repository and
+serve it locally — no real site is involved:
+
+```bash
+python3 tools/make_demo_repo.py                  # prints the generated directory
+cd <that directory> && python3 -m http.server 8000
+# In the app: Browse → Manage repositories → add http://127.0.0.1:8000/ → install "demo"
+```
+
+The generated script and pages are byte-for-byte the same corpus the CI
+end-to-end test uses, so what you tweak locally is what CI verifies.
+
+写源请看 [docs/source-api.md](docs/source-api.md)（**v1.0 已冻结**）。
+想直接看一个能跑通的源，用
+`python3 tools/make_demo_repo.py` 生成一个完全中性的自测仓库并本机托管即可
+（不涉及任何真实站点），详见 [docs/development.md](docs/development.md) 第 9 节。
 
 ## License
 

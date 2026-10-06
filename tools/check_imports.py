@@ -67,11 +67,18 @@ def swift_files(root):
 
 
 def strip_comments(text):
-    """去掉行注释与块注释，避免注释里的类型名造成误报。"""
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    return "\n".join(
-        line for line in text.split("\n") if not line.strip().startswith("//")
-    )
+    """去掉注释**与字符串字面量**，避免里面的类型名造成误报。
+
+    只去注释是不够的：测试夹具里内联的 HTML / JS / 文档文本会出现
+    `Demo Manga One`、`Chapter 1` 这类词，被当成 `Manga` / `Chapter` 的用法，
+    于是报出「需要 import AppCore」——而那个文件根本没用 AppCore 的任何类型。
+    `check_swift_syntax.strip_literals_and_comments` 已经处理了嵌套插值与
+    多行字符串（并且保留了插值里的代码），这里直接复用它，避免两套实现分叉。
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from check_swift_syntax import strip_literals_and_comments
+
+    return strip_literals_and_comments(text)
 
 
 def owning_package(relative_path):

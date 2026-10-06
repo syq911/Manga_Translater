@@ -79,6 +79,7 @@
 "browse.hiddenSources.format" = "另有 %ld 个成人内容源已隐藏（可在设置 → 源中开启）。";
 
 "source.mode.popular" = "热门";
+"source.mode.latest" = "最新";
 "source.mode.search" = "搜索";
 "source.search.placeholder" = "关键词";
 "source.loading" = "正在载入…";

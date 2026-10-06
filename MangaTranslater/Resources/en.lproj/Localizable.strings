@@ -79,6 +79,7 @@
 "browse.hiddenSources.format" = "%ld adult-content source(s) hidden (enable in Settings → Sources).";
 
 "source.mode.popular" = "Popular";
+"source.mode.latest" = "Latest";
 "source.mode.search" = "Search";
 "source.search.placeholder" = "Keyword";
 "source.loading" = "Loading…";
