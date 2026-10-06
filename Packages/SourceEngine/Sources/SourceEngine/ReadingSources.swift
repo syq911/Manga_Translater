@@ -57,10 +57,11 @@ public struct LocalReadingSource: MangaReadingSource {
 
 // MARK: - 在线来源
 
-/// 用已安装的源脚本取章节、页列表与图片。
+/// 用「某个数据来源」取章节、页列表与图片。
 ///
 /// 职责边界：
-/// - 「怎么调脚本方法」交给 `SourceRuntimePool`（租约、载入复用、回收都在那边）；
+/// - 「数据从哪来」交给 `MangaDataSourceProviding`：脚本源走运行时池，
+///   自建服务器（Komga / Kavita）走各自的 REST 连接器——本类型不需要知道；
 /// - 「怎么取图片字节」交给 `SourceImageLoader`（体积上限、Referer、Cookie）；
 /// - 本类型只做**缓存**与**串联**。
 ///
@@ -83,7 +84,7 @@ public actor RemoteReadingSource: MangaReadingSource {
         }
     }
 
-    private let pool: SourceRuntimePool
+    private let provider: MangaDataSourceProviding
     private let imageLoader: SourceImageLoader
     private let configuration: Configuration
     /// 下载归档（可选）。装了它才有「离线可读 + 不重复下载」。
@@ -97,15 +98,30 @@ public actor RemoteReadingSource: MangaReadingSource {
     private var pageOrder: [String] = []
 
     public init(
+        provider: MangaDataSourceProviding,
+        imageLoader: SourceImageLoader,
+        archive: DownloadArchiveStore? = nil,
+        configuration: Configuration = Configuration()
+    ) {
+        self.provider = provider
+        self.imageLoader = imageLoader
+        self.archive = archive
+        self.configuration = configuration
+    }
+
+    /// 只用脚本源时的便捷构造（测试与旧调用点用）。
+    public init(
         pool: SourceRuntimePool,
         imageLoader: SourceImageLoader,
         archive: DownloadArchiveStore? = nil,
         configuration: Configuration = Configuration()
     ) {
-        self.pool = pool
-        self.imageLoader = imageLoader
-        self.archive = archive
-        self.configuration = configuration
+        self.init(
+            provider: pool,
+            imageLoader: imageLoader,
+            archive: archive,
+            configuration: configuration
+        )
     }
 
     // MARK: 章节
@@ -115,11 +131,10 @@ public actor RemoteReadingSource: MangaReadingSource {
             touch(&chapterOrder, manga.id)
             return cached
         }
-        let key = manga.sourceID.rawValue
+        let source = try await provider.dataSource(for: manga.sourceID)
         let url = manga.url
-        let loaded = try await pool.withRunner(for: key) { runner in
-            try await runner.chapterList(mangaURL: url)
-        }
+        let identifier = manga.id
+        let loaded = try await source.chapterList(mangaURL: url, mangaID: identifier)
         store(loaded, for: manga.id, into: &chapterLists, order: &chapterOrder,
               limit: configuration.maxCachedChapterLists)
         return loaded
@@ -140,11 +155,9 @@ public actor RemoteReadingSource: MangaReadingSource {
                   limit: configuration.maxCachedPageLists)
             return archived
         }
-        let key = manga.sourceID.rawValue
+        let source = try await provider.dataSource(for: manga.sourceID)
         let url = chapter.url
-        let loaded = try await pool.withRunner(for: key) { runner in
-            try await runner.pageList(chapterURL: url)
-        }
+        let loaded = try await source.pageList(chapterURL: url)
         store(loaded, for: chapter.id, into: &pageLists, order: &pageOrder,
               limit: configuration.maxCachedPageLists)
         return loaded

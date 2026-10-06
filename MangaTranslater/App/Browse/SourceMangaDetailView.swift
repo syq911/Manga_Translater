@@ -25,7 +25,6 @@ import SourceEngine
 struct SourceMangaDetailView: View {
 
     let manga: Manga
-    let source: InstalledSource
 
     @Environment(AppEnvironment.self) private var environment
 
@@ -347,13 +346,11 @@ struct SourceMangaDetailView: View {
 
     private func load() async {
         phase = .loading
-        let key = source.key
+        let sourceID = manga.sourceID
         let url = manga.url
         do {
             // 详情只调一次，取不到就整页失败
-            let loaded = try await environment.runtimePool.withRunner(for: key) { runner in
-                try await runner.mangaDetails(url: url)
-            }
+            let loaded = try await environment.dataSource(for: sourceID).mangaDetails(url: url)
             detail = loaded
             phase = .loaded
             isInLibrary = libraryEntryExists(mangaID: loaded.id)
@@ -365,12 +362,12 @@ struct SourceMangaDetailView: View {
 
     private func loadChapters() async {
         chapterError = nil
-        let key = source.key
+        let sourceID = manga.sourceID
         let url = manga.url
+        let identifier = displayed.id
         do {
-            chapters = try await environment.runtimePool.withRunner(for: key) { runner in
-                try await runner.chapterList(mangaURL: url)
-            }
+            chapters = try await environment.dataSource(for: sourceID)
+                .chapterList(mangaURL: url, mangaID: identifier)
         } catch {
             chapters = []
             chapterError = SourceBrowseModel.message(for: error)

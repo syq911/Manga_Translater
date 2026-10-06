@@ -29,6 +29,8 @@ final class RoutedHTTPTransport: HTTPTransporting, @unchecked Sendable {
     private let lock = NSLock()
     private var routes: [String: Response] = [:]
     private var recorded: [URLRequest] = []
+    /// 按调用顺序应答的脚本（同一地址要「第一次 401、第二次 200」时用）。
+    private var sequence: [(url: String, status: Int, data: Data)] = []
 
     var requests: [URLRequest] {
         lock.lock()
@@ -60,10 +62,27 @@ final class RoutedHTTPTransport: HTTPTransporting, @unchecked Sendable {
         lock.unlock()
     }
 
+    /// 按顺序应答：每一步都要指定地址，只有地址对得上才会消费这一步。
+    ///
+    /// 「先认证、再 401、再认证、再成功」这类场景没法用固定路由表达，
+    /// 而它恰好是刷 token 逻辑最容易写错的地方。
+    func setBySequence(_ steps: [(url: String, status: Int, body: String)]) {
+        lock.lock()
+        sequence = steps.map { (url: $0.url, status: $0.status, data: Data($0.body.utf8)) }
+        lock.unlock()
+    }
+
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         lock.lock()
         recorded.append(request)
-        let route = request.url.flatMap { routes[$0.absoluteString] }
+        let absolute = request.url?.absoluteString
+        var route: Response?
+        if let absolute, let head = sequence.first, head.url == absolute {
+            sequence.removeFirst()
+            route = Response(status: head.status, data: head.data, headers: [:])
+        } else if let absolute {
+            route = routes[absolute]
+        }
         lock.unlock()
 
         guard let url = request.url else {

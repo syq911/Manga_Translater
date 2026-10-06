@@ -158,6 +158,36 @@
 "source.detail.removeAllDownloads" = "Delete all downloads";
 "source.detail.downloadFooter" = "Swipe left on a chapter to download it or delete the download. Use the top-right menu to download every chapter that is not downloaded yet.";
 
+/* Self-hosted servers (M3 batch 3) */
+
+"browse.manageServers" = "Manage servers";
+"browse.servers.footer" = "Connect your own Komga / Kavita server. Content comes from your server; the app bundles none.";
+
+"server.title" = "Servers";
+"server.section.list" = "Connected";
+"server.section.credentials" = "Credentials";
+"server.section.test" = "Connection test";
+"server.add" = "Add server";
+"server.edit" = "Edit server";
+"server.kind" = "Type";
+"server.name" = "Name";
+"server.baseURLPlaceholder" = "https://nas.local:25600";
+"server.apiKey" = "API key";
+"server.username" = "Username (optional)";
+"server.password" = "Password (optional)";
+"server.save" = "Save";
+"server.saved" = "Saved.";
+"server.empty" = "No server added yet.";
+"server.noCredentials" = "No credentials yet";
+"server.footer" = "Credentials stay on this device and are excluded from iCloud backup.";
+"server.addressFooter" = "Enter the server address. If it is served under a sub-path (e.g. https://nas.local/komga), include the sub-path.";
+"server.credentialsFooter" = "Komga accepts an API key or email + password. Kavita requires an API key. Leave a field empty to keep the current value.";
+"server.test" = "Test connection";
+"server.testFooter" = "Testing before saving saves you the round trip of saving and finding it unreachable.";
+"server.invalidAddress" = "The address must start with http:// or https:// and include a host.";
+"server.deleteConfirm.title" = "Remove server";
+"server.deleteConfirm.message" = "This removes \u201C%@\u201D. Chapters already downloaded to this device are kept.";
+
 "source.status.unknown" = "Unknown";
 "source.status.ongoing" = "Ongoing";
 "source.status.completed" = "Completed";

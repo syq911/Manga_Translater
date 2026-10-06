@@ -498,3 +498,57 @@ Cookie 与防盗链 `Referer` 都是**来源侧**的知识，而队列只有一�
 整章失败或用户取消 → 清掉散图、不留归档、任务标为终结态。
 归档写入是先写临时文件再替换：直接覆盖时若中途失败，磁盘上会留下一个
 **打不开的 CBZ**，而它看起来「已下载完成」。
+
+### 3.22 自建服务器：把「数据从哪来」抽成 `MangaDataSource`（M3 第三批）
+
+M3 之后数据来源有三种：社区脚本源、自建 Komga / Kavita 服务器、（以及本地文件）。
+界面不应该认识这三种东西，于是有了统一接口：
+
+```swift
+public protocol MangaDataSource: Sendable {
+    var sourceID: SourceID { get }
+    func popularManga(page: Int) async throws -> MangaListPage
+    func latestUpdates(page: Int) async throws -> MangaListPage
+    func search(page: Int, query: String, filters: SourceFilterValues) async throws -> MangaListPage
+    func mangaDetails(url: String) async throws -> Manga
+    func chapterList(mangaURL: String, mangaID: String?) async throws -> [Chapter]
+    func pageList(chapterURL: String) async throws -> [ComicPage]
+    func filters() async throws -> [SourceFilter]
+}
+```
+
+界面的分支因此全部消失：
+
+| 位置 | 之前 | 现在 |
+|---|---|---|
+| 浏览列表 | 直接用 `SourceRuntimePool` | `MangaDataSource` |
+| 作品详情 | 直接用 `SourceRuntimePool` | `MangaDataSource` |
+| 阅读器 | `RemoteReadingSource(pool:)` | `RemoteReadingSource(provider:)` |
+| 下载 | 闭包里调 `pool.withRunner` | 闭包里调 `provider.dataSource()` |
+
+**路由必须显式。** `CompositeDataSourceProvider` 先问「这个 id 归谁」再调：
+
+```swift
+if hosted.knows(sourceID) { return try await hosted.dataSource(for: sourceID) }
+return try await scripts.dataSource(for: sourceID)
+```
+
+如果改成「挨个 try、取第一个成功的」，那么「Komga 地址填错」会显示成
+「源未安装」——排查方向完全错。错误必须指向真正出问题的地方。
+
+**连接器的三条实现约定**（Komga / Kavita 都照此写）：
+
+1. **宽容解析**：用 `JSONSerialization` + `Mapping` 取值助手，不用 `Codable`。
+   自建服务器的版本差异比第三方 API 大得多（字段增删、`number` 从数字变字符串），
+   严格模型会在用户升级服务器那天直接坏掉。
+2. **映射即纯函数**：`KomgaMapping` / `KavitaMapping` 全是「字典进、模型出」，
+   可以脱离网络单测。CI 里连不上真实的 Komga / Kavita，
+   这类代码的错几乎都在「字段路径」，纯函数测试正好打这个点。
+3. **认证头跟着请求走**：Komga 的图片接口同样要鉴权，所以页请求头随
+   `ComicPage.headers` 一起返回；Kavita 的图片接口吃查询串 `apiKey=`，
+   因此**错误文案与日志必须脱敏**（`LogRedaction`），否则密钥会顺着
+   「HTTP 401：<带 apiKey 的地址>」写进诊断日志。
+
+**页码基准不要猜。** Komga 的 `/books/{id}/pages` 返回的数组里带 `number`，
+直接用它的值拼图片地址，而不是按数组下标自己算——
+页码基准在 Komga 的版本间变过（0 起 / 1 起），猜错的后果是整章错位一页。

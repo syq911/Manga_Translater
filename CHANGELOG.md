@@ -405,6 +405,56 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   抓取散图放 `DownloadScratch/`——两个目录分开，归档目录里出现任何东西都意味着
   「这一章能离线看」。
 
+### ✨ 新增 / Added（M3 第三批：自建服务器 Komga / Kavita）
+
+- **`MangaDataSource`**（`AppCore`）：统一的数据来源接口。浏览、详情、章节、
+  阅读、下载**全部只认它**，于是界面里再没有「这是脚本源还是服务器」的分支。
+  配 `MangaDataSourceProviding`（按来源标识解析）与 `MangaDataSourceProbing`
+  （连接自检，和「拉一屏作品」分开——后者在 500 部作品的服务器上要好几秒）。
+- **`RuntimeDataSource`**：脚本源 → 统一接口的薄适配；`SourceRuntimePool` 因此
+  直接满足 `MangaDataSourceProviding`，且**不在解析时就建沙箱**
+  （每个方法内部才 `withRunner`，渲染来源列表不会拉起一堆 JS 虚拟机）。
+- **`HostedServer` + `ServerStore`**：自建服务器配置（地址 / 类型 / API Key 或
+  账号密码）。标识由名称派生（用户不必理解「只能小写字母数字」的字符集限制），
+  同名自动加序号，超长自动截断到 `SourceID` 上限内。配置文件所在目录标记为
+  **不参与 iCloud 备份**（里面是用户的服务器密钥）；文件损坏时改名备份后当空处理，
+  而不是覆盖掉。
+- **`KomgaDataSource`**：`/api/v1/series`、`/series/latest`、`/series/{id}`、
+  `/series/{id}/books`、`/books/{id}/pages` → 模型。`X-API-Key` 优先，
+  否则 Basic（邮箱 + 密码）。图片接口同样要鉴权，所以鉴权头随
+  `ComicPage.headers` 一起返回。页地址用接口返回的 `number` 拼，
+  不按数组下标猜页码基准（Komga 的基准在版本间变过）。
+- **`KavitaDataSource`**：`POST /api/Plugin/authenticate` 换 JWT（`KavitaSession`
+  actor 缓存），401 时换一次 token 重试（**只重试一次**——凭据真错了就该报错）；
+  `/api/Series`、`/Series/latest`、`/Search/search`（分组结果拍平）、
+  `/Series/volumes`（卷里的章节拍平并按章节号排序）、
+  `/Reader/chapter-info` + `/Reader/image`（查询串鉴权）。
+- **`LogRedaction`**：把 `apiKey=` / `token=` / `password=` 的值在日志与错误文案里
+  换成 `***`。Kavita 的图片地址必须带 apiKey，不做脱敏等于把密钥写进诊断日志。
+- **`CompositeDataSourceProvider`**：把服务器与脚本源合成一个入口。
+  **显式先判断归属再调用**——靠 try/catch 挨个试会让「服务器地址填错」
+  显示成「源未安装」，排查方向直接跑偏。
+- **界面**：`ServerManagerView` / `ServerEditView`（添加 / 编辑 / 连接自检 / 移除；
+  编辑时凭据不回显，留空表示不改）；浏览页的来源列表改用 `browseSources`，
+  把服务器与脚本源合成同一种条目，且**成人内容过滤只作用于脚本源**
+  （服务器是用户自己的库）。
+
+### 🧪 测试 / Tests（M3 第三批新增 3 个套件 / 44 个用例）
+
+- `HostedServerTests`（12 例）：地址规范化（只去尾斜杠）与合法性、
+  标识派生（中文名 / 全符号名 / 超长 / 去重且不超 64 字符）、凭据判定、
+  存储增删改查、重复与非法标识拒绝、落盘重读、**损坏文件改名备份后不崩**、清空计数
+- `HostedDataSourceTests`（25 例）：Komga（地址与分页基准、API Key 与 Basic 两条
+  鉴权路径、字段映射与 `last` 分页、搜索关键词编码、详情地址反解、章节映射、
+  页地址用返回的 `number`、页级鉴权头、401 / 非 JSON 错误、自检）
+  与 Kavita（先认证再 Bearer、token 复用、401 换一次重试、连续 401 不无限换、
+  无凭据直接报错且不发请求、按装满判定分页、搜索分组拍平、卷内章节拍平排序、
+  页数取自 chapter-info、页码从 0 起、0 页报错、自检）以及 `LogRedaction`
+- `DataSourceProviderTests`（7 例）：路由归属（服务器走连接器 / 脚本走池 /
+  未知报 notInstalled）、移除服务器后立刻失效、
+  应用层的来源合并顺序与字段、添加服务器的标识派生与地址校验、
+  来源可解析性、**成人内容过滤不影响自建服务器**
+
 ### ✨ 新增 / Added（M3 第二批：下载界面 + 章节下载入口）
 
 - **`DownloadsView` 真实化**：进行中（进度、状态、暂停/继续/取消/重试）+

@@ -158,6 +158,36 @@
 "source.detail.removeAllDownloads" = "删除全部下载";
 "source.detail.downloadFooter" = "左滑下载本话或删除已下载；也可以用右上角一次下载全部未下载的章节。";
 
+/* 自建服务器（M3 第三批） */
+
+"browse.manageServers" = "管理自建服务器";
+"browse.servers.footer" = "连接你自己的 Komga / Kavita 服务器。内容来自你的服务器，App 不内置任何内容。";
+
+"server.title" = "自建服务器";
+"server.section.list" = "已连接";
+"server.section.credentials" = "凭据";
+"server.section.test" = "连接自检";
+"server.add" = "添加服务器";
+"server.edit" = "编辑服务器";
+"server.kind" = "类型";
+"server.name" = "名称";
+"server.baseURLPlaceholder" = "https://nas.local:25600";
+"server.apiKey" = "API Key";
+"server.username" = "用户名（可选）";
+"server.password" = "密码（可选）";
+"server.save" = "保存";
+"server.saved" = "已保存。";
+"server.empty" = "还没有添加服务器。";
+"server.noCredentials" = "还没有填写凭据";
+"server.footer" = "凭据只保存在这台设备上，且不会进入 iCloud 备份。";
+"server.addressFooter" = "填服务器地址；如果服务挂在子路径下（例如 https://nas.local/komga），要连子路径一起填。";
+"server.credentialsFooter" = "Komga 可以用 API Key，也可以用邮箱 + 密码。Kavita 需要 API Key。编辑时留空表示不修改。";
+"server.test" = "测试连接";
+"server.testFooter" = "保存前先测一下，能省掉「保存了却打不开」的来回。";
+"server.invalidAddress" = "地址要以 http:// 或 https:// 开头，并且带主机名。";
+"server.deleteConfirm.title" = "移除服务器";
+"server.deleteConfirm.message" = "将移除「%@」。已下载到本机的章节不会被删除。";
+
 "source.status.unknown" = "状态未知";
 "source.status.ongoing" = "连载中";
 "source.status.completed" = "已完结";

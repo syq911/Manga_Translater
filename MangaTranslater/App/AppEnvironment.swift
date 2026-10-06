@@ -36,6 +36,10 @@ final class AppEnvironment {
     let repositoryService: SourceRepositoryService
     /// 已安装源的运行时池（按需载入 JS 沙箱，上限内复用与回收）。
     let runtimePool: SourceRuntimePool
+    /// 自建服务器（Komga / Kavita）的配置。
+    let serverStore: ServerStore
+    /// 数据来源总入口：自建服务器走 REST 连接器，其余走脚本源运行时池。
+    let dataSourceProvider: CompositeDataSourceProvider
     /// 图片字节加载器（封面 / 漫画页）。走来源 Cookie 与 20 MB 上限。
     let imageLoader: SourceImageLoader
     /// 本地文件源的阅读适配器。
@@ -61,7 +65,9 @@ final class AppEnvironment {
         runtimePool: SourceRuntimePool? = nil,
         imageLoader: SourceImageLoader? = nil,
         archiveStore: DownloadArchiveStore? = nil,
-        downloads: DownloadCoordinator? = nil
+        downloads: DownloadCoordinator? = nil,
+        serverStore: ServerStore? = nil,
+        dataSourceProvider: CompositeDataSourceProvider? = nil
     ) {
         self.settings = settings
         self.sourceStore = sourceStore
@@ -117,11 +123,27 @@ final class AppEnvironment {
         )
         self.archiveStore = resolvedArchive
 
-        // 阅读适配器：本地走 LocalSource（同步 → 异步），在线走运行时池 + 图片加载器；
+        // 自建服务器：配置存一个 JSON；请求走**独立的** HTTP 客户端
+        // （不挂任何来源 Cookie——那是脚本源的容器，服务器用自己的凭据）。
+        let resolvedServerStore = serverStore ?? ServerStore(
+            fileURL: dataDirectory.appendingPathComponent("Servers.json", isDirectory: false)
+        )
+        self.serverStore = resolvedServerStore
+
+        let resolvedProvider = dataSourceProvider ?? CompositeDataSourceProvider(
+            hosted: HostedDataSourceProvider(
+                store: resolvedServerStore,
+                client: HTTPClient(transport: URLSessionTransport())
+            ),
+            scripts: resolvedPool
+        )
+        self.dataSourceProvider = resolvedProvider
+
+        // 阅读适配器：本地走 LocalSource（同步 → 异步），在线走数据来源 + 图片加载器；
         // 在线侧带上归档，于是「已下载的章节」离线可读、也不会重复走网络。
         self.localReadingSource = LocalReadingSource(localSource: localSource)
         self.remoteReadingSource = RemoteReadingSource(
-            pool: resolvedPool,
+            provider: resolvedProvider,
             imageLoader: resolvedImageLoader,
             archive: resolvedArchive
         )
@@ -134,9 +156,7 @@ final class AppEnvironment {
                 scratchDirectory: dataDirectory.appendingPathComponent("DownloadScratch", isDirectory: true),
                 imageLoader: resolvedImageLoader,
                 loadPageList: { sourceID, chapterURL in
-                    try await resolvedPool.withRunner(for: sourceID.rawValue) { runner in
-                        try await runner.pageList(chapterURL: chapterURL)
-                    }
+                    try await resolvedProvider.dataSource(for: sourceID).pageList(chapterURL: chapterURL)
                 },
                 log: { message in
                     diagnostics.log("[下载] \(message)")
@@ -213,6 +233,94 @@ final class AppEnvironment {
     /// 被隐藏的已安装源数量（界面据此提示「另有 N 个成人内容源已隐藏」）。
     var hiddenSourceCount: Int {
         SourceVisibilityRule.hidden(installedSources, showsNSFWSources: settings.showsNSFWSources).count
+    }
+
+    // MARK: 浏览来源（脚本源 + 自建服务器）
+
+    /// 已配置的自建服务器。
+    var hostedServers: [HostedServer] {
+        serverStore.all()
+    }
+
+    /// 浏览页要显示的来源列表。
+    ///
+    /// 顺序：自建服务器在前（那是用户自己的库，最常用），脚本源随后。
+    /// 成人内容过滤只作用于脚本源——服务器上的内容由用户自己管理。
+    var browseSources: [BrowseSource] {
+        let hosted = hostedServers.map { BrowseSource(server: $0) }
+        let scripts = SourceVisibilityRule
+            .visible(installedSources, showsNSFWSources: settings.showsNSFWSources)
+            .map { BrowseSource(installed: $0) }
+        return hosted + scripts
+    }
+
+    /// 某个来源标识是否能解析成数据来源（用于界面提前禁用无效入口）。
+    func canResolveSource(_ sourceID: SourceID) -> Bool {
+        serverStore.server(id: sourceID.rawValue) != nil || sourceStore.isInstalled(sourceID.rawValue)
+    }
+
+    /// 取某个来源的数据来源（脚本源会按需载入沙箱；服务器会建连接器）。
+    func dataSource(for sourceID: SourceID) async throws -> MangaDataSource {
+        try await dataSourceProvider.dataSource(for: sourceID)
+    }
+
+    // MARK: 自建服务器
+
+    /// 添加一台服务器（id 由名称派生，冲突自动加序号）。
+    @discardableResult
+    func addHostedServer(
+        kind: HostedServerKind,
+        name: String,
+        baseURL: String,
+        apiKey: String? = nil,
+        username: String? = nil,
+        password: String? = nil
+    ) throws -> HostedServer {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { throw AppError.invalidInput("请填一个名字") }
+        guard HostedServer.isValidBaseURL(baseURL) else {
+            throw AppError.invalidInput("服务器地址要以 http:// 或 https:// 开头")
+        }
+        let existing = Set(serverStore.all().map(\.id))
+        let identifier = HostedServer.makeID(kind: kind, name: trimmedName, existing: existing)
+        let server = HostedServer(
+            id: identifier,
+            kind: kind,
+            name: trimmedName,
+            baseURL: baseURL,
+            apiKey: apiKey,
+            username: username,
+            password: password
+        )
+        try serverStore.add(server)
+        diag("AppEnvironment: 已添加 \(kind.displayName) 服务器 \(identifier)")
+        return server
+    }
+
+    /// 更新一台服务器（地址 / 凭据）。
+    func updateHostedServer(_ server: HostedServer) throws {
+        try serverStore.update(server)
+    }
+
+    /// 移除一台服务器。返回是否真的删掉了。
+    @discardableResult
+    func removeHostedServer(id: String) throws -> Bool {
+        try serverStore.remove(id: id)
+    }
+
+    /// 连接自检：给用户一句「连得上吗」的答复。
+    func probeHostedServer(_ server: HostedServer) async -> Result<String, HostedServerError> {
+        do {
+            let source = try await dataSourceProvider.dataSource(for: server.sourceID)
+            guard let probing = source as? MangaDataSourceProbing else {
+                return .success("已连接")
+            }
+            return .success(try await probing.probe())
+        } catch let error as HostedServerError {
+            return .failure(error)
+        } catch {
+            return .failure(HostedServerError.map(error))
+        }
     }
 
     // MARK: 源仓库

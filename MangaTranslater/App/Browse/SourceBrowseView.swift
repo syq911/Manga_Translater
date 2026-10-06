@@ -20,7 +20,7 @@ import SourceEngine
 
 struct SourceBrowseView: View {
 
-    let source: InstalledSource
+    let source: BrowseSource
 
     @Environment(AppEnvironment.self) private var environment
 
@@ -126,7 +126,7 @@ struct SourceBrowseView: View {
                     } else {
                         ForEach(model.items) { manga in
                             NavigationLink {
-                                SourceMangaDetailView(manga: manga, source: source)
+                                SourceMangaDetailView(manga: manga)
                             } label: {
                                 SourceMangaRow(manga: manga)
                             }
@@ -168,32 +168,29 @@ struct SourceBrowseView: View {
     }
 
     private func makeModel() -> SourceBrowseModel {
-        let key = source.key
-        // 只捕获 Sendable 的东西（actor + 值类型）：`AppEnvironment` 是
-        // `@MainActor` 隔离的，把它整个捕进 `@Sendable` 加载器会引来隔离告警。
-        let pool = environment.runtimePool
+        let sourceID = source.sourceID
+        // 只捕获 Sendable 的东西（provider 是值类型 / actor）：
+        // `AppEnvironment` 是 `@MainActor` 隔离的，把它整个捕进 `@Sendable`
+        // 加载器会引来隔离告警。
+        let provider = environment.dataSourceProvider
 
         switch mode {
         case .popular:
             return SourceBrowseModel { page in
-                try await pool.withRunner(for: key) { runner in
-                    try await runner.popularManga(page: page)
-                }
+                try await provider.dataSource(for: sourceID).popularManga(page: page)
             }
         case .latest:
-            // 契约里 `getLatestUpdates` 是可选方法；源没实现时宿主回退到热门，
-            // 因此这里不需要额外的分支（回退发生在 SourceRunner 里）。
+            // 「最新」在来源没实现时由数据来源自己回退到热门
+            // （脚本源在 `SourceRunner` 里，连接器在各自实现里），
+            // 因此这里不需要额外的分支。
             return SourceBrowseModel { page in
-                try await pool.withRunner(for: key) { runner in
-                    try await runner.latestUpdates(page: page)
-                }
+                try await provider.dataSource(for: sourceID).latestUpdates(page: page)
             }
         case .search:
             let text = submittedQuery
             return SourceBrowseModel { page in
-                try await pool.withRunner(for: key) { runner in
-                    try await runner.search(page: page, query: text)
-                }
+                try await provider.dataSource(for: sourceID)
+                    .search(page: page, query: text, filters: [:])
             }
         }
     }

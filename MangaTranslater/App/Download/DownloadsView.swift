@@ -145,13 +145,12 @@ struct DownloadsView: View {
 
     @ViewBuilder
     private func archivedRow(_ record: DownloadedChapter) -> some View {
-        let reader = readerTarget(for: record)
         Group {
-            if let reader {
+            if let target = readerTarget(for: record) {
                 NavigationLink {
                     ReaderView(
-                        manga: reader.manga,
-                        readingSource: environment.readingSource(for: reader.manga),
+                        manga: target,
+                        readingSource: environment.readingSource(for: target),
                         startChapterID: record.chapterID
                     )
                 } label: {
@@ -328,7 +327,10 @@ struct DownloadsView: View {
     ///
     /// 不在书架里就没有作品信息可用（归档清单里只有主键），
     /// 此时不装出「能点」的样子——给一个点了没反应的导航链接更糟。
-    private func readerTarget(for record: DownloadedChapter) -> (manga: Manga)? {
+    /// 返回类型写成 `Manga?` 而不是带标签的单元素元组：
+    /// `(manga: Manga)?` 在 `return` 处会报
+    /// 「cannot create a single-element tuple with an element label」。
+    private func readerTarget(for record: DownloadedChapter) -> Manga? {
         environment.libraryEntryManga(mangaID: record.mangaID)
     }
 
