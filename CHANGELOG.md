@@ -405,6 +405,46 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   抓取散图放 `DownloadScratch/`——两个目录分开，归档目录里出现任何东西都意味着
   「这一章能离线看」。
 
+### ✨ 新增 / Added（M3 第四批：登录与人机验证，契约 §8 落地）
+
+- **`SourceLoginView`**：内嵌 `WKWebView` 的登录 / 验证页。
+  数据存储用 `WKWebsiteDataStore.nonPersistent()`——网页会话与 App 的网络栈、
+  与其他来源完全隔离；用户点「完成」后收割本页 Cookie。
+  刻意**不自动判断登录成功**：真实站点上不可靠，还会在用户输到一半时抢走页面。
+- **`CookieHarvest`**（`SourceEngine`，不依赖 WebKit）：收割规则。
+  按主机过滤（同域 / 子域 / 空域收，第三方域丢）、丢弃过期与无名项、
+  同名同域同路径去重；写入前清空该来源容器（「重新登录」= 覆盖旧身份），
+  但**这次一条都没收上来时不清理**（否则「打开网页但没登录」会丢掉原本可用的凭据）。
+  域归一化（去前导点 + 小写）：留着 `".Example.com"` 会让后缀匹配永远失败，
+  表现为「登录了但请求不带 Cookie」。
+- **`ChallengeDetector`**：识别 Cloudflare / 人机验证页。
+  只看**三类状态码**（403 / 429 / 503）且正文出现厂商标记才判定——
+  只看状态码会把所有 503 当验证页，不看状态码又会让页脚写着
+  「Powered by Cloudflare」的正常站点被误伤。另提供从错误文案嗅探的版本
+  （脚本源的网络错误类型穿不过 JS 沙箱，只剩文案），判定刻意保守：
+  只认厂商名与状态码，不认「验证」这类泛词。
+- **来源页入口**：工具栏「登录」（脚本声明 `loginUrl` 才有）/「打开网页验证」
+  （没有登录页时退化为来源主页或服务器地址）/「清除登录状态」；
+  失败状态识别到验证页痕迹时直接给出验证入口。
+
+### 🧪 测试 / Tests（M3 第四批新增 1 个套件 / 25 个用例）
+
+- `LoginAndChallengeTests`：Cookie 收割（主机归属含「同后缀不同域」的反例、
+  域归一化、过滤过期/无名/第三方、写入容器后**其他来源不受影响**、
+  重复登录覆盖、收 0 条不破坏已有状态、同名去重计数、
+  从属性字典构造含缺失字段兜底、会话级 Cookie 永不过期）
+  与验证页识别（Cloudflare / 人机验证、200 正文出现厂商名不判、
+  非 HTML 不判、没有标记的 503 不判、空正文不判、多标记优先级、
+  缺省 Content-Type 按 HTML、从文案嗅探的松紧度）
+
+### 🔧 修复 / Fixed（M3 第四批）
+
+- `Mapping.date` 原先写 `Date.ISO8601FormatStyle.year()`——那是**在类型上**
+  调实例方法，编译器直接拒绝（"instance member 'year' cannot be used on type"），
+  两个 CI 作业（test + build-ipa）一起红。改用 `ISO8601DateFormatter`。
+  **已固化为预检规则**（`check_swift_syntax.py`：`ISO8601FormatStyle` 后面紧跟
+  `.` 而不是 `(` 即报错，已反向验证）。
+
 ### ✨ 新增 / Added（M3 第三批：自建服务器 Komga / Kavita）
 
 - **`MangaDataSource`**（`AppCore`）：统一的数据来源接口。浏览、详情、章节、

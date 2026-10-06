@@ -496,6 +496,33 @@ def check_unsanitized_path_components(files):
     return problems
 
 
+def check_iso8601_style_usage(files):
+    """
+    `Date.ISO8601FormatStyle.year()` 这种**在类型上**调实例方法。
+
+    动机（实测烧了一轮 CI）：`ISO8601FormatStyle` 的 `year()` / `month()` 等
+    是**实例方法**，`Date.ISO8601FormatStyle.year()` 会被编译器拒绝
+    （"instance member 'year' cannot be used on type"），
+    要写成 `Date.ISO8601FormatStyle().year()`。
+    判定：`ISO8601FormatStyle` 后面紧跟 `.` 而不是 `(`。
+    """
+    pattern = re.compile(r"ISO8601FormatStyle\s*\.\s*[A-Za-z_]")
+    problems = []
+    for path in files:
+        raw = io.open(path, encoding="utf-8").read()
+        code = strip_literals_and_comments(raw)
+        for match in pattern.finditer(code):
+            line = code[: match.start()].count("\n") + 1
+            problems.append(
+                (
+                    os.path.relpath(path).replace("\\", "/"),
+                    f"第 {line} 行在类型上调用 ISO8601FormatStyle 的实例方法；"
+                    f"应写 `Date.ISO8601FormatStyle().year()` 或改用 `ISO8601DateFormatter`",
+                )
+            )
+    return problems
+
+
 def check_payload_column_consistency(files):
     """
     `payload` 与投影列的一致性。
@@ -549,6 +576,8 @@ def main():
         all_problems.append(problem)
     for problem in check_unsanitized_path_components(files):
         all_problems.append(problem)
+    for problem in check_iso8601_style_usage(files):
+        all_problems.append(problem)
 
     print(f"体检 Swift 文件：{len(files)} 个")
     if all_problems:
@@ -557,7 +586,7 @@ def main():
             print(f"  {path}: {problem}")
         return 1
     print("✅ 括号配平、条件编译配对、多行字符串缩进、JSON 编解码类型、"\
-          "静态成员限定、路径片段安全化均正常")
+          "静态成员限定、路径片段安全化、日期写法均正常")
     return 0
 
 

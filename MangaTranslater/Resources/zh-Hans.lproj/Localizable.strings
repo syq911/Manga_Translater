@@ -188,6 +188,23 @@
 "server.deleteConfirm.title" = "移除服务器";
 "server.deleteConfirm.message" = "将移除「%@」。已下载到本机的章节不会被删除。";
 
+/* 登录与人工验证（M3 第四批） */
+
+"login.title" = "登录来源";
+"login.action" = "登录";
+"login.done" = "完成";
+"login.footer" = "在这个网页里完成登录。点「完成」后，本页的登录凭据会交给该来源，之后的请求会自动带上。";
+"login.saved" = "已保存 %ld 条登录凭据。";
+"login.noCookies" = "没有找到可保存的登录凭据。请确认已经登录成功（页面上能看到自己的账号）再点「完成」。";
+"login.cleared" = "已清除该来源的登录状态。";
+"login.signOut" = "清除登录状态";
+
+"verify.title" = "人工验证";
+"verify.action" = "打开网页验证";
+"verify.footer" = "如果站点要求「确认你是真人」，在这里完成即可。验证通过后凭据会自动交回该来源。";
+"verify.hint" = "这个站点可能要求先通过人工验证（Cloudflare / 人机校验）。";
+"verify.noURL" = "这个来源没有声明可打开的网页地址。";
+
 "source.status.unknown" = "状态未知";
 "source.status.ongoing" = "连载中";
 "source.status.completed" = "已完结";

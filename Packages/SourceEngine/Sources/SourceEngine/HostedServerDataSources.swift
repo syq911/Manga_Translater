@@ -285,20 +285,37 @@ enum Mapping {
     }
 
     /// 日期：ISO8601（含毫秒）、`yyyy-MM-dd`、10/13 位时间戳。
+    ///
+    /// 用 `ISO8601DateFormatter` 而不是 `Date.ISO8601FormatStyle` 的链式构造：
+    /// 后者写 `Date.ISO8601FormatStyle.year()` 会被编译器拒绝
+    /// （「instance member 'year' cannot be used on type」），
+    /// 要写成 `.init().year()` 才对；`ISO8601DateFormatter` 更直白也更好改。
     static func date(_ value: Any?) -> Date? {
         if let number = value as? NSNumber, !isBoolean(number) {
             return date(fromTimestamp: number.doubleValue)
         }
         guard let text = string(value) else { return nil }
-        if let date = try? Date(text, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)) {
-            return date
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: text) { return date }
+
+        // `yyyy-MM-dd`：不少自建服务器只给到日
+        let parts = text.split(separator: "-")
+        if parts.count == 3,
+           let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]),
+           (1900...9999).contains(year), (1...12).contains(month), (1...31).contains(day) {
+            var components = DateComponents()
+            components.year = year
+            components.month = month
+            components.day = day
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? TimeZone.current
+            if let date = calendar.date(from: components) { return date }
         }
-        if let date = try? Date(text, strategy: Date.ISO8601FormatStyle()) {
-            return date
-        }
-        if let date = try? Date(text, strategy: Date.ISO8601FormatStyle.year().month().day()) {
-            return date
-        }
+
         if text.count == 10 || text.count == 13, text.allSatisfy(\.isNumber), let seconds = Double(text) {
             return date(fromTimestamp: seconds)
         }
@@ -307,8 +324,10 @@ enum Mapping {
 
     /// 时间戳：10 位当秒，13 位当毫秒。
     static func date(fromTimestamp raw: Double) -> Date? {
-        guard raw > 0 else { return nil }
+        guard raw.isFinite, raw > 0 else { return nil }
         let seconds = raw > 100_000_000_000 ? raw / 1000 : raw
+        // 1e9 ≈ 2001 年、1e11 ≈ 5138 年：超出这个区间基本不是有效日期
+        guard seconds > 100_000_000, seconds < 100_000_000_000 else { return nil }
         return Date(timeIntervalSince1970: seconds)
     }
 }

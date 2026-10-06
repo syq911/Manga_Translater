@@ -11,8 +11,9 @@
 //    打一次网络——既是无谓流量，也会让结果列表来回闪；
 //  - 切换模式 / 提交新查询时**重建模型**（加载器与查询串绑定），
 //    避免出现「显示的是上一次查询结果」这类状态错位；
-//  - 只有末行出现时才请求下一页（比滚动到底部事件简单且够用）。
-//
+//  - 只有末行出现时才请求下一页（比滚动到底部事件简单且够用）；
+//  - 「登录 / 人工验证」入口放在本页工具栏（契约 §8 说的「源详情页」）：
+//    打开内嵌网页，用户登录或点过验证后，宿主收割 Cookie 到该源的容器。
 
 import SwiftUI
 import AppCore
@@ -28,6 +29,15 @@ struct SourceBrowseView: View {
     @State private var query = ""
     @State private var submittedQuery = ""
     @State private var model: SourceBrowseModel?
+    @State private var webLogin: WebLoginRequest?
+    @State private var message: String?
+
+    /// 打开内嵌网页的请求（登录或人工验证）。
+    private struct WebLoginRequest: Identifiable {
+        let id = UUID()
+        let url: URL
+        let purpose: WebLoginPurpose
+    }
 
     enum Mode: String, CaseIterable {
         case popular
@@ -62,7 +72,68 @@ struct SourceBrowseView: View {
         }
         .navigationTitle(source.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { toolbarContent }
         .task(id: taskKey) { await startLoading() }
+        .sheet(item: $webLogin) { request in
+            SourceLoginView(
+                sourceID: source.sourceID,
+                sourceName: source.name,
+                url: request.url,
+                purpose: request.purpose
+            )
+        }
+        .alert(L("common.notice"), isPresented: Binding(
+            get: { message != nil },
+            set: { if !$0 { message = nil } }
+        )) {
+            Button(L("common.ok"), role: .cancel) { message = nil }
+        } message: {
+            Text(message ?? "")
+        }
+    }
+
+    // MARK: 登录与人工验证
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                if let login = environment.loginURL(for: source.sourceID),
+                   let url = URL(string: login) {
+                    Button {
+                        webLogin = WebLoginRequest(url: url, purpose: .login)
+                    } label: {
+                        Label(L("login.action"), systemImage: "person.crop.circle")
+                    }
+                }
+                Button {
+                    openVerification()
+                } label: {
+                    Label(L("verify.action"), systemImage: "checkmark.shield")
+                }
+                if environment.hasSourceCookies(source.sourceID) {
+                    Button(role: .destructive) {
+                        environment.clearSourceCookies(source.sourceID)
+                        message = L("login.cleared")
+                    } label: {
+                        Label(L("login.signOut"), systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+        }
+    }
+
+    /// 打开人工验证页：没有登录页 / 主页时给出明确提示，而不是静默无反应。
+    private func openVerification() {
+        guard let value = environment.webVerificationURL(for: source.sourceID),
+              let url = URL(string: value)
+        else {
+            message = L("verify.noURL")
+            return
+        }
+        webLogin = WebLoginRequest(url: url, purpose: .verification)
     }
 
     /// 驱动加载的键：模式 + **已提交**的查询串。
@@ -107,13 +178,21 @@ struct SourceBrowseView: View {
                         Text(L("source.loading"))
                             .foregroundStyle(.secondary)
                     }
-                case let .failed(message):
+                case let .failed(reason):
                     VStack(alignment: .leading, spacing: 8) {
                         Label(L("source.failed"), systemImage: "exclamationmark.triangle")
                             .font(.headline)
-                        Text(message)
+                        Text(reason)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                        // 「200 + HTML 验证页」看起来就是「什么都没返回」，
+                        // 识别到就顺手给一个入口，别让用户自己猜。
+                        if ChallengeDetector.detect(inMessage: reason) != nil {
+                            Text(L("verify.hint"))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Button(L("verify.action")) { openVerification() }
+                        }
                         Button(L("source.retry")) {
                             Task { await model.refresh() }
                         }

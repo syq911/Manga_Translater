@@ -264,6 +264,49 @@ final class AppEnvironment {
         try await dataSourceProvider.dataSource(for: sourceID)
     }
 
+    // MARK: 登录与人工验证（契约 §8）
+
+    /// 源的登录页地址（脚本声明 `loginUrl` 才有）。
+    ///
+    /// 会做一次静态校验来读元信息——比载入 JS 沙箱便宜得多
+    /// （界面只是要判断「要不要显示登录按钮」）。
+    func loginURL(for sourceID: SourceID) -> String? {
+        guard let script = try? sourceStore.script(for: sourceID.rawValue),
+              let meta = try? SourceScriptValidator.validate(script)
+        else { return nil }
+        guard let login = meta.loginURL, !login.isEmpty else { return nil }
+        return login
+    }
+
+    /// 「打开网页验证」用的地址：优先登录页，其次来源主页 / 服务器地址。
+    ///
+    /// 人工验证（Cloudflare 之类）发生在**任意**页面上，所以没有登录页时
+    /// 也要能给一个入口——退化成来源主页，用户在那里点过验证后
+    /// 同域的 Cookie 一样会被收割。
+    func webVerificationURL(for sourceID: SourceID) -> String? {
+        if let login = loginURL(for: sourceID) { return login }
+        if let server = serverStore.server(id: sourceID.rawValue) {
+            return server.normalizedBaseURL
+        }
+        guard let script = try? sourceStore.script(for: sourceID.rawValue),
+              let meta = try? SourceScriptValidator.validate(script)
+        else { return nil }
+        let base = meta.baseURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (base?.isEmpty == false) ? base : nil
+    }
+
+    /// 该来源容器里是否已有 Cookie（界面据此显示「退出登录」）。
+    func hasSourceCookies(_ sourceID: SourceID) -> Bool {
+        cookieJar.hasCookies(for: sourceID)
+    }
+
+    /// 清空该来源的 Cookie（同时落盘）。
+    func clearSourceCookies(_ sourceID: SourceID) {
+        cookieJar.clear(sourceID: sourceID)
+        cookieJar.persist()
+        diag("AppEnvironment: 已清空来源 \(sourceID.rawValue) 的登录状态")
+    }
+
     // MARK: 自建服务器
 
     /// 添加一台服务器（id 由名称派生，冲突自动加序号）。

@@ -188,6 +188,23 @@
 "server.deleteConfirm.title" = "Remove server";
 "server.deleteConfirm.message" = "This removes \u201C%@\u201D. Chapters already downloaded to this device are kept.";
 
+/* Login and manual verification (M3 batch 4) */
+
+"login.title" = "Sign in";
+"login.action" = "Sign in";
+"login.done" = "Done";
+"login.footer" = "Sign in on this page. When you tap Done, the cookies from this page are handed to the source, and later requests carry them automatically.";
+"login.saved" = "Saved %ld credential cookie(s).";
+"login.noCookies" = "No credentials found to save. Make sure you are actually signed in (your account is visible on the page) before tapping Done.";
+"login.cleared" = "Signed out of this source.";
+"login.signOut" = "Sign out";
+
+"verify.title" = "Verification";
+"verify.action" = "Open web verification";
+"verify.footer" = "If the site asks you to confirm you are human, do it here. Cookies from the page are handed back to the source.";
+"verify.hint" = "This site may require manual verification first (Cloudflare / captcha).";
+"verify.noURL" = "This source declares no web address to open.";
+
 "source.status.unknown" = "Unknown";
 "source.status.ongoing" = "Ongoing";
 "source.status.completed" = "Completed";
