@@ -212,3 +212,24 @@
 "source.status.cancelled" = "已腰斩";
 "source.status.hiatus" = "休载中";
 
+/* 页内翻译（M4 第一批） */
+
+"translation.stage.recognizing" = "识别文字…";
+"translation.stage.translating" = "翻译中…";
+"translation.stage.rendering" = "排版合成…";
+"translation.stage.done" = "完成";
+
+"translation.error.missingKey" = "还没有填入翻译服务密钥。可以在「设置 → 翻译」里填，或改用云端翻译。";
+"translation.error.badURL" = "翻译接口地址无效（需要是 http/https 且带主机名，本机调试可用 127.0.0.1）。";
+"translation.error.http" = "翻译接口返回 %ld：%@";
+"translation.error.empty" = "翻译结果为空或格式无法解析。";
+"translation.error.countMismatch" = "译文条数不匹配（期望 %ld 条，实际 %ld 条）。";
+"translation.error.noText" = "这一页没有识别到文字。可以在「设置 → 翻译」里把原文语言改成具体语言再试。";
+"translation.error.imageUnavailable" = "这一页的图片还没加载完成。";
+"translation.error.cancelled" = "翻译已取消。";
+"translation.error.notSignedIn" = "还没有登录云服务。";
+"translation.error.quotaExceeded" = "今天的免费额度用完了（剩 %ld 页）。可以升级云服务，或改用自备密钥。";
+"translation.error.subscriptionRequired" = "云服务额度与订阅都已用尽。";
+"translation.error.cloud" = "云服务请求失败：%@";
+"translation.prompt.autoSource" = "自动判断";
+

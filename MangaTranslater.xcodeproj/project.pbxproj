@@ -77,6 +77,8 @@
 				"MangaTranslaterTests/DownloadQueueTests.swift",
 				"MangaTranslaterTests/ZipArchiveTests.swift",
 				"MangaTranslaterTests/IntegrationTests.swift",
+				"MangaTranslaterTests/TranslationCoreTests.swift",
+				"MangaTranslaterTests/TranslationStoreTests.swift",
 			);
 			target = ABCDEF000000000000000010 /* MangaTranslater */;
 		};
@@ -126,6 +128,8 @@
 				"MangaTranslaterTests/DownloadQueueTests.swift",
 				"MangaTranslaterTests/ZipArchiveTests.swift",
 				"MangaTranslaterTests/IntegrationTests.swift",
+				"MangaTranslaterTests/TranslationCoreTests.swift",
+				"MangaTranslaterTests/TranslationStoreTests.swift",
 			);
 			target = ABCDEF000000000000000020 /* MangaTranslaterTests */;
 		};

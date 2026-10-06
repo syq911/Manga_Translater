@@ -212,3 +212,24 @@
 "source.status.cancelled" = "Cancelled";
 "source.status.hiatus" = "On hiatus";
 
+/* Page translation (M4 batch 1) */
+
+"translation.stage.recognizing" = "Reading text…";
+"translation.stage.translating" = "Translating…";
+"translation.stage.rendering" = "Typesetting…";
+"translation.stage.done" = "Done";
+
+"translation.error.missingKey" = "No translation API key yet. Add one under Settings → Translation, or switch to the cloud service.";
+"translation.error.badURL" = "The translation endpoint is invalid (needs http/https with a host; 127.0.0.1 is allowed for local testing).";
+"translation.error.http" = "The translation endpoint returned %ld: %@";
+"translation.error.empty" = "The translation result was empty or could not be parsed.";
+"translation.error.countMismatch" = "Line count mismatch (expected %ld, got %ld).";
+"translation.error.noText" = "No text was found on this page. Try setting a specific source language under Settings → Translation.";
+"translation.error.imageUnavailable" = "This page image has not finished loading yet.";
+"translation.error.cancelled" = "Translation was cancelled.";
+"translation.error.notSignedIn" = "Not signed in to the cloud service.";
+"translation.error.quotaExceeded" = "Today's free quota is used up (%ld page(s) left). Upgrade the cloud service, or use your own API key.";
+"translation.error.subscriptionRequired" = "Both cloud quota and subscription are exhausted.";
+"translation.error.cloud" = "Cloud request failed: %@";
+"translation.prompt.autoSource" = "detect automatically";
+

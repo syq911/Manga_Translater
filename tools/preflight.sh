@@ -41,6 +41,7 @@ echo "=== 6/9 Python 脚本语法 ==="
   tools/check_api_usage.py \
   tools/check_localization.py \
   tools/check_demo_repo.py \
+  tools/make_ocr_fixture.py \
   tools/check_redlines.py
 echo "OK"
 

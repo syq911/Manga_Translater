@@ -84,12 +84,28 @@ def bracket_delta(text, index):
 
 
 def split_top_level(text):
-    """按顶层逗号切分（忽略括号 / 方括号 / 尖括号内的逗号）。"""
+    """按顶层逗号切分（忽略括号 / 方括号 / 尖括号内的逗号）。
+
+    深度**不允许变负**。原因（实测踩过）：默认值里的闭包可以含比较运算，
+    例如
+        sleeper: @Sendable (Double) -> Void = { interval in
+            guard interval > 0 else { return }
+        }
+    这里的 `>` 并不是泛型闭合，`bracket_delta` 却按 `)` 那样记 −1；
+    深度一路变负之后，闭包与其后**所有**参数之间的逗号都不再被当作顶层逗号，
+    于是 `chunkSize:` / `maxAttempts:` 两个参数被静默吞掉 ——
+    检查器不但漏检，还会拿着残缺的参数表报出「未声明的参数标签」这种假错误。
+    `<` / `>` 只在泛型实参里成对出现，把负深度夹到 0 即可：
+    极端情况下顶多多切一刀（把某个参数拆开，进而在后续解析里被忽略），
+    但不会再制造出「凭空多出来的标签」。
+    """
     parts = []
     depth = 0
     current = ""
     for index, ch in enumerate(text):
         depth += bracket_delta(text, index)
+        if depth < 0:
+            depth = 0
         if ch == "," and depth == 0:
             parts.append(current)
             current = ""

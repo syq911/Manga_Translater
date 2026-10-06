@@ -99,6 +99,23 @@ public enum TranslationLanguage: String, Codable, Sendable, CaseIterable {
         case .korean: return "韩语"
         }
     }
+
+    /// 写进翻译提示词的语言名。`auto` 留空，交给模型自行判断源语言。
+    public var promptName: String {
+        switch self {
+        case .auto: return ""
+        case .japanese: return "日文"
+        case .english: return "英文"
+        case .simplifiedChinese: return "简体中文"
+        case .traditionalChinese: return "繁体中文"
+        case .korean: return "韩文"
+        }
+    }
+
+    /// 可作为「译文语言」的取值：`auto` 只能是原文语言。
+    public static var targetChoices: [TranslationLanguage] {
+        allCases.filter { $0 != .auto }
+    }
 }
 
 /// 备份 / 恢复用的设置快照。
