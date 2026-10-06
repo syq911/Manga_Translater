@@ -175,7 +175,11 @@ struct TranslationSettingsView: View {
         } header: {
             Text(L("translation.settings.byok"))
         } footer: {
-            Text(L("translation.settings.byokFooter"))
+            // 没填 Key 时先说清楚，而不是等用户点了翻译再报「未配置密钥」——
+            // 那个报错出现在阅读器里，用户很难联想到是设置页缺了一项。
+            Text(environment.hasTranslationAPIKey
+                 ? L("translation.settings.byokFooter")
+                 : L("translation.settings.byokMissingKey"))
         }
     }
 

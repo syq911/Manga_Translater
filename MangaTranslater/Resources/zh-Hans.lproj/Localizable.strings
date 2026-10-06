@@ -254,6 +254,7 @@
 "translation.settings.model" = "模型";
 "translation.settings.apiKey" = "API Key";
 "translation.settings.byokFooter" = "API Key 存在系统钥匙串里（失败时回退到本机存储）。接口地址可以指向任何 OpenAI 兼容服务，不限于默认那家。";
+"translation.settings.byokMissingKey" = "还没有填入 API Key。填好之后阅读器里的翻译按钮才会工作。";
 "translation.settings.onDevice" = "设备端翻译";
 "translation.settings.onDeviceDetail" = "由系统「翻译」框架完成，首次使用某个语言对时可能需要联网下载语言包。";
 "translation.settings.onDeviceFooter" = "设备端翻译同时只处理一页，速度取决于机型。";

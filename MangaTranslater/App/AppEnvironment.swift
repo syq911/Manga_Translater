@@ -545,8 +545,17 @@ final class AppEnvironment {
     /// 后端解析刻意放在这里（而不是控制器里）：控制器只认 `MangaTranslator` 协议，
     /// 「自备密钥 / 云服务 / 端上」的差别与各自的凭据来源全部集中在环境这一层，
     /// 于是控制器可以完全离线地单测。
+    ///
+    /// **所有要在 `resolver` 里用到的东西都必须先落成局部常量。**
+    /// `resolver` 是转义闭包，闭包里**隐式**使用 `self` 会被编译器直接拒绝
+    /// （"implicit use of 'self' in closure"）——这个坑在两个方法里各踩过一次，
+    /// 因此这里统一成「闭包只碰局部常量」的写法。
     func makeTranslationController() -> TranslationController {
         let settings = self.settings
+        let cloudModel = cloud
+        let endpoint = settings.cloudServiceBaseURL
+        let transport = Self.cloudTransport
+
         return TranslationController(
             store: translationStore,
             settings: settings,
@@ -560,7 +569,18 @@ final class AppEnvironment {
                         model: settings.deepSeekModel
                     )
                 case .cloudService:
-                    return cloudTranslator()
+                    // 未登录时返回 nil，控制器会报「未登录」，界面引导去登录
+                    guard let session = cloudModel.session else { return nil }
+                    return CloudTranslationService(
+                        client: CloudServiceClient(baseURL: endpoint, transport: transport),
+                        token: session.token,
+                        onRemaining: { remaining in
+                            // 服务端每次翻译都会带回今天的剩余页数，顺手刷新界面上的额度
+                            Task { @MainActor in
+                                cloudModel.applyRemaining(remaining)
+                            }
+                        }
+                    )
                 case .appleOnDevice:
                     // 端上翻译走 AppleTranslationBridge（由控制器直接调，不经过协议）
                     return nil
@@ -569,33 +589,10 @@ final class AppEnvironment {
         )
     }
 
-    /// 自备密钥是否已配置（界面据此提示「去填 Key」）。
+    /// 自备密钥是否已配置（界面据此提示「还没填 Key」，省掉一次看不懂的失败）。
     var hasTranslationAPIKey: Bool {
         let key = SecureValueStore.string(forKey: SecureValueStore.Key.translationAPIKey) ?? ""
         return !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    /// 云端翻译后端。未登录时返回 nil（控制器会报「未登录」，界面引导登录）。
-    ///
-    /// 每次现造：令牌可能在会话中被刷新（`/me` 或 401 处理都会更新会话），
-    /// 缓存住一个持有旧令牌的实例只会让翻译在令牌轮换后莫名失败。
-    func cloudTranslator() -> MangaTranslator? {
-        // 先在方法体里把 `self` 上的东西取成局部常量：转义闭包里**隐式**使用 self
-        // 会被编译器直接拒绝（"implicit use of 'self' in closure"），
-        // 显式捕获局部常量既过编译，也让「这个闭包到底带走了什么」一眼可见。
-        let model = cloud
-        guard let session = model.session else { return nil }
-        let endpoint = settings.cloudServiceBaseURL
-        return CloudTranslationService(
-            client: CloudServiceClient(baseURL: endpoint, transport: Self.cloudTransport),
-            token: session.token,
-            onRemaining: { remaining in
-                // 服务端每次翻译都会带回今天的剩余页数，顺手刷新界面上的额度
-                Task { @MainActor in
-                    model.applyRemaining(remaining)
-                }
-            }
-        )
     }
 
     /// 官网购买页地址（在**外部浏览器**打开），带上账号 ID 便于服务端把订阅绑到账号。

@@ -254,6 +254,7 @@
 "translation.settings.model" = "Model";
 "translation.settings.apiKey" = "API key";
 "translation.settings.byokFooter" = "The API key is stored in the system keychain (falling back to local storage). The endpoint can point at any OpenAI-compatible service, not only the default one.";
+"translation.settings.byokMissingKey" = "No API key yet. The translate button in the reader will not work until you add one.";
 "translation.settings.onDevice" = "On-device translation";
 "translation.settings.onDeviceDetail" = "Uses the system translation framework. The first use of a language pair may download a language pack.";
 "translation.settings.onDeviceFooter" = "On-device translation handles one page at a time; speed depends on the device.";

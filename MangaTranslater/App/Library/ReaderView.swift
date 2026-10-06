@@ -80,7 +80,11 @@ struct ReaderView: View {
         // Apple 端上翻译：框架要求由 SwiftUI 提供 TranslationSession，
         // 桥负责把「待翻译文本 + continuation」和这次会话对上。
         .translationTask(translation?.appleBridge.configuration) { session in
-            await translation?.appleBridge.run(session: session)
+            // 显式绑定成局部常量再调用：`translation?.method()` 的表达式类型是 `Void?`，
+            // 在「期望 Void」的闭包里依赖单表达式丢弃规则虽然能过，
+            // 但写成两句更明确，也不会因为编译器的边缘行为变化而出问题。
+            guard let controller = translation else { return }
+            await controller.appleBridge.run(session: session)
         }
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)

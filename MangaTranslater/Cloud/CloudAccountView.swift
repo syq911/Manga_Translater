@@ -67,7 +67,10 @@ struct CloudAccountView: View {
                 Text(L("cloud.account.quota"))
                 Spacer()
                 Text(model.quotaSummary)
-                    .foregroundStyle(model.account?.isQuotaExhausted == true ? .orange : .secondary)
+                    // 显式写 `Color.`：`.orange` 与 `.secondary` 分属两种 ShapeStyle
+                    // （前者是 Color，后者是 HierarchicalShapeStyle），
+                    // 用隐式成员写法放在三元里会因类型不一致而编译失败。
+                    .foregroundStyle(model.account?.isQuotaExhausted == true ? Color.orange : Color.secondary)
             }
 
             if let expires = model.entitlementDescription {
