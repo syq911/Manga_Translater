@@ -52,8 +52,16 @@ def swift_files(*roots):
 
 
 def strip_comments(text):
+    """去掉注释，但**保留行数**（把注释行换成空行）。
+
+    早先的实现直接 `join` 掉注释行，于是后面 `enumerate` 出来的行号
+    比真实文件少几行——报「第 209 行有问题」而实际在 248 行，
+    等于让人再去搜一遍。检查器报错必须能直接跳过去。
+    """
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    return "\n".join(l for l in text.split("\n") if not l.strip().startswith("//"))
+    return "\n".join(
+        "" if l.strip().startswith("//") else l for l in text.split("\n")
+    )
 
 
 def bracket_delta(text, index):
@@ -217,6 +225,53 @@ def out_of_order(provided, declared):
     return None
 
 
+def check_app_environment_members(swift_files):
+    """
+    `environment.xxx` 里的 `xxx` 必须是 `AppEnvironment` 真的有的成员。
+
+    动机（实测烧了一轮 CI）：把 AppCore 的**全局函数** `diag(...)` 写成了
+    `environment.diag(...)`，编译器报 "value of type 'AppEnvironment' has no
+    member 'diag'"。
+
+    判定简单而精确：`environment` 在本项目里只有一种身份
+    （`@Environment(AppEnvironment.self)`），所以只要名字不在成员表里就是错的。
+    """
+    path = "MangaTranslater/App/AppEnvironment.swift"
+    if not os.path.exists(path):
+        return []
+    text = strip_comments(io.open(path, encoding="utf-8").read())
+
+    # 成员声明：`let x` / `var x` / `func x` / `private let x` …
+    member = re.compile(
+        r"^[ \t]*(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?[ \t]+)*"
+        r"(?:public[ \t]+|internal[ \t]+|private\(set\)[ \t]+|private[ \t]+"
+        r"|fileprivate[ \t]+|static[ \t]+|final[ \t]+)*"
+        r"(?:let|var|func)[ \t]+([A-Za-z_][A-Za-z0-9_]*)",
+        re.M,
+    )
+    members = set(member.findall(text))
+    if not members:
+        return []
+
+    usage = re.compile(r"\benvironment\.([A-Za-z_][A-Za-z0-9_]*)")
+    problems = []
+    for file in swift_files:
+        raw = strip_comments(io.open(file, encoding="utf-8").read())
+        for index, line in enumerate(raw.split("\n"), start=1):
+            for match in usage.finditer(line):
+                name = match.group(1)
+                if name in members:
+                    continue
+                problems.append(
+                    (
+                        os.path.relpath(file).replace("\\", "/"),
+                        f"第 {index} 行 `environment.{name}` 不是 AppEnvironment 的成员"
+                        f"（若是全局函数，直接写 `{name}(…)`）",
+                    )
+                )
+    return problems
+
+
 def check_mutating_calls_inside_expect(files):
     """
     `#expect(...)` 的参数会被宏包进闭包，闭包捕获的变量是**不可变**的，
@@ -301,6 +356,9 @@ def main():
                     )
 
     for path, message in check_mutating_calls_inside_expect(library_files + consumer_files):
+        problems.append((path, message))
+
+    for path, message in check_app_environment_members(consumer_files):
         problems.append((path, message))
 
     print(f"检查构造调用：{checked} 处（涉及 {len(inits)} 个类型）")

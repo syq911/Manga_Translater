@@ -75,7 +75,11 @@ final class WebLoginModel: NSObject, WKNavigationDelegate {
     func harvestCookies() async -> [HarvestedCookie] {
         await withCheckedContinuation { continuation in
             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
-                continuation.resume(returning: cookies.map { HarvestedCookie(properties: $0.properties) })
+                // `HTTPCookie.properties` 是 Optional（Swift 侧签名如此），
+                // 解不开时给空字典——`HarvestedCookie` 对缺失字段有兜底。
+                continuation.resume(
+                    returning: cookies.map { HarvestedCookie(properties: $0.properties ?? [:]) }
+                )
             }
         }
     }
@@ -240,7 +244,8 @@ struct SourceLoginView: View {
         )
         // 落盘失败不打断用户：容器已经写好了，最坏情况是重启后要重新登录一次
         try? environment.cookieJar.persist()
-        environment.diag("SourceLoginView: 来源 \(sourceID.rawValue) 收割 Cookie \(written) 条")
+        // `diag` 是 AppCore 里的全局函数，不是 AppEnvironment 的方法
+        diag("SourceLoginView: 来源 \(sourceID.rawValue) 收割 Cookie \(written) 条")
 
         if written == 0 {
             // 明确告知「没有收割到」，而不是让用户以为成功了

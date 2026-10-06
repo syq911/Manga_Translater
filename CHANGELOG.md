@@ -420,6 +420,20 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `DownloadCoordinatorTests`：驱动期间后台断言恰好申请一次、归还一次
   （把申请 / 归还应成注入闭包，测试不碰 UIKit）
 
+### 🔧 修复 / Fixed（M3 第四批 · 三轮）
+
+- `SourceLoginView` 两处：
+  `HTTPCookie.properties` 是 **Optional**（Swift 侧签名如此），直接传会编译失败
+  → `?? [:]`（`HarvestedCookie` 对缺失字段本来就有兜底）；
+  `environment.diag(...)` 把 AppCore 的**全局函数**当成了 `AppEnvironment` 的方法
+  → 改回 `diag(...)`。
+- **新增预检规则「`environment.xxx` 必须是 `AppEnvironment` 的成员」**。
+  `environment` 在本项目里只有一种身份（`@Environment(AppEnvironment.self)`），
+  所以「名字不在成员表里」必是错的——判定精确、零误报，已反向验证。
+- 顺带修 `check_api_usage.strip_comments`：它原先把注释行**删掉**，
+  于是报出来的行号比真实行号少几行（报第 209 行、实际在第 248 行）。
+  改成把注释行换成空行，行号与文件一致。
+
 ### 🔧 修复 / Fixed（M3 第四批 · 二轮）
 
 - `cookieJar.persist()` 漏写 `try`（它是 throwing）——两处：
