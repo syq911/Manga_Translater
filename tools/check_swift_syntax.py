@@ -230,12 +230,17 @@ def check_static_member_qualification(files):
 
     为再避免一层误报：仅在「该名字在文件里只有 static 声明」时才判——
     同名还有实例成员或全局函数时（可能重载/遮蔽），交给编译器判断。
+
+    另外要认得**运算符声明**（`static func == (lhs:rhs:)`）：正则若只认
+    `[A-Za-z_][A-Za-z0-9_]*`，这类声明就进不了声明栈，函数体里的普通调用
+    会被误判成「实例上下文裸调静态成员」（本项目实测误报过一次）。
     """
     declaration = re.compile(
         r"^[ \t]*(?P<mods>(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?[ \t]+"
         r"|public[ \t]+|internal[ \t]+|private[ \t]+|fileprivate[ \t]+"
         r"|final[ \t]+|static[ \t]+|class[ \t]+)*)"
-        r"(?P<kind>func|var|let)[ \t]+(?P<name>[A-Za-z_][A-Za-z0-9_]*)",
+        r"(?P<kind>func|var|let)[ \t]+"
+        r"(?P<name>[A-Za-z_][A-Za-z0-9_]*|[/=\-+!*%<>&|^~?][/=\-+!*%<>&|^~?]*)",
         re.M,
     )
 

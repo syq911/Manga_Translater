@@ -279,6 +279,51 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `JSSourceBridgeTests`（7 例）：`net.get`/`net.post`/`json.parse`/`source.getPreference`
   逐个钉住，含请求描述解码与「source 被冻结仍能载入」
 
+### ✨ 新增 / Added（M2 第五批：仓库服务 + 运行时池）
+
+- **`SourceRepositoryService`**（actor）：把索引解析与落盘用网络串起来
+  - `catalog(for:)`：拉 `index.json` → 解析 → **合并本地安装状态**
+    （`installedVersion` / `hasUpdate` / `isInstallable`）
+  - `install(_:)` / `install(key:from:)`：下载脚本 → UTF-8 校验 →
+    **key 一致性校验** → 静态校验 → 原子落盘（复用 `SourceStore` 的回滚）
+  - `catalogs()`：刷新全部仓库，**单个仓库失败只影响该条**（返回逐条结果与原因）
+  - `availableUpdates()`：所有仓库里可更新的源
+- **`SourceIndexParser.indexURL` / `directoryURL`**：仓库地址规范化。
+  用户填 `.../repo/`、`.../repo`、`.../repo/index.json` 三种形式都能用；
+  修正了旧实现「取最后一个 `/` 之前」在 `https://example.com`（无路径）下
+  拼出 `https:/demo.js` 的问题；保留端口与 IPv6 方括号；带查询串/片段一律拒绝。
+- **`SourceVersion`**：版本号解析与比较。缺段补零（`1.2` == `1.2.0`）、
+  按数字而非字符串比较（`1.10` > `1.9`）、正式版高于同号预发布版、
+  **解析不了就不提示更新**（宁可漏提示，也不让用户反复看到装不上的「新版本」）。
+- **`SourceRuntimePool`**（actor）：已安装源的运行时池
+  - 同一 key 只载入一次（**single-flight**，并发取用共用一次载入）
+  - 超过 `maxLoadedSources`（默认 3）淘汰最久未用；**每次取用计一次租约**，
+    有租约的源不参与淘汰，全在使用中时宁可临时超限并写警告日志
+  - `runner(for:)`（可能被回收）与 `withRunner(for:_:)`（全程持租约）两种用法
+  - `invalidate` / `invalidateAll`：安装、更新、卸载后回收旧沙箱
+  - 错误统一为 `SourceRunnerError`（脚本文件缺失 → `notInstalled`，校验不过 → `scriptRejected`）
+- **`SourceVisibilityRule`**：成人内容源的可见性规则只实现一处——
+  界面一律用过滤后的列表，避免某个页面漏写 `if !source.isNSFW` 导致合规约束失效。
+- **应用层接线**（`AppEnvironment`）：新增仓库服务与运行时池，
+  提供 `visibleInstalledSources` / `hiddenSourceCount` / `reloadRepositoryCatalogs` /
+  `installSource` / `uninstallSource` / `sourceRunner(for:)` 等入口；
+  日志统一进诊断日志（每个来源带 key 前缀，便于排查）。
+
+### 🧪 测试 / Tests（M2 第五批新增 4 个套件 / 45 个用例）
+
+- `SourceIndexURLTests`（4 例）：三种输入形式的规范化、端口与 IPv6、
+  非法地址（含 `http` 非本机）一律拒绝、脚本地址由目录推导
+- `SourceRepositoryServiceTests`（10 例）：目录合并本地状态、更新检测（含本地更新不提示）、
+  404 / 非法 JSON / 路径穿越文件名的拒绝、安装落盘、**key 不一致拒绝且不落盘**、
+  禁用 API / 非 UTF-8 / HTTP 500、多仓库部分失败、空仓库、只读下载
+- `SourceRuntimePoolTests`（10 例）：载入一次并复用、并发 single-flight、
+  未安装/损坏脚本的错误映射、载入失败可重试、LRU 淘汰、**租约保护（含超限警告日志）**、
+  租约释放后恢复可淘汰、invalidate 重载、卸载后报错、invalidateAll
+- `SourceVisibilityRuleTests`（2 例）：未开启时隐藏成人内容源、开启后全部可见
+- `IntegrationTests` 新增「应用环境：可见源过滤 + 运行时池接线」：
+  装两个源（含一个 `nsfw: true`）→ 可见列表只显示一个 → 确认年龄并开启后两个都可见 →
+  取运行器调用契约方法并解码 → 卸载后取运行器报 `notInstalled`（全程无网络）
+
 ### 📖 文档 / Docs
 
 - **`docs/source-api.md` 契约按实现细化**：补齐仓库/脚本校验的**精确规则表**

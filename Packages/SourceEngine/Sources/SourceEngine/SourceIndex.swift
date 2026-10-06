@@ -151,10 +151,49 @@ public enum SourceIndexParser {
 
     /// 把索引项对应的下载地址拼出来（相对仓库目录地址）。
     public static func scriptURL(for entry: SourceIndexEntry, repositoryURL: String) -> String? {
-        guard let lastSlash = repositoryURL.lastIndex(of: "/") else { return nil }
-        let base = repositoryURL[repositoryURL.startIndex...lastSlash]
-        guard base.hasPrefix("http") else { return nil }
-        return base + entry.fileName
+        guard let directory = directoryURL(for: repositoryURL) else { return nil }
+        return directory + entry.fileName
+    }
+
+    /// 把用户输入的仓库地址规范成**索引地址**（`.../index.json`）。
+    ///
+    /// 用户可能填三种形式，都要能接受：
+    /// - `https://example.com/repo/`（目录）
+    /// - `https://example.com/repo`（目录，无尾斜杠）
+    /// - `https://example.com/repo/index.json`（已经是索引地址）
+    ///
+    /// 只接受 http/https；`http` 仅限本机（与 `SourceTransport` 的约定一致，
+    /// 便于用户调试自建仓库）。带查询串或片段的地址一律拒绝——
+    /// 仓库地址不是接口地址，带上这些只会让拼接结果不可预期。
+    public static func indexURL(for repositoryURL: String) -> String? {
+        guard let directory = directoryURL(for: repositoryURL) else { return nil }
+        return directory + "index.json"
+    }
+
+    /// 把用户输入的仓库地址规范成**目录地址**（一定以 `/` 结尾）。
+    ///
+    /// 注意不能简单取「最后一个 `/` 之前的部分」：仓库地址写成
+    /// `https://example.com`（无路径）时，最后一个 `/` 落在 `https://` 里，
+    /// 拼出来的脚本地址会缺主机名（`https:/demo.js`）。
+    public static func directoryURL(for repositoryURL: String) -> String? {
+        let trimmed = repositoryURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ModelValidation.isValidURLString(trimmed) else { return nil }
+        guard let url = URL(string: trimmed) else { return nil }
+        guard url.query == nil, url.fragment == nil else { return nil }
+
+        var path = url.path
+        // 已经是索引地址时，退回到它所在目录
+        if path.hasSuffix(".json") {
+            path = String(path[path.startIndex..<(path.lastIndex(of: "/") ?? path.startIndex)])
+        }
+        let scheme = url.scheme ?? "https"
+        // IPv6 主机的 host 不带方括号（`::1`），重新拼地址时要补回去，
+        // 否则得到 `http://::1/...` 这种非法地址。
+        let rawHost = url.host ?? ""
+        let host = rawHost.contains(":") ? "[\(rawHost)]" : rawHost
+        let port = url.port.map { ":\($0)" } ?? ""
+        let directory = path.hasSuffix("/") ? path : path + "/"
+        return "\(scheme)://\(host)\(port)\(directory)"
     }
 
     private static func requiredString(_ value: Any?, field: String, index: Int) throws -> String {

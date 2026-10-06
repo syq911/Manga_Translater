@@ -282,4 +282,83 @@ struct IntegrationTests {
         let request = try #require(transport.requests.first)
         #expect(request.value(forHTTPHeaderField: "Cookie") == "sid=abc")
     }
+
+    @Test("应用环境：可见源过滤 + 运行时池接线（全程无网络）")
+    @MainActor
+    func appEnvironmentSourcePipeline() async throws {
+        let directory = try TestFileSystem.makeTemporaryDirectory()
+        defer { TestFileSystem.remove(directory) }
+
+        let suiteName = "MangaTranslaterTests.envsrc.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AppSettings(defaults: defaults)
+        let sourceStore = SourceStore(rootDirectory: directory.appendingPathComponent("sources"))
+        // 用替身运行时：本用例验证的是「App → 池 → 运行器 → 解码」这条链路，
+        // 不是 JavaScriptCore 本身（那部分有专门的端到端套件）。
+        let runtimePool = SourceRuntimePool(
+            store: sourceStore,
+            makeRuntime: { _ in FakeRuntime() }
+        )
+        let environment = AppEnvironment(
+            settings: settings,
+            sourceStore: sourceStore,
+            cookieJar: CookieJar(storageURL: directory.appendingPathComponent("cookies.json")),
+            diagnostics: DiagnosticsLog(directory: directory),
+            libraryStore: InMemoryLibraryStore(),
+            localSource: LocalSource(rootDirectory: directory.appendingPathComponent("LocalLibrary")),
+            dataDirectory: directory,
+            isLibraryPersistent: false,
+            runtimePool: runtimePool
+        )
+
+        try sourceStore.install(script: scriptTemplate)
+        try sourceStore.install(script: nsfwScriptTemplate)
+
+        // 两个源都装上了，但界面上只应看到非成人内容那一个
+        #expect(environment.installedSources.count == 2)
+        #expect(environment.visibleInstalledSources.map(\.key) == ["demo"])
+        #expect(environment.hiddenSourceCount == 1)
+
+        // 开启可见性后两个都出现（未确认年龄时写入会被拒绝，这里先确认年龄）
+        settings.hasConfirmedAdultContent = true
+        let enabled = settings.setShowsNSFWSources(true)
+        #expect(enabled)
+        #expect(environment.visibleInstalledSources.count == 2)
+
+        // 取运行器 → 调用契约方法 → 解码成模型
+        let runner = try await environment.sourceRunner(for: "demo")
+        let page = try await runner.popularManga(page: 1)
+        #expect(page.items.isEmpty)
+        #expect(page.hasNextPage == false)
+        await environment.releaseSource("demo")
+
+        // 卸载后取运行器应报「源未安装」
+        let removed = try await environment.uninstallSource("demo")
+        #expect(removed)
+        #expect(environment.installedSources.map(\.key) == ["nsfw-demo"])
+        await expectThrowsAsync(SourceRunnerError.notInstalled("demo")) {
+            _ = try await environment.sourceRunner(for: "demo")
+        }
+    }
+
+    /// 成人内容源（`nsfw: true`），用于验证可见性过滤。
+    private var nsfwScriptTemplate: String {
+        """
+        const source = {
+          id: "nsfw-demo",
+          name: "示例成人源",
+          lang: "all",
+          baseUrl: "https://example.com",
+          nsfw: true,
+          version: "1.0.0"
+        };
+        async function getPopularManga(page) { return { mangas: [], hasNextPage: false }; }
+        async function getSearchManga(page, query, filters) { return { mangas: [], hasNextPage: false }; }
+        async function getMangaDetails(mangaUrl) { return { title: "t" }; }
+        async function getChapterList(mangaUrl) { return []; }
+        async function getPageList(chapterUrl) { return []; }
+        """
+    }
 }

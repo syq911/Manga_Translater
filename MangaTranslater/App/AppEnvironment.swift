@@ -32,6 +32,10 @@ final class AppEnvironment {
     let isLibraryPersistent: Bool
     /// 封面缩略图缓存（内存 + 磁盘）。
     let coverCache: CoverThumbnailCache
+    /// 源仓库服务（拉索引 / 装脚本 / 查更新）。
+    let repositoryService: SourceRepositoryService
+    /// 已安装源的运行时池（按需载入 JS 沙箱，上限内复用与回收）。
+    let runtimePool: SourceRuntimePool
 
     init(
         settings: AppSettings,
@@ -42,7 +46,9 @@ final class AppEnvironment {
         localSource: LocalSource,
         dataDirectory: URL,
         isLibraryPersistent: Bool,
-        coverCache: CoverThumbnailCache? = nil
+        coverCache: CoverThumbnailCache? = nil,
+        repositoryService: SourceRepositoryService? = nil,
+        runtimePool: SourceRuntimePool? = nil
     ) {
         self.settings = settings
         self.sourceStore = sourceStore
@@ -54,6 +60,36 @@ final class AppEnvironment {
         self.isLibraryPersistent = isLibraryPersistent
         // 默认按数据目录派生，测试可注入替身
         self.coverCache = coverCache ?? CoverThumbnailCache(dataDirectory: dataDirectory)
+
+        // 源侧依赖：仓库请求走一个独立的 HTTP 客户端（不带任何来源 Cookie——
+        // 拉索引时用户还没选定来源，带上 Cookie 既无意义也泄露面更大）。
+        self.repositoryService = repositoryService ?? SourceRepositoryService(
+            store: sourceStore,
+            client: HTTPClient(transport: URLSessionTransport())
+        )
+
+        if let runtimePool {
+            self.runtimePool = runtimePool
+        } else {
+            // 所有来源共用一个 `DefaultSourceTransport`：它内部已按来源
+            // 分别持有 HTTPClient 与限速器，源之间互不影响。
+            let transport = DefaultSourceTransport(cookieJar: cookieJar)
+            self.runtimePool = SourceRuntimePool(
+                store: sourceStore,
+                logSink: { level, message in
+                    diagnostics.log("[源运行时] \(level): \(message)")
+                },
+                makeRuntime: { meta in
+                    JSSourceRuntime(
+                        transport: transport,
+                        preferences: UserDefaultsSourcePreferences(),
+                        logSink: { level, message in
+                            diagnostics.log("[源 \(meta.id.rawValue)] \(level): \(message)")
+                        }
+                    )
+                }
+            )
+        }
     }
 
     /// 按默认路径构建。任一步失败都降级而非崩溃，保证 App 一定能启动。
@@ -111,6 +147,65 @@ final class AppEnvironment {
     /// 已添加的源仓库（出厂为空）。
     var repositories: [String] {
         sourceStore.repositories
+    }
+
+    /// 界面上**可见**的已安装源：成人内容源在用户未于设置中开启时被过滤掉。
+    ///
+    /// 界面一律用这个而不是 `installedSources`——过滤规则只在一处实现
+    /// （`SourceVisibilityRule`），避免某个页面漏掉。
+    var visibleInstalledSources: [InstalledSource] {
+        SourceVisibilityRule.visible(installedSources, showsNSFWSources: settings.showsNSFWSources)
+    }
+
+    /// 被隐藏的已安装源数量（界面据此提示「另有 N 个成人内容源已隐藏」）。
+    var hiddenSourceCount: Int {
+        SourceVisibilityRule.hidden(installedSources, showsNSFWSources: settings.showsNSFWSources).count
+    }
+
+    // MARK: 源仓库
+
+    /// 刷新全部仓库目录。单个仓库失败只影响该条结果，不影响其他仓库。
+    func reloadRepositoryCatalogs() async -> [RepositoryCatalogResult] {
+        await repositoryService.catalogs()
+    }
+
+    /// 安装仓库里的某个源；成功后回收同 key 的旧运行时（脚本内容已变）。
+    @discardableResult
+    func installSource(_ entry: RepositoryEntry) async throws -> InstalledSource {
+        let installed = try await repositoryService.install(entry)
+        await runtimePool.invalidate(installed.key)
+        diag("AppEnvironment: 已安装源 \(installed.key) v\(installed.version ?? "-")")
+        return installed
+    }
+
+    /// 卸载源并回收其运行时。
+    @discardableResult
+    func uninstallSource(_ key: String) async throws -> Bool {
+        let removed = try sourceStore.uninstall(key: key)
+        if removed {
+            await runtimePool.invalidate(key)
+        }
+        return removed
+    }
+
+    // MARK: 源运行
+
+    /// 取某个源的运行器（首次会载入脚本，之后复用）。
+    ///
+    /// - Warning: 这种方式拿到的运行器**不受租约保护**，可能在池内淘汰时被回收。
+    ///   长时间操作请直接用 `runtimePool.withRunner(for:_:)`。
+    func sourceRunner(for key: String) async throws -> SourceRunner {
+        try await runtimePool.runner(for: key)
+    }
+
+    /// 归还租约（与 `sourceRunner(for:)` 配对）。
+    func releaseSource(_ key: String) async {
+        await runtimePool.release(key)
+    }
+
+    /// 回收全部源运行时（设置页「全部重载」、或内存吃紧时调用）。
+    func releaseAllSourceRuntimes() async {
+        await runtimePool.invalidateAll()
     }
 
     /// 文件系统里的本地作品（不依赖数据库）。
