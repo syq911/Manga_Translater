@@ -238,7 +238,8 @@ struct SourceLoginView: View {
             sourceID: sourceID,
             forHost: model.harvestHost
         )
-        environment.cookieJar.persist()
+        // 落盘失败不打断用户：容器已经写好了，最坏情况是重启后要重新登录一次
+        try? environment.cookieJar.persist()
         environment.diag("SourceLoginView: 来源 \(sourceID.rawValue) 收割 Cookie \(written) 条")
 
         if written == 0 {

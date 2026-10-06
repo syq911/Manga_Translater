@@ -317,7 +317,9 @@ final class AppEnvironment {
     /// 清空该来源的 Cookie（同时落盘）。
     func clearSourceCookies(_ sourceID: SourceID) {
         cookieJar.clear(sourceID: sourceID)
-        cookieJar.persist()
+        // `persist()` 是 throwing（写盘可能失败）；这里失败不致命——
+        // 内存里的容器已经清干净了，只是磁盘上还留着旧值，下次启动会再清一遍。
+        try? cookieJar.persist()
         diag("AppEnvironment: 已清空来源 \(sourceID.rawValue) 的登录状态")
     }
 

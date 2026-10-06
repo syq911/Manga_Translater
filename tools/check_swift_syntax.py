@@ -496,6 +496,128 @@ def check_unsanitized_path_components(files):
     return problems
 
 
+def strip_comments_keep_literals(text):
+    """
+    把注释替换成**空白**（保留换行），字符串字面量原样保留。
+
+    两个细节都是被误报逼出来的：
+
+    - 保留换行：否则行号会整体前移，报出来的行号对不上代码；
+    - 保留字符串：本项目的 `strip_literals_and_comments` 会把字符串抹成空，
+      于是 `contains("\\u{0}")` 变成 `contains()`，
+      在「找无参调用」的场景下会凭空造出调用。
+      至于字符串里出现 `foo()` 这种内容（例如 `@Test("books() 从文件系统…")`），
+      由调用点再做一次「这个位置是不是在字符串里」的判定挡掉。
+    """
+    out = []
+    index = 0
+    length = len(text)
+    in_block = False
+    while index < length:
+        if in_block:
+            if text.startswith("*/", index):
+                in_block = False
+                out.append("  ")
+                index += 2
+                continue
+            out.append("\n" if text[index] == "\n" else " ")
+            index += 1
+            continue
+        if text.startswith("/*", index):
+            in_block = True
+            out.append("  ")
+            index += 2
+            continue
+        if text.startswith("//", index):
+            while index < length and text[index] != "\n":
+                out.append(" ")
+                index += 1
+            continue
+        out.append(text[index])
+        index += 1
+    return "".join(out)
+
+
+def check_unguarded_throwing_calls(files):
+    """
+    调用**无参 throwing 方法**却没写 `try`。
+
+    动机（实测烧了一轮 CI）：`cookieJar.persist()` 是 throwing，
+    漏写 `try` 直接编译失败（"call can throw, but it is not marked with 'try'"）。
+
+    两条刻意的收窄，为的是把误报压到零：
+
+    1. **只看无参调用**。无参调用必定写在一整行里，判定不需要跨行推断
+       （`try foo(` 换行写参数的形式正则判不了）。有参的情况交给编译器。
+    2. **该名字必须只以 throwing 形式出现**。同名另有非 throwing 声明就直接跳过——
+       `makeRuntime()` 在测试里既有 throwing 重载又有普通重载，
+       光看名字会把普通那次也报出来。
+
+    声明侧的解析要看**整段签名**：`func f(` 换行写参数、`throws` 出现在闭括号之后，
+    只在同一行里找 `()` 和 `throws` 会漏掉一半声明（这正是第一版误报的来源）。
+
+    调用侧**只去注释、不去字符串字面量**：本项目通用的 `strip_literals_and_comments`
+    会把字符串抹成空，于是 `contains("\\u{0}")` 变成 `contains()`，
+    被当成「无参调用」——这是第二版误报的来源。
+    """
+    # 声明：从 `func NAME` 往后到第一个 `{` 之前找 `throws`
+    declaration = re.compile(r"\bfunc\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)")
+    throwing_names = set()
+    plain_names = set()
+    for path in files:
+        raw = io.open(path, encoding="utf-8").read()
+        code = strip_literals_and_comments(raw)
+        for match in declaration.finditer(code):
+            name = match.group("name")
+            body_start = code.find("{", match.end())
+            signature = code[match.end(): body_start if body_start != -1 else match.end() + 500]
+            if re.search(r"\bthrows\b", signature):
+                throwing_names.add(name)
+            else:
+                plain_names.add(name)
+
+    # 必须**每个**同名声明都是 throwing 才算候选：只要存在一个非 throwing 的重载，
+    # 调用点就可能落在它身上（`makeRuntime()` 在测试里就有两个版本）。
+    candidates = throwing_names - plain_names
+    # 排除与标准库同名的方法：`Array.removeAll()` 不抛错，而项目里可能恰好
+    # 有一个 `func removeAll() throws`（例如某个 store），照名字判会大量误报。
+    stdlib_zero_arg = {
+        "removeAll", "removeFirst", "removeLast", "sorted", "reversed",
+        "reset", "flush", "sync", "commit", "rollback", "close", "open",
+        "cancel", "invalidate", "wait", "notify", "resume", "suspend",
+    }
+    candidates -= stdlib_zero_arg
+    if not candidates:
+        return []
+
+    call = re.compile(
+        r"(?<![A-Za-z0-9_])(?P<name>" + "|".join(sorted(map(re.escape, candidates))) + r")\s*\(\s*\)"
+    )
+    problems = []
+    for path in files:
+        raw = io.open(path, encoding="utf-8").read()
+        code = strip_comments_keep_literals(raw)
+        for index, line in enumerate(code.split("\n"), start=1):
+            # 声明行本身不是调用
+            if re.search(r"\bfunc\s", line):
+                continue
+            for match in call.finditer(line):
+                prefix = line[: match.start()]
+                if re.search(r"\btry[?!]?\s*$|\btry[?!]?\s", prefix):
+                    continue
+                # 落在字符串字面量里的 `foo()`（例如测试名 `@Test("books() …")`）不是调用
+                if prefix.count('"') % 2 == 1:
+                    continue
+                problems.append(
+                    (
+                        os.path.relpath(path).replace("\\", "/"),
+                        f"第 {index} 行调用 throwing 方法 `{match.group('name')}()` 却没写 try；"
+                        f"不需要处理错误时用 `try?`",
+                    )
+                )
+    return problems
+
+
 def check_iso8601_style_usage(files):
     """
     `Date.ISO8601FormatStyle.year()` 这种**在类型上**调实例方法。
@@ -578,6 +700,8 @@ def main():
         all_problems.append(problem)
     for problem in check_iso8601_style_usage(files):
         all_problems.append(problem)
+    for problem in check_unguarded_throwing_calls(files):
+        all_problems.append(problem)
 
     print(f"体检 Swift 文件：{len(files)} 个")
     if all_problems:
@@ -586,7 +710,7 @@ def main():
             print(f"  {path}: {problem}")
         return 1
     print("✅ 括号配平、条件编译配对、多行字符串缩进、JSON 编解码类型、"\
-          "静态成员限定、路径片段安全化、日期写法均正常")
+          "静态成员限定、路径片段安全化、日期写法、throwing 调用均正常")
     return 0
 
 

@@ -158,7 +158,7 @@ public enum HostedServerError: Error, Equatable {
 
     /// - Parameter target: 出错时填进文案的地址；`HTTPClient` 抛出的错误里不带它，
     ///   而「HTTP 401」不告诉用户是哪个请求，等于没说。
-    static func map(_ error: Error, target: String? = nil) -> HostedServerError {
+    public static func map(_ error: Error, target: String? = nil) -> HostedServerError {
         if let hosted = error as? HostedServerError { return hosted }
         if let network = error as? NetworkError {
             switch network {

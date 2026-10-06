@@ -420,6 +420,27 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `DownloadCoordinatorTests`：驱动期间后台断言恰好申请一次、归还一次
   （把申请 / 归还应成注入闭包，测试不碰 UIKit）
 
+### 🔧 修复 / Fixed（M3 第四批 · 二轮）
+
+- `cookieJar.persist()` 漏写 `try`（它是 throwing）——两处：
+  `AppEnvironment.clearSourceCookies` 与 `SourceLoginView` 的收割收尾。
+  两处都用 `try?`：写盘失败不致命（内存里的容器已经对了，最坏是重启后重登一次）。
+- `HostedServerError.map` 由 `internal` 改 `public`：App 层要用它把网络错误
+  翻译成能显示的文案（跨模块的内部函数不可见）。
+- **新增预检规则「无参 throwing 调用漏写 try」**。这条规则前后收了三次才收敛，
+  过程本身有参考价值：
+  1. 第一版只看「同一行里 `func x() throws`」，漏掉了**跨行签名**
+     （`func f(
+  参数…
+) -> T` 里的 `throws` 在闭括号之后），
+     于是普通重载也被当成 throwing；
+  2. 第二版改成「每个同名声明都是 throwing 才算」，
+     但复用通用字面量剥离函数时踩到第二个坑：它把字符串抹成空，
+     `contains("\u{0}")` 变成 `contains()`，凭空造出「无参调用」；
+  3. 第三版只去注释（保留换行以免行号错位）、保留字符串，
+     再额外排除「落在字符串字面量里」的匹配（`@Test("books() …")`）。
+  三向验证：漏写 `try` 被报出、`try?` 不报、字符串里的同名文本不报，全仓零误报。
+
 ### ✨ 新增 / Added（M3 第四批：登录与人机验证，契约 §8 落地）
 
 - **`SourceLoginView`**：内嵌 `WKWebView` 的登录 / 验证页。
