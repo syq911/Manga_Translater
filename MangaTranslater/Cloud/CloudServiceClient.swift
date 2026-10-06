@@ -10,13 +10,24 @@
 //    GET  /me                  (Bearer)               → account
 //    POST /translate           { lines, source, target } → { lines, remainingToday }
 //
-//  三条不可退让的设计：
-//  1. **`/translate` 的请求体只有三个字段**（`CloudTranslateRequest` 显式声明
+//  四条不可退让的设计：
+//
+//  1. **不用 `ComicNet.HTTPClient`，直接用传输层。**
+//     这一条是被 CI 教会的：`HTTPClient` 的语义是「非 2xx 就抛 `NetworkError`」，
+//     而它的错误里**不带响应体**。可 API 客户端必须拿到状态码**和**错误体才能分类——
+//     401 要退回未登录、402 + `quota_exceeded` 要给升级入口。实测结果是所有
+//     业务错误都被压成了 `transport("服务器返回 401")`，
+//     精心写的 `mapFailure` 成了死代码、错误分类测试全红。
+//     `HTTPClient` 是为**抓站**设计的（Cookie 注入、按源限流、正文体积上限），
+//     这里用不上；传输层本身可注入，测试照样能离线跑。
+//
+//  2. **`/translate` 的请求体只有三个字段**（`CloudTranslateRequest` 显式声明
 //     CodingKeys）。服务端不接收图片、不接收 URL、不留存文本；客户端这边
 //     把「只发这些」写死，避免哪天顺手把整个上下文编码出去。
-//  2. **错误按语义分类**，不直接把 HTTP 状态码抛给界面：401 → 未登录、
-//     402 + `quota_exceeded` → 额度用尽（界面据此给升级入口）。
-//  3. **传输层可注入**，因此所有分支（超时、5xx、坏 JSON、额度耗尽）
+//
+//  3. **错误按语义分类**，不直接把 HTTP 状态码抛给界面。
+//
+//  4. **传输层可注入**，因此所有分支（超时、5xx、坏 JSON、额度耗尽）
 //     都能离线断言，不需要真的有一台服务器。
 //
 
@@ -28,25 +39,23 @@ struct CloudServiceClient: Sendable {
 
     /// 服务根地址（不含结尾 `/`）。
     let baseURL: String
-    private let client: HTTPClient
+
+    private let transport: HTTPTransporting
+    /// 响应体上限。账号与译文都是文本，2 MB 绰绰有余，超出即视为异常。
+    private let maxResponseBytes: Int
+    /// 单次请求超时（秒）。
+    private let timeoutSeconds: Int
 
     init(
         baseURL: String,
         transport: HTTPTransporting = URLSessionTransport(timeoutSeconds: 30),
-        maxRetries: Int = 1,
+        maxResponseBytes: Int = 2 * 1024 * 1024,
         timeoutSeconds: Int = 30
     ) {
         self.baseURL = CloudServiceClient.normalizeBaseURL(baseURL)
-        self.client = HTTPClient(
-            transport: transport,
-            // 账号与额度操作重试价值低（用户就在屏幕前等），
-            // 只留一次重试兜网络抖动；翻译请求由上层决定是否重试。
-            configuration: HTTPClient.Configuration(
-                maxRetries: max(0, maxRetries),
-                timeoutSeconds: max(5, timeoutSeconds),
-                userAgent: HTTPClient.defaultUserAgent
-            )
-        )
+        self.transport = transport
+        self.maxResponseBytes = max(1024, maxResponseBytes)
+        self.timeoutSeconds = max(5, timeoutSeconds)
     }
 
     /// 去掉结尾的全部 `/`，避免拼出 `//auth/...`。
@@ -67,8 +76,8 @@ struct CloudServiceClient: Sendable {
         let normalized = ModelValidation.normalizeEmail(email)
         guard ModelValidation.isValidEmail(normalized) else { throw CloudError.invalidEmail }
         let body = try encode(["email": normalized])
-        let response = try await perform(path: "/auth/email/send", method: "POST", body: body, token: nil)
-        let decoded: CloudSendCodeResponse = try decode(response)
+        let data = try await perform(path: "/auth/email/send", method: "POST", body: body, token: nil)
+        let decoded: CloudSendCodeResponse = try decode(data)
         return max(0, decoded.expiresInSeconds)
     }
 
@@ -82,15 +91,15 @@ struct CloudServiceClient: Sendable {
         let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedCode.isEmpty else { throw CloudError.invalidCode }
         let body = try encode(["email": normalized, "code": trimmedCode])
-        let response = try await perform(path: "/auth/email/verify", method: "POST", body: body, token: nil)
-        let decoded: CloudVerifyResponse = try decode(response)
+        let data = try await perform(path: "/auth/email/verify", method: "POST", body: body, token: nil)
+        let decoded: CloudVerifyResponse = try decode(data)
         return CloudSession(token: decoded.token, expiresAt: decoded.expiresAt, account: decoded.account)
     }
 
     /// 查当前账号与额度。
     func me(token: String) async throws -> CloudAccount {
-        let response = try await perform(path: "/me", method: "GET", body: nil, token: token)
-        return try decode(response)
+        let data = try await perform(path: "/me", method: "GET", body: nil, token: token)
+        return try decode(data)
     }
 
     // MARK: - 翻译
@@ -115,11 +124,13 @@ struct CloudServiceClient: Sendable {
         } catch {
             throw CloudError.badResponse
         }
-        let response = try await perform(path: "/translate", method: "POST", body: body, token: token)
-        let decoded: CloudTranslateResponse = try decode(response)
-        guard decoded.lines.count == lines.count else {
-            throw CloudError.badResponse
-        }
+        let data = try await perform(path: "/translate", method: "POST", body: body, token: token)
+        // 刻意**不在这里**校验译文条数：这一层只能抛 `CloudError`，
+        // 而「条数不符」在翻译层有更精确的表达（`TranslationError.countMismatch`）。
+        // 两层各抛一种错，会让调用方要判断两次、界面文案也会不一致。
+        // 校验统一放在 `CloudTranslationService`：那里是 `MangaTranslator` 的实现，
+        // 也是「长度必须与输入一致」这条契约真正生效的地方。
+        let decoded: CloudTranslateResponse = try decode(data)
         return CloudTranslationResult(lines: decoded.lines, remainingToday: decoded.remainingToday)
     }
 
@@ -134,38 +145,38 @@ struct CloudServiceClient: Sendable {
     }
 
     private func perform(path: String, method: String, body: Data?, token: String?) async throws -> Data {
-        guard ModelValidation.isValidURLString(baseURL) else { throw CloudError.missingBaseURL }
-        let urlString = baseURL + path
-
-        var headers: [String: String] = ["Accept": "application/json"]
-        if let token, !token.isEmpty {
-            headers["Authorization"] = "Bearer \(token)"
+        let endpoint = baseURL + path
+        guard ModelValidation.isValidURLString(endpoint), let url = URL(string: endpoint) else {
+            throw CloudError.missingBaseURL
         }
 
-        let response: HTTPResponse
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = TimeInterval(timeoutSeconds)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let token, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if method != "GET" {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body ?? Data()
+        }
+
+        let data: Data
+        let response: HTTPURLResponse
         do {
-            if method == "GET" {
-                response = try await client.get(urlString, headers: headers)
-            } else {
-                response = try await client.post(
-                    urlString,
-                    body: body ?? Data(),
-                    contentType: "application/json",
-                    headers: headers,
-                    // 4xx 由我们自己按语义分类，不让 HTTP 层重试
-                    allowsRetry: false
-                )
-            }
+            (data, response) = try await transport.send(request)
         } catch let error as NetworkError {
             throw CloudError.transport(error.errorDescription ?? "")
         } catch {
             throw CloudError.transport(error.localizedDescription)
         }
 
-        guard response.isSuccess else {
-            throw CloudServiceClient.mapFailure(status: response.statusCode, data: response.data)
+        guard (200...299).contains(response.statusCode) else {
+            throw CloudServiceClient.mapFailure(status: response.statusCode, data: data)
         }
-        return response.data
+        guard data.count <= maxResponseBytes else { throw CloudError.badResponse }
+        return data
     }
 
     private func decode<T: Decodable>(_ data: Data) throws -> T {

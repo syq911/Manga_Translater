@@ -245,19 +245,22 @@ struct CloudClientTests {
         }
     }
 
-    @Test("译文条数不符 → badResponse（宁可报错也不要错位）")
-    func translateRejectsCountMismatch() async {
+    @Test("条数不符由翻译层拒绝，客户端原样透传")
+    func translatePassesThroughMismatch() async throws {
+        // 客户端只做「结构解析 + 语义分类」，它只能抛 CloudError；
+        // 「长度必须与输入一致」是翻译层的契约（TranslationError.countMismatch），
+        // 两层各抛一种错会让界面文案不一致，因此这里只断言透传。
         let (client, _) = CloudFixture.client([
             CloudFixture.json(["lines": ["只有一条"], "remainingToday": 5])
         ])
-        await expectThrowsAsync(CloudError.badResponse) {
-            _ = try await client.translate(
-                lines: ["a", "b"],
-                source: .auto,
-                target: .english,
-                token: "token-abc"
-            )
-        }
+        let result = try await client.translate(
+            lines: ["a", "b"],
+            source: .auto,
+            target: .english,
+            token: "token-abc"
+        )
+        #expect(result.lines == ["只有一条"])
+        #expect(result.remainingToday == 5)
     }
 
     @Test("限流 → rateLimited（用服务端给的等待秒数）")

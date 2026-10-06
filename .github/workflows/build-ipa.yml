@@ -121,7 +121,10 @@ jobs:
   # 便于「先能装、再修测试」，但 workflow 整体会标红提醒。
   test:
     runs-on: macos-latest
-    timeout-minutes: 30
+    # 30 分钟不够了：测试目标里的文件数随里程碑增长，编译测试包本身就要十几分钟。
+    # 实测过一次「编译 + 跑用例 ≈ 30 分钟」正好卡在旧上限上，job 被取消，
+    # 白等一轮。给到 50 分钟，留出余量。
+    timeout-minutes: 50
 
     steps:
       - uses: actions/checkout@v4

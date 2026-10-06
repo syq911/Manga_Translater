@@ -23,7 +23,11 @@ import AppCore
 import ComicNet
 @testable import MangaTranslater
 
-@Suite("翻译核心")
+// `.serialized` 是必需的，不是优化：现代 Vision（`RecognizeTextRequest`）
+// **并行超过 2 个会死锁**，而 Swift Testing 默认并行跑用例——本套件里有 3 个
+// 真机 Vision 用例，不串行化就会把测试进程整个卡死（实测：跑完其它套件后
+// 本套件再无输出，直到 CI 的 job 超时被杀）。串行化后同一时刻只有一个 Vision 请求。
+@Suite("翻译核心", .serialized)
 struct TranslationCoreTests {
 
     // MARK: 夹具

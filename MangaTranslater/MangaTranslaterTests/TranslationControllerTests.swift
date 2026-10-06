@@ -143,7 +143,12 @@ struct TranslationControllerTests {
     }
 
     /// 等编排器把手头的活干完（含 finish() 的收尾）。
-    private static func settle(_ controller: TranslationController, timeout: TimeInterval = 5) async {
+    ///
+    /// 超时给得比较宽松（默认 10 秒）：这些用例本身是毫秒级的，
+    /// 但测试进程里同时可能有真机 Vision 在跑（大图 OCR，CPU 密集），
+    /// 协作线程池被抢占会让 `Task.detached` 就绪得慢一些。
+    /// 超时太紧会把「机器忙」误判成「逻辑错」——那种红灯最难查。
+    private static func settle(_ controller: TranslationController, timeout: TimeInterval = 10) async {
         let deadline = Date().addingTimeInterval(timeout)
         while controller.isBusy, Date() < deadline {
             try? await Task.sleep(nanoseconds: 2_000_000)
