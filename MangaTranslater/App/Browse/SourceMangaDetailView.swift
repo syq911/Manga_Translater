@@ -206,7 +206,9 @@ struct SourceMangaDetailView: View {
             } label: {
                 Label(L("downloads.action.cancel"), systemImage: "xmark")
             }
-        case .none, .failed, .cancelled:
+        // `.queued`（已排队但还没跑）也要给「取消」的动作，否则用户点了下载
+        // 发现行上写着「已加入下载队列」却收不回来。
+        case .none, .failed, .cancelled, .queued:
             Button {
                 Task { await download(chapter) }
             } label: {
@@ -295,6 +297,9 @@ struct SourceMangaDetailView: View {
 
     private func refreshDownloadState() async {
         let mangaID = displayed.id
+        // 先刷新归档快照再读：`archivedChapterIDs` 读的是快照（不碰磁盘），
+        // 于是每次渲染都查一次也不会产生 IO。
+        await environment.downloads.refreshArchives()
         downloadedChapterIDs = environment.downloads.archivedChapterIDs(mangaID: mangaID)
     }
 

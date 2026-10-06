@@ -420,6 +420,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `DownloadCoordinatorTests`：驱动期间后台断言恰好申请一次、归还一次
   （把申请 / 归还应成注入闭包，测试不碰 UIKit）
 
+### 🔧 修复 / Fixed（M3 第四批 · 四轮）
+
+- `SourceMangaDetailView` 的 `chapterDownloadActions` 漏了 `.queued` 分支
+  （`switch must be exhaustive`）。顺手补上语义：**排队中的章节也要能点掉**
+  ——否则用户点了下载，行上写着「已加入下载队列」，却收不回来。
+- `environment.downloads.archivedChapterIDs(...)` 是 `RemoteReadingSource` 的方法，
+  协调器上没有。给协调器补一个**读快照**的版本（不碰磁盘）：
+  章节列表可能上百行，每行去读一次归档清单文件是灾难；
+  详情页改成「先 `refreshArchives()` 刷一次快照，再按列表查」。
+
 ### 🔧 修复 / Fixed（M3 第四批 · 三轮）
 
 - `SourceLoginView` 两处：

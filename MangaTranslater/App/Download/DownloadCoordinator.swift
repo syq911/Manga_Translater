@@ -132,8 +132,22 @@ final class DownloadCoordinator {
     }
 
     /// 某作品已归档的章节（按归档时间倒序，最新的在前）。
+    ///
+    /// 这条会读磁盘（每个章节一个清单文件），界面请用 `archivedChapters` 之外的
+    /// 快照版本 `archivedChapterIDs`。
     func archivedChapters(mangaID: String) -> [DownloadedChapter] {
         archive.chapters(mangaID: mangaID).sorted { $0.archivedAt > $1.archivedAt }
+    }
+
+    /// 某作品已归档的章节标识（读 `archivedGroups` 快照，不碰磁盘）。
+    ///
+    /// 作品详情页要给每个章节行打「已下载」标记，而列表可能上百行——
+    /// 每行去读一次清单文件是灾难。调用前用 `refreshArchives()` 刷新一次快照即可。
+    func archivedChapterIDs(mangaID: String) -> Set<String> {
+        guard let group = archivedGroups.first(where: { $0.mangaID == mangaID }) else {
+            return []
+        }
+        return Set(group.chapters.map(\.chapterID))
     }
 
     /// 已归档章节的 CBZ 路径（用于「导出 / 分享」）。
