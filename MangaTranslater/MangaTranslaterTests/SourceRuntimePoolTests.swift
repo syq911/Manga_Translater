@@ -207,7 +207,7 @@ struct SourceRuntimePoolTests {
         #expect(factory.count == 0)
     }
 
-    @Test("脚本损坏时报 scriptRejected")
+    @Test("脚本缺必需方法时报 incompleteContract，且不建运行时")
     func reportsBrokenScript() async throws {
         let root = try TestFileSystem.makeTemporaryDirectory()
         defer { TestFileSystem.remove(root) }
@@ -224,11 +224,14 @@ struct SourceRuntimePoolTests {
             _ = try await pool.runner(for: "broken")
             Issue.record("应当抛错")
         } catch let error as SourceRunnerError {
-            guard case .scriptRejected = error else {
+            guard case let .incompleteContract(missing) = error else {
                 Issue.record("错误类型不符：\(error)")
                 return
             }
+            #expect(missing.count == 5)
+            #expect(missing.contains("getPopularManga"))
         }
+        // 契约预检在建运行时之前，因此一个虚拟机都不该被创建
         #expect(factory.count == 0)
     }
 
@@ -265,19 +268,20 @@ struct SourceRuntimePoolTests {
         let factory = FakeRuntimeFactory()
         let pool = makePool(store: store, factory: factory, maxLoadedSources: 2)
 
-        _ = try await pool.runner(for: "alpha")
-        _ = try await pool.runner(for: "beta")
+        // 用 withRunner：租约在闭包结束时归还，否则源会一直「在用」而不被淘汰
+        try await pool.withRunner(for: "alpha") { _ in }
+        try await pool.withRunner(for: "beta") { _ in }
         // 再用一次 alpha，让它变成「最近使用」→ 下一个被淘汰的应是 beta
-        _ = try await pool.runner(for: "alpha")
-        _ = try await pool.runner(for: "gamma")
+        try await pool.withRunner(for: "alpha") { _ in }
+        try await pool.withRunner(for: "gamma") { _ in }
 
         let keys = await pool.loadedKeys
         #expect(keys == ["alpha", "gamma"])
         #expect(factory.instances.count == 3)
-        // 前两个实例分别被释放过一次（beta 被淘汰）
+        // 只有 beta 被回收过
         #expect(factory.instances.map(\.teardowns).reduce(0, +) == 1)
-        let betaReleased = await pool.isLoaded("beta")
-        #expect(betaReleased == false)
+        let betaLoaded = await pool.isLoaded("beta")
+        #expect(betaLoaded == false)
     }
 
     @Test("有租约的源不会被淘汰（宁可临时超限）")

@@ -260,9 +260,18 @@ struct SourceRepositoryServiceTests {
         let transport = RoutedHTTPTransport()
         let (service, _) = makeService(rootDirectory: root, transport: transport)
 
-        // 404：没有登记路由 → 替身返回 404
-        await expectThrowsAsync(SourceRepositoryError.indexUnavailable("HTTP 404")) {
+        // 404：没有登记路由 → 替身返回 404。
+        // 断言「错误种类 + 原因里含状态码」而不是整串文案：
+        // 文案由底层 HTTP 客户端决定（「服务器返回 404」），逐字断言只会白红一轮。
+        do {
             _ = try await service.catalog(for: Self.repositoryURL)
+            Issue.record("应当抛错")
+        } catch let error as SourceRepositoryError {
+            guard case let .indexUnavailable(reason) = error else {
+                Issue.record("错误类型不符：\(error)")
+                return
+            }
+            #expect(reason.contains("404"))
         }
 
         transport.set("{ 不是 JSON", for: Self.repositoryURL + "index.json")
@@ -365,7 +374,11 @@ struct SourceRepositoryServiceTests {
             _ = try await service.install(key: "alpha", from: Self.repositoryURL)
             Issue.record("应当抛错")
         } catch let error as SourceRepositoryError {
-            #expect(error == .scriptUnavailable("HTTP 500"))
+            guard case let .scriptUnavailable(reason) = error else {
+                Issue.record("错误类型不符：\(error)")
+                return
+            }
+            #expect(reason.contains("500"))
         }
 
         #expect(store.installedSources().isEmpty)

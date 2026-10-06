@@ -197,6 +197,13 @@ public actor SourceRuntimePool {
         return Task<SourceRunner, Error> {
             let script = try store.script(for: key)
             let meta = try SourceScriptValidator.validate(script)
+            // 契约预检放在**建运行时之前**：沙箱是昂贵资源，
+            // 脚本连必需方法都不全时没必要先把虚拟机建出来再扔掉。
+            // 顺带把错误类型说清楚（`incompleteContract` 而不是笼统的执行失败）。
+            let missing = SourceAPIContract.missingMethods(in: script)
+            guard missing.isEmpty else {
+                throw SourceRunnerError.incompleteContract(missing: missing.map(\.rawValue))
+            }
             let runner = SourceRunner(runtime: makeRuntime(meta), meta: meta, logSink: logSink)
             try await runner.load(script: script)
             return runner

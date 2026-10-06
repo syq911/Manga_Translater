@@ -301,7 +301,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
     有租约的源不参与淘汰，全在使用中时宁可临时超限并写警告日志
   - `runner(for:)`（可能被回收）与 `withRunner(for:_:)`（全程持租约）两种用法
   - `invalidate` / `invalidateAll`：安装、更新、卸载后回收旧沙箱
-  - 错误统一为 `SourceRunnerError`（脚本文件缺失 → `notInstalled`，校验不过 → `scriptRejected`）
+  - 错误统一为 `SourceRunnerError`：脚本文件缺失 → `notInstalled`，
+    静态校验不过 → `scriptRejected`；**缺失必需方法的契约预检放在建运行时之前**
+    （沙箱昂贵，脚本不全时没必要先建虚拟机再扔掉）
 - **`SourceVisibilityRule`**：成人内容源的可见性规则只实现一处——
   界面一律用过滤后的列表，避免某个页面漏写 `if !source.isNSFW` 导致合规约束失效。
 - **应用层接线**（`AppEnvironment`）：新增仓库服务与运行时池，
@@ -317,7 +319,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   404 / 非法 JSON / 路径穿越文件名的拒绝、安装落盘、**key 不一致拒绝且不落盘**、
   禁用 API / 非 UTF-8 / HTTP 500、多仓库部分失败、空仓库、只读下载
 - `SourceRuntimePoolTests`（10 例）：载入一次并复用、并发 single-flight、
-  未安装/损坏脚本的错误映射、载入失败可重试、LRU 淘汰、**租约保护（含超限警告日志）**、
+  未安装 / 缺必需方法（且不建运行时）的错误映射、载入失败可重试、LRU 淘汰、
+  **租约保护（含超限警告日志）**、
   租约释放后恢复可淘汰、invalidate 重载、卸载后报错、invalidateAll
 - `SourceVisibilityRuleTests`（2 例）：未开启时隐藏成人内容源、开启后全部可见
 - `IntegrationTests` 新增「应用环境：可见源过滤 + 运行时池接线」：

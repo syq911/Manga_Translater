@@ -166,6 +166,9 @@ public actor SourceRepositoryService {
                 (error as? NetworkError)?.errorDescription ?? error.localizedDescription
             )
         }
+        // 说明：`HTTPClient` 已经把非 2xx 当作错误抛出（并带「服务器返回 404」这类
+        // 文案），所以正常路径走不到下面这行；保留它是为了不依赖上层实现细节——
+        // 换一个不做状态码校验的传输层时，这里仍然拦得住。
         guard response.isSuccess else {
             throw SourceRepositoryError.indexUnavailable("HTTP \(response.statusCode)")
         }
@@ -262,6 +265,7 @@ public actor SourceRepositoryService {
                 (error as? NetworkError)?.errorDescription ?? error.localizedDescription
             )
         }
+        // 同 `catalog`：正常路径由 `HTTPClient` 拦下非 2xx，这里是第二道防线。
         guard response.isSuccess else {
             throw SourceRepositoryError.scriptUnavailable("HTTP \(response.statusCode)")
         }
@@ -312,6 +316,7 @@ public actor SourceRepositoryService {
                 (error as? NetworkError)?.errorDescription ?? error.localizedDescription
             )
         }
+        // 同 `catalog`：正常路径由 `HTTPClient` 拦下非 2xx，这里是第二道防线。
         guard response.isSuccess else {
             throw SourceRepositoryError.scriptUnavailable("HTTP \(response.statusCode)")
         }
