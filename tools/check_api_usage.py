@@ -56,16 +56,32 @@ def strip_comments(text):
     return "\n".join(l for l in text.split("\n") if not l.strip().startswith("//"))
 
 
+def bracket_delta(text, index):
+    """括号深度增量；`->` 里的 `>` 不算闭合。
+
+    动机（实测踩过）：`clock: @escaping @Sendable () -> Date = { Date() }`
+    这种**闭包类型默认值**里的 `->` 会被当成 `>` 闭合括号，
+    深度一路变成负数，后面所有顶层逗号都不再被识别 ——
+    `RateLimiter` 的 `sleeper` 参数因此整个消失，
+    连带「参数顺序」「未声明标签」两条检查全部误报。
+    """
+    ch = text[index]
+    if ch == ">" and index > 0 and text[index - 1] == "-":
+        return 0          # `->` 是箭头，不是泛型闭合
+    if ch in "([{<":
+        return 1
+    if ch in ")]}>":
+        return -1
+    return 0
+
+
 def split_top_level(text):
     """按顶层逗号切分（忽略括号 / 方括号 / 尖括号内的逗号）。"""
     parts = []
     depth = 0
     current = ""
-    for ch in text:
-        if ch in "([{<":
-            depth += 1
-        elif ch in ")]}>":
-            depth -= 1
+    for index, ch in enumerate(text):
+        depth += bracket_delta(text, index)
         if ch == "," and depth == 0:
             parts.append(current)
             current = ""
@@ -101,13 +117,10 @@ def parse_parameters(inner):
         depth = 0
         colon_at = None
         for index, ch in enumerate(piece):
-            if ch in "([{<":
-                depth += 1
-            elif ch in ")]}>":
-                depth -= 1
-            elif ch == ":" and depth == 0:
+            if ch == ":" and depth == 0:
                 colon_at = index
                 break
+            depth += bracket_delta(piece, index)
         # 有默认值判据：该参数片段里出现 `=`。
         # 不做括号深度判定 —— 默认值可能是闭包（含括号），逐字符判定容易漏，
         # 而类型表达式本身不含 `=`，所以直接查字符就足够可靠。
@@ -252,12 +265,22 @@ def main():
         code = strip_comments(io.open(path, encoding="utf-8").read())
         for type_name, params in inits.items():
             required = {label for label, has_default in params if label and not has_default}
-            if not required:
-                continue
             declared_order = [label for label, _ in params if label]
             for labels in collect_call_labels(code, type_name):
                 checked += 1
                 relative = os.path.relpath(path).replace("\\", "/")
+                # 写错的标签名（拼错 / 记错）在 Swift 里是编译错误，
+                # 而它既不属于「缺少必需参数」也过得了顺序检查——单独报出来。
+                # `collect_inits` 只保留**唯一 init** 的类型，所以这里不会因重载误报。
+                unknown = [label for label in labels if label not in declared_order]
+                if unknown:
+                    problems.append(
+                        (
+                            relative,
+                            f"{type_name}(...) 出现未声明的参数标签：{', '.join(unknown)}；"
+                            f"可用标签为 ({', '.join(declared_order)})",
+                        )
+                    )
                 missing = required - set(labels)
                 if missing:
                     problems.append(

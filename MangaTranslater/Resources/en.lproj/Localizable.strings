@@ -107,10 +107,56 @@
 "source.detail.added" = "Added to library.";
 "source.detail.addFailed" = "Could not add to library. Please try again.";
 
-"source.detail.chapterFooter" = "Tap a chapter to start reading. Titles in your library remember where you left off.";
 "reader.noChapters" = "This source returned no chapters.";
 "reader.atEnd" = "This is the last page.";
 "reader.atStart" = "This is the first page.";
+
+"downloads.section.active" = "In progress";
+"downloads.section.finished" = "Finished";
+"downloads.active.footer" = "Swipe left to cancel, right to pause. Downloads continue in the background, so you can leave this page.";
+"downloads.finished.footer" = "Swipe right to retry. Clearing the list keeps downloaded files.";
+"downloads.group.footer" = "Swipe left to export as CBZ or delete. If the title is in your library, tap a chapter to read it offline.";
+"downloads.group.meta" = "%ld chapters · %@";
+"downloads.chapter.meta" = "%ld pages · %@";
+"downloads.progress" = "%ld / %ld pages";
+"downloads.failed.reason" = "Reason: %@";
+"downloads.unknownManga" = "Unknown title";
+
+"downloads.state.pending" = "Queued";
+"downloads.state.running" = "Downloading";
+"downloads.state.paused" = "Paused";
+"downloads.state.completed" = "Completed";
+"downloads.state.failed" = "Failed";
+"downloads.state.cancelled" = "Cancelled";
+
+"downloads.action.pause" = "Pause";
+"downloads.action.resume" = "Resume";
+"downloads.action.cancel" = "Cancel download";
+"downloads.action.retry" = "Retry";
+"downloads.action.delete" = "Delete";
+"downloads.action.export" = "Export CBZ";
+"downloads.action.clearFinished" = "Clear list";
+"downloads.action.cancelAll" = "Cancel all";
+"downloads.action.deleteAll" = "Delete all downloads";
+"downloads.action.deleteManga" = "Delete all downloads of \u201C%@\u201D";
+
+"downloads.confirm.cancelAll.title" = "Cancel all downloads";
+"downloads.confirm.cancelAll.message" = "This cancels %ld active tasks and removes the pages already fetched.";
+"downloads.confirm.delete.title" = "Delete download";
+"downloads.confirm.delete.message" = "This deletes the local files of \u201C%@\u201D. You will need to download it again.";
+"downloads.confirm.deleteAll.title" = "Delete all downloads";
+"downloads.confirm.deleteAll.message" = "This deletes every downloaded chapter (%ld in total).";
+
+/* Chapter download entry points (M3 batch 2) */
+
+"source.detail.downloadAll" = "Download all";
+"source.detail.downloadChapter" = "Download this chapter";
+"source.detail.downloaded" = "Downloaded";
+"source.detail.queued" = "Queued for download";
+"source.detail.downloadFailed" = "Download failed";
+"source.detail.removeDownload" = "Delete download";
+"source.detail.removeAllDownloads" = "Delete all downloads";
+"source.detail.downloadFooter" = "Swipe left on a chapter to download it or delete the download. Use the top-right menu to download every chapter that is not downloaded yet.";
 
 "source.status.unknown" = "Unknown";
 "source.status.ongoing" = "Ongoing";

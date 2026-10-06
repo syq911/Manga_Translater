@@ -172,6 +172,49 @@ struct DownloadArchiveStoreTests {
         #expect(DownloadArchiveStore.stableHash("abc").count == 8)
     }
 
+    // MARK: 清单
+
+    @Test("清单带上作品标题，读回来还在")
+    func manifestCarriesMangaTitle() throws {
+        let (store, root) = try makeStore()
+        defer { TestFileSystem.remove(root) }
+
+        let record = try store.archive(
+            pages: pages(1),
+            mangaID: "m",
+            chapterID: "c",
+            chapterName: "第 1 话",
+            mangaTitle: "示例作品"
+        )
+        #expect(record.mangaTitle == "示例作品")
+        #expect(store.chapters(mangaID: "m").first?.mangaTitle == "示例作品")
+    }
+
+    @Test("老清单（没有作品标题字段）仍能读出来 —— 不能因为加字段让已有下载全部失效")
+    func toleratesManifestWithoutMangaTitle() throws {
+        let (store, root) = try makeStore()
+        defer { TestFileSystem.remove(root) }
+
+        try store.archive(pages: pages(1), mangaID: "m", chapterID: "c", chapterName: "第 1 话")
+
+        // 手写一份「M3 之前」的清单（没有 mangaTitle 这个键）
+        let manifest = store.archiveURL(mangaID: "m", chapterID: "c")
+            .deletingPathExtension()
+            .appendingPathExtension("json")
+        let legacy = """
+        {"mangaID":"m","chapterID":"c","chapterName":"第 1 话","pageCount":1,\
+        "byteCount":1234,"archivedAt":0}
+        """
+        try Data(legacy.utf8).write(to: manifest)
+
+        let loaded = store.chapters(mangaID: "m")
+        #expect(loaded.count == 1)
+        #expect(loaded.first?.mangaTitle == nil)
+        #expect(loaded.first?.chapterName == "第 1 话")
+        // 归档本体与清单是分开的，所以清单字段缺了也不影响读页
+        #expect(store.pageData(mangaID: "m", chapterID: "c", pageIndex: 0) != nil)
+    }
+
     // MARK: 删除
 
     @Test("删除单章后其余章节不受影响，空目录会被清掉")

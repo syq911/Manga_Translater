@@ -107,10 +107,56 @@
 "source.detail.added" = "已加入书架。";
 "source.detail.addFailed" = "加入书架失败，请稍后再试。";
 
-"source.detail.chapterFooter" = "点任意一话开始阅读。已在书架中的作品会记住上次读到的位置。";
 "reader.noChapters" = "这个源没有返回任何章节。";
 "reader.atEnd" = "已经是最后一页了。";
 "reader.atStart" = "已经是第一页了。";
+
+"downloads.section.active" = "进行中";
+"downloads.section.finished" = "已结束";
+"downloads.active.footer" = "左滑取消，右滑暂停；下载在后台进行，可以离开这一页。";
+"downloads.finished.footer" = "右滑重试。清除记录不会删除已下载的文件。";
+"downloads.group.footer" = "左滑导出 CBZ 或删除；作品在书架中时可直接点进去离线阅读。";
+"downloads.group.meta" = "%ld 个章节 · %@";
+"downloads.chapter.meta" = "%ld 页 · %@";
+"downloads.progress" = "%ld / %ld 页";
+"downloads.failed.reason" = "原因：%@";
+"downloads.unknownManga" = "未知作品";
+
+"downloads.state.pending" = "排队中";
+"downloads.state.running" = "下载中";
+"downloads.state.paused" = "已暂停";
+"downloads.state.completed" = "已完成";
+"downloads.state.failed" = "失败";
+"downloads.state.cancelled" = "已取消";
+
+"downloads.action.pause" = "暂停";
+"downloads.action.resume" = "继续";
+"downloads.action.cancel" = "取消下载";
+"downloads.action.retry" = "重试";
+"downloads.action.delete" = "删除";
+"downloads.action.export" = "导出 CBZ";
+"downloads.action.clearFinished" = "清除记录";
+"downloads.action.cancelAll" = "全部取消";
+"downloads.action.deleteAll" = "清空下载";
+"downloads.action.deleteManga" = "删除「%@」的全部下载";
+
+"downloads.confirm.cancelAll.title" = "取消全部下载";
+"downloads.confirm.cancelAll.message" = "将取消 %ld 个进行中的任务，已抓取的页会被清理。";
+"downloads.confirm.delete.title" = "删除下载";
+"downloads.confirm.delete.message" = "将删除「%@」的本地文件，删除后需要重新下载。";
+"downloads.confirm.deleteAll.title" = "清空下载";
+"downloads.confirm.deleteAll.message" = "将删除全部已下载内容，共 %ld 个章节。";
+
+/* 章节下载入口（M3 第二批） */
+
+"source.detail.downloadAll" = "下载全部";
+"source.detail.downloadChapter" = "下载本话";
+"source.detail.downloaded" = "已下载";
+"source.detail.queued" = "已加入下载队列";
+"source.detail.downloadFailed" = "下载失败";
+"source.detail.removeDownload" = "删除下载";
+"source.detail.removeAllDownloads" = "删除全部下载";
+"source.detail.downloadFooter" = "左滑下载本话或删除已下载；也可以用右上角一次下载全部未下载的章节。";
 
 "source.status.unknown" = "状态未知";
 "source.status.ongoing" = "连载中";

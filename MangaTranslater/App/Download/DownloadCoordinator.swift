@@ -222,9 +222,13 @@ final class DownloadCoordinator {
     private func enqueue(manga: Manga, chapter: Chapter) async throws -> Bool {
         // 已下载：不重复下（用户重复点「下载」是最常见的手误）
         guard !archive.hasChapter(mangaID: manga.id, chapterID: chapter.id) else { return false }
-        // 已在队列：也不重复（`enqueue` 本身会抛错，但这里提前返回更安静）
-        let existing = await queue.job(chapter.id)
-        guard existing == nil else { return false }
+        // 队列里同 ID 只能有一个任务：
+        // - 还在跑 → 什么都不做（重复点「下载」是最常见的手误）；
+        // - 已终结（失败 / 取消）→ **摘掉旧记录**再入队，否则用户永远重下不了。
+        if let existing = await queue.job(chapter.id) {
+            guard existing.state.isTerminal else { return false }
+            _ = await queue.remove(chapter.id)
+        }
 
         let pages = try await loadPageList(manga.sourceID, chapter.url)
         guard !pages.isEmpty else {
@@ -241,6 +245,7 @@ final class DownloadCoordinator {
         let job = DownloadJob(
             sourceID: manga.sourceID,
             mangaID: manga.id,
+            mangaTitle: manga.title,
             chapterID: chapter.id,
             chapterName: chapter.name,
             pageURLs: pages.map(\.imageURL),
@@ -275,24 +280,37 @@ final class DownloadCoordinator {
         await refreshJobs()
     }
 
-    /// 重试失败/取消的任务（把它们放回待办）。
+    /// 重试失败 / 取消的任务（把它们放回待办）。
+    ///
+    /// 不能只调 `queue.cancel` 再 `enqueue`：`cancel` 对终结态的任务直接返回，
+    /// 旧记录仍在 → `enqueue` 报「任务已存在」→ 重试静默失效（实测踩过）。
+    /// 正确做法是**先摘掉旧记录**。
     func retry(chapterID: String) async {
-        guard let job = await queue.job(chapterID), job.state == .failed || job.state == .cancelled else {
+        guard let job = await queue.job(chapterID) else { return }
+        guard job.state == .failed || job.state == .cancelled else { return }
+        // 期间已经被归档（例如上次其实成功了）就没必要重试
+        guard !archive.hasChapter(mangaID: job.mangaID, chapterID: job.chapterID) else {
+            _ = await queue.remove(chapterID)
+            await refresh()
             return
         }
-        // 取消过的任务已完成页数已清零，直接重新入队即可
-        await queue.cancel(chapterID)   // 确保是终结态并清掉残留
-        _ = try? await queue.enqueue(DownloadJob(
-            sourceID: job.sourceID,
-            mangaID: job.mangaID,
-            chapterID: job.chapterID,
-            chapterName: job.chapterName,
-            pageURLs: job.pageURLs,
-            headers: job.headers,
-            pageHeaders: job.pageHeaders,
-            referer: job.referer,
-            state: .pending
-        ))
+        _ = await queue.remove(chapterID)
+        do {
+            _ = try await queue.enqueue(DownloadJob(
+                sourceID: job.sourceID,
+                mangaID: job.mangaID,
+                mangaTitle: job.mangaTitle,
+                chapterID: job.chapterID,
+                chapterName: job.chapterName,
+                pageURLs: job.pageURLs,
+                headers: job.headers,
+                pageHeaders: job.pageHeaders,
+                referer: job.referer
+            ))
+        } catch {
+            log("重试入队失败：\(Self.describe(error))")
+            message = L("downloads.enqueueFailed")
+        }
         await refreshJobs()
         startDriver()
     }
@@ -398,7 +416,8 @@ final class DownloadCoordinator {
                     pages: pages,
                     mangaID: job.mangaID,
                     chapterID: job.chapterID,
-                    chapterName: job.chapterName
+                    chapterName: job.chapterName,
+                    mangaTitle: job.mangaTitle
                 )
                 // 归档成功才清散图：失败时留着，下次可以直接重试打包
                 if record != nil {

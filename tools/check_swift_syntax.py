@@ -458,6 +458,44 @@ def check_multiline_string_indentation(path):
     return problems
 
 
+def check_unsanitized_path_components(files):
+    """
+    把「像主键的标识」直接当路径片段用。
+
+    动机：本项目的章节主键是 `<mangaID>|<url>`，**必然含 `/`**（URL 就在里面）。
+    直接 `appendingPathComponent(jobID)` 只有两种结局：
+    路径穿越，或者（早期实现的做法）一律拒绝含 `/` 的 ID —— 实测后果是
+    **所有在线章节的下载都在第一步报「任务标识不合法」**，功能整个走不通。
+    正确做法是经过 `FileNameSanitizer.segment(...)`。
+
+    判定很精确、几乎没有误报：只有当 `appendingPathComponent(` 的**第一个**
+    实参就是裸标识符（`jobID` / `mangaID` / `chapterID` / `sourceID`）时才报。
+    经过 `segment(...)` 或 `FileNameSanitizer.segment(...)` 的写法不会被匹配到
+    （第一个实参是调用表达式，不是裸标识符）。
+    """
+    key_like = {"jobID", "mangaID", "chapterID", "sourceID"}
+    pattern = re.compile(
+        r"appendingPathComponent\s*\(\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*[,)]"
+    )
+    problems = []
+    for path in files:
+        raw = io.open(path, encoding="utf-8").read()
+        code = strip_literals_and_comments(raw)
+        for match in pattern.finditer(code):
+            name = match.group("name")
+            if name not in key_like:
+                continue
+            line = code[: match.start()].count("\n") + 1
+            problems.append(
+                (
+                    os.path.relpath(path).replace("\\", "/"),
+                    f"第 {line} 行把 `{name}` 直接当路径片段；"
+                    f"主键含 `/`，请写成 `FileNameSanitizer.segment({name})`",
+                )
+            )
+    return problems
+
+
 def check_payload_column_consistency(files):
     """
     `payload` 与投影列的一致性。
@@ -509,6 +547,8 @@ def main():
         all_problems.append(problem)
     for problem in check_payload_column_consistency(files):
         all_problems.append(problem)
+    for problem in check_unsanitized_path_components(files):
+        all_problems.append(problem)
 
     print(f"体检 Swift 文件：{len(files)} 个")
     if all_problems:
@@ -516,7 +556,8 @@ def main():
         for path, problem in all_problems:
             print(f"  {path}: {problem}")
         return 1
-    print("✅ 括号配平、条件编译配对、多行字符串缩进、JSON 编解码类型、静态成员限定均正常")
+    print("✅ 括号配平、条件编译配对、多行字符串缩进、JSON 编解码类型、"\
+          "静态成员限定、路径片段安全化均正常")
     return 0
 
 

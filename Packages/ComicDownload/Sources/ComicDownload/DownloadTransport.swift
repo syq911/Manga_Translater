@@ -85,11 +85,20 @@ public final class FilePageStore: PageStoring, @unchecked Sendable {
         self.rootDirectory = rootDirectory
     }
 
+    /// 任务目录。
+    ///
+    /// 早期实现是「拒绝含 `/` 的 jobID」，但本项目的章节主键形如
+    /// `<mangaID>|<url>`，**必然含 `/`**（URL 就在里面），
+    /// 于是所有在线章节的下载都会在第一步就报「任务标识不合法」。
+    /// 正确做法是把标识**安全化**成文件名片段（同时消除路径穿越的可能）。
     private func directory(for jobID: String) throws -> URL {
-        guard !jobID.isEmpty, !jobID.contains("/"), !jobID.contains("\\"), !jobID.contains("..") else {
-            throw AppError.invalidInput("任务标识不合法：\(jobID)")
+        guard !jobID.isEmpty else {
+            throw AppError.invalidInput("任务标识为空")
         }
-        return rootDirectory.appendingPathComponent(jobID, isDirectory: true)
+        return rootDirectory.appendingPathComponent(
+            FileNameSanitizer.segment(jobID),
+            isDirectory: true
+        )
     }
 
     public func prepare(jobID: String) throws {

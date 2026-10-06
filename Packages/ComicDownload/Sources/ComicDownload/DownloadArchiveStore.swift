@@ -28,6 +28,8 @@ import AppCore
 /// 已归档的一章。
 public struct DownloadedChapter: Equatable, Sendable, Codable, Identifiable {
     public let mangaID: String
+    /// 作品标题（可选：清单是 M3 才加的字段，老清单里没有）。
+    public var mangaTitle: String?
     public let chapterID: String
     public var chapterName: String
     /// 归档时的页数（用于「整章下完」的判定与进度显示）。
@@ -40,6 +42,7 @@ public struct DownloadedChapter: Equatable, Sendable, Codable, Identifiable {
 
     public init(
         mangaID: String,
+        mangaTitle: String? = nil,
         chapterID: String,
         chapterName: String,
         pageCount: Int,
@@ -47,6 +50,7 @@ public struct DownloadedChapter: Equatable, Sendable, Codable, Identifiable {
         archivedAt: Date
     ) {
         self.mangaID = mangaID
+        self.mangaTitle = mangaTitle
         self.chapterID = chapterID
         self.chapterName = chapterName
         self.pageCount = pageCount
@@ -77,36 +81,14 @@ public final class DownloadArchiveStore: @unchecked Sendable {
 
     // MARK: 命名
 
-    /// 把任意主键转成「可读 + 唯一」的文件名片段。
-    ///
-    /// 截断到 60 个字符是刻意的：主键里的 URL 可能很长，
-    /// 而 iOS 的文件名上限是 255 **字节**（UTF-8 下中文占 3 字节），不截断会写失败。
+    /// 把任意主键转成「可读 + 唯一」的文件名片段（见 `FileNameSanitizer`）。
     public static func fileNameSegment(_ raw: String) -> String {
-        let readable = String(raw.map { character -> Character in
-            if character.isLetter || character.isNumber {
-                return character
-            }
-            if character == "." || character == "-" || character == "_" {
-                return character
-            }
-            return "_"
-        }.prefix(60))
-        // 全被替换掉时（例如主键只由符号组成）给个兜底前缀，避免文件名只有哈希
-        let stem = readable.isEmpty ? "item" : readable
-        return "\(stem)_\(stableHash(raw))"
+        FileNameSanitizer.segment(raw)
     }
 
-    /// FNV-1a 64 位（取低 32 位十六进制）。
-    ///
-    /// 不用 `String.hashValue`：它每次进程启动都会变（Swift 的哈希随机化），
-    /// 用它命名等于「这次写进去、下次找不到」。
+    /// FNV-1a 稳定哈希（见 `FileNameSanitizer`）。
     public static func stableHash(_ text: String) -> String {
-        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
-        for byte in text.utf8 {
-            hash ^= UInt64(byte)
-            hash = hash &* 0x0000_0100_0000_01b3
-        }
-        return String(format: "%08x", UInt32(truncatingIfNeeded: hash))
+        FileNameSanitizer.stableHash(text)
     }
 
     private func directory(forManga mangaID: String) -> URL {
@@ -139,6 +121,7 @@ public final class DownloadArchiveStore: @unchecked Sendable {
         mangaID: String,
         chapterID: String,
         chapterName: String,
+        mangaTitle: String? = nil,
         date: Date = Date()
     ) throws -> DownloadedChapter {
         guard !pages.isEmpty else { throw CbzExportError.noPages }
@@ -166,6 +149,7 @@ public final class DownloadArchiveStore: @unchecked Sendable {
 
         let record = DownloadedChapter(
             mangaID: mangaID,
+            mangaTitle: mangaTitle,
             chapterID: chapterID,
             chapterName: chapterName,
             pageCount: pages.count,

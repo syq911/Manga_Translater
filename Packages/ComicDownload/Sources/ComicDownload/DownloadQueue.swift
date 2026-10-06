@@ -46,6 +46,9 @@ public struct DownloadJob: Identifiable, Equatable, Sendable {
     public let id: String
     public let sourceID: SourceID
     public let mangaID: String
+    /// 作品标题。队列本身不用它，但「下载」页要显示「哪部作品的哪一话」——
+    /// 只靠主键（含 URL）没法给人看。
+    public var mangaTitle: String
     public let chapterID: String
     public var chapterName: String
     public let pageURLs: [String]
@@ -63,6 +66,7 @@ public struct DownloadJob: Identifiable, Equatable, Sendable {
     public init(
         sourceID: SourceID,
         mangaID: String,
+        mangaTitle: String = "",
         chapterID: String,
         chapterName: String,
         pageURLs: [String],
@@ -77,6 +81,7 @@ public struct DownloadJob: Identifiable, Equatable, Sendable {
         self.id = chapterID
         self.sourceID = sourceID
         self.mangaID = mangaID
+        self.mangaTitle = mangaTitle
         self.chapterID = chapterID
         self.chapterName = chapterName
         self.pageURLs = pageURLs
@@ -89,9 +94,23 @@ public struct DownloadJob: Identifiable, Equatable, Sendable {
         self.errorMessage = errorMessage
     }
 
-    /// 某一页实际要带的请求头（页级优先，其次任务级）。
+    /// 某一页实际要带的请求头。
+    ///
+    /// **逐键**合并：页级只覆盖它自己声明的键，其余从任务级取。
+    /// 直接整体替换是错的——页级只写了 `X-Page` 时，任务级的 `Referer`
+    /// 会被整块丢掉，防盗链站点立刻 403。
+    /// 同名键比较用**小写**：HTTP 头不区分大小写，`referer` 与 `Referer`
+    /// 同时存在会让底层只取其中一个，行为变得不可预测。
     public func headers(forURL url: String) -> [String: String] {
-        pageHeaders[url] ?? headers
+        guard let page = pageHeaders[url], !page.isEmpty else { return headers }
+        var merged = headers
+        for (key, value) in page {
+            for existing in merged.keys where existing.lowercased() == key.lowercased() {
+                merged.removeValue(forKey: existing)
+            }
+            merged[key] = value
+        }
+        return merged
     }
 
     /// 进度 0...1。
@@ -261,6 +280,18 @@ public actor DownloadQueue {
         for id in order where !(jobs[id]?.state.isTerminal ?? true) {
             await cancel(id)
         }
+    }
+
+    /// 移除单个任务的记录（含已终结的）。返回是否移除。
+    ///
+    /// 「重新下载一个取消/失败的章节」必须先把旧记录摘掉：
+    /// 队列里同 ID 只能有一个任务（`enqueue` 会拒绝重复），
+    /// 而终结态的记录**会一直留着**——不摘掉就永远入不了队。
+    @discardableResult
+    public func remove(_ id: String) -> Bool {
+        guard jobs.removeValue(forKey: id) != nil else { return false }
+        order.removeAll { $0 == id }
+        return true
     }
 
     /// 清空所有已终结任务的记录。返回清理条数。

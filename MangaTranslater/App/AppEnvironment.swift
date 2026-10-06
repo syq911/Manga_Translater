@@ -311,6 +311,13 @@ final class AppEnvironment {
 
     // MARK: 下载
 
+    /// 书架里的作品（不在书架里返回 nil）。
+    ///
+    /// 下载页只拿得到主键；要显示作品名或让用户点进去阅读，就得回到书架查。
+    func libraryEntryManga(mangaID: String) -> Manga? {
+        (try? libraryStore.entry(mangaID: mangaID))?.manga
+    }
+
     /// 某章是否已下载到本地（界面据此显示「已下载」并停用下载按钮）。
     func isChapterDownloaded(mangaID: String, chapterID: String) -> Bool {
         archiveStore.hasChapter(mangaID: mangaID, chapterID: chapterID)
