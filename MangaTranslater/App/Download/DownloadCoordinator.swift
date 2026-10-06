@@ -365,19 +365,33 @@ final class DownloadCoordinator {
     }
 
     /// 删除某作品的全部归档。
+    ///
+    /// 先停掉该作品还在跑的任务：否则会出现「用户刚删完，正在完成的那一章
+    /// 又被写回来」——看起来像删除没生效。
     @discardableResult
     func deleteArchives(mangaID: String) async -> Int {
+        await cancelActiveJobs(mangaID: mangaID)
         let removed = archive.removeManga(mangaID: mangaID)
         await refresh()
         return removed
     }
 
-    /// 清空全部归档。
+    /// 清空全部归档（同上，先停掉还在跑的任务）。
     @discardableResult
     func deleteAllArchives() async -> Int {
+        await cancelActiveJobs(mangaID: nil)
         let removed = archive.removeAll()
         await refresh()
         return removed
+    }
+
+    /// 停掉（取消）尚未终结的任务；`mangaID` 为 nil 表示全部作品。
+    private func cancelActiveJobs(mangaID: String?) async {
+        let jobs = await queue.allJobs()
+        for job in jobs where !job.state.isTerminal {
+            if let mangaID, job.mangaID != mangaID { continue }
+            await queue.cancel(job.id)
+        }
     }
 
     // MARK: 驱动

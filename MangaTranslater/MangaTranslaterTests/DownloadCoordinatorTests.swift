@@ -61,7 +61,7 @@ struct DownloadCoordinatorTests {
             scratchDirectory: root.appendingPathComponent("Scratch", isDirectory: true),
             imageLoader: loader,
             configuration: configuration,
-            pollIntervalNanoseconds: 0,
+            pollIntervalNanoseconds: 1_000_000,
             loadPageList: { _, chapterURL in
                 if failingChapters.contains(chapterURL) {
                     throw SourceRunnerError.executionFailed("页列表取不到")
@@ -74,6 +74,19 @@ struct DownloadCoordinatorTests {
             log: log
         )
         return (coordinator, archive)
+    }
+
+    /// 等这次下载彻底收敛：驱动跑完 + 推进入队 + 刷新快照。
+    ///
+    /// `download()` 会顺带启动驱动，而驱动与测试的 `drain()` 是**并发**的。
+    /// 只调 `drain()` 是不够的：可能出现「测试刚把归档删掉，驱动又把刚下完的
+    /// 章节写回去」这种竞态（实测在 CI 上偶发失败，且失败信息很误导——
+    /// 看起来像删除功能坏了）。
+    private static func settle(_ coordinator: DownloadCoordinator) async {
+        await coordinator.waitUntilSettled()
+        // 驱动结束后再推一次：`download()` 之外还有别的入队路径
+        // （重试 / 恢复），这一步让它们也走到终态。
+        await coordinator.drain()
     }
 
     // MARK: 入队与归档
@@ -92,7 +105,7 @@ struct DownloadCoordinatorTests {
 
         let result = await coordinator.download(manga: Self.manga(), chapter: chapter)
         #expect(result.enqueued == 1)
-        await coordinator.drain()
+        await Self.settle(coordinator)
 
         let mangaID = Self.manga().id
         #expect(archive.hasChapter(mangaID: mangaID, chapterID: chapter.id))
@@ -129,7 +142,7 @@ struct DownloadCoordinatorTests {
         let manga = Self.manga()
 
         _ = await coordinator.download(manga: manga, chapter: chapter)
-        await coordinator.drain()
+        await Self.settle(coordinator)
         #expect(coordinator.isArchived(mangaID: manga.id, chapterID: chapter.id))
 
         let again = await coordinator.download(manga: manga, chapter: chapter)
@@ -155,7 +168,7 @@ struct DownloadCoordinatorTests {
         #expect(first.enqueued == 1)
         #expect(second.enqueued == 0)
 
-        await coordinator.drain()
+        await Self.settle(coordinator)
         #expect(coordinator.jobs.count == 1)
     }
 
@@ -181,7 +194,7 @@ struct DownloadCoordinatorTests {
         #expect(result.enqueued == 2)
         #expect(result.skipped == [bad.name])
 
-        await coordinator.drain()
+        await Self.settle(coordinator)
         #expect(archive.hasChapter(mangaID: manga.id, chapterID: good1.id))
         #expect(archive.hasChapter(mangaID: manga.id, chapterID: good3.id))
         #expect(archive.hasChapter(mangaID: manga.id, chapterID: bad.id) == false)
@@ -246,7 +259,7 @@ struct DownloadCoordinatorTests {
         let manga = Self.manga()
 
         _ = await coordinator.download(manga: manga, chapter: chapter)
-        await coordinator.drain()
+        await Self.settle(coordinator)
 
         let job = try #require(coordinator.job(chapterID: chapter.id))
         #expect(job.state == .failed)
@@ -276,7 +289,7 @@ struct DownloadCoordinatorTests {
         )
 
         _ = await coordinator.download(manga: Self.manga(), chapter: chapter)
-        await coordinator.drain()
+        await Self.settle(coordinator)
         #expect(coordinator.job(chapterID: chapter.id)?.state == .failed)
     }
 
@@ -298,11 +311,11 @@ struct DownloadCoordinatorTests {
         let manga = Self.manga()
 
         _ = await coordinator.download(manga: manga, chapter: chapter)
-        await coordinator.drain()
+        await Self.settle(coordinator)
         #expect(coordinator.job(chapterID: chapter.id)?.state == .failed)
 
         await coordinator.retry(chapterID: chapter.id)
-        await coordinator.drain()
+        await Self.settle(coordinator)
         #expect(coordinator.job(chapterID: chapter.id)?.state == .completed)
         #expect(archive.hasChapter(mangaID: manga.id, chapterID: chapter.id))
     }
@@ -324,17 +337,17 @@ struct DownloadCoordinatorTests {
 
         _ = await coordinator.download(manga: manga, chapter: chapter)
         await coordinator.pause(chapterID: chapter.id)
-        await coordinator.drain()
+        await Self.settle(coordinator)
 
         #expect(coordinator.job(chapterID: chapter.id)?.state == .paused)
         #expect(archive.hasChapter(mangaID: manga.id, chapterID: chapter.id) == false)
 
         // 暂停中再 drain 也不动
-        await coordinator.drain()
+        await Self.settle(coordinator)
         #expect(coordinator.job(chapterID: chapter.id)?.state == .paused)
 
         await coordinator.resume(chapterID: chapter.id)
-        await coordinator.drain()
+        await Self.settle(coordinator)
         #expect(coordinator.job(chapterID: chapter.id)?.state == .completed)
         #expect(archive.hasChapter(mangaID: manga.id, chapterID: chapter.id))
     }
@@ -354,7 +367,7 @@ struct DownloadCoordinatorTests {
 
         _ = await coordinator.download(manga: manga, chapter: chapter)
         await coordinator.cancel(chapterID: chapter.id)
-        await coordinator.drain()
+        await Self.settle(coordinator)
 
         #expect(coordinator.job(chapterID: chapter.id)?.state == .cancelled)
         #expect(archive.hasChapter(mangaID: manga.id, chapterID: chapter.id) == false)
@@ -362,7 +375,7 @@ struct DownloadCoordinatorTests {
         // 取消后重新下载应当能正常入队
         let again = await coordinator.download(manga: manga, chapter: chapter)
         #expect(again.enqueued == 1)
-        await coordinator.drain()
+        await Self.settle(coordinator)
         #expect(archive.hasChapter(mangaID: manga.id, chapterID: chapter.id))
     }
 
@@ -379,7 +392,7 @@ struct DownloadCoordinatorTests {
         )
 
         _ = await coordinator.download(manga: Self.manga(), chapter: chapter)
-        await coordinator.drain()
+        await Self.settle(coordinator)
         #expect(coordinator.jobs.count == 1)
 
         let removed = await coordinator.removeFinished()
@@ -403,7 +416,7 @@ struct DownloadCoordinatorTests {
         let manga = Self.manga()
 
         _ = await coordinator.download(manga: manga, chapter: chapter)
-        await coordinator.drain()
+        await Self.settle(coordinator)
         #expect(coordinator.archiveURL(mangaID: manga.id, chapterID: chapter.id) != nil)
 
         #expect(await coordinator.deleteArchive(mangaID: manga.id, chapterID: chapter.id))
@@ -430,7 +443,7 @@ struct DownloadCoordinatorTests {
         )
 
         _ = await coordinator.download(manga: manga, chapters: [c1, c2])
-        await coordinator.drain()
+        await Self.settle(coordinator)
         await coordinator.refreshArchives()
         #expect(coordinator.archivedChapterCount == 2)
         #expect(coordinator.archivedBytes > 0)
@@ -440,7 +453,7 @@ struct DownloadCoordinatorTests {
         #expect(coordinator.archivedChapterCount == 0)
 
         _ = await coordinator.download(manga: manga, chapter: c1)
-        await coordinator.drain()
+        await Self.settle(coordinator)
         #expect(await coordinator.deleteAllArchives() == 1)
         #expect(archive.allChapters().isEmpty)
     }
@@ -485,7 +498,7 @@ struct DownloadCoordinatorTests {
             scratchDirectory: root.appendingPathComponent("Scratch", isDirectory: true),
             imageLoader: SourceImageLoader(transport: StubTransport(outcomes: [Self.imageOutcome()])),
             configuration: DownloadQueueConfiguration(maxRetriesPerPage: 0),
-            pollIntervalNanoseconds: 0,
+            pollIntervalNanoseconds: 1_000_000,
             loadPageList: { _, _ in pages },
             log: { _ in },
             beginBackgroundWork: { ledger.recordBegin() },
@@ -517,10 +530,10 @@ struct DownloadCoordinatorTests {
         )
 
         _ = await coordinator.download(manga: manga, chapter: c1)
-        await coordinator.drain()
+        await Self.settle(coordinator)
         try await Task.sleep(nanoseconds: 5_000_000)
         _ = await coordinator.download(manga: manga, chapter: c2)
-        await coordinator.drain()
+        await Self.settle(coordinator)
 
         let archived = coordinator.archivedChapters(mangaID: manga.id)
         #expect(archived.count == 2)
