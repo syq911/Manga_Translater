@@ -134,6 +134,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `check_imports`：补登记 `ComicDownload` 的 `FileNameSanitizer` / `DownloadArchiveStore` /
   `DownloadedChapter` / `JobAwarePageFetching`——漏登记导致
   「用了 `FileNameSanitizer` 却没 import」一路烧到 CI 才被编译器发现。
+- `check_swift_syntax` 新增**主 actor 静态成员**规则：在非 `@MainActor` 上下文里调用
+  `@MainActor` 类型的静态成员会报
+  "call to main actor-isolated static method … in a synchronous nonisolated context"，
+  而这类错误**只有测试目标会报**，不挡就要为它单独等一轮 CI。
+  规则刻意收窄（只查测试文件、跳过含 `@MainActor` 的文件、排除已标 `nonisolated` 的成员），
+  因为 SwiftUI 的 `body` / `#Preview` 本身就是主 actor 上下文但文件里没有 `@MainActor` 字面量——
+  照字面判会把合法调用全报成错。已按「改坏 → 确认拦下 → 改回」双向验证。
 
 
 ---

@@ -681,6 +681,104 @@ def check_payload_column_consistency(files):
     return problems
 
 
+def check_main_actor_static_usage(files):
+    """
+    在**非** `@MainActor` 上下文里调用 `@MainActor` 类型的静态成员。
+
+    动机（实测烧了一轮 CI）：`CloudAccountModel` 是 `@MainActor` 类，它的
+    `static func mask(_:)` 因此继承了主 actor 隔离；而 `Mask` 是纯字符串函数，
+    在不隔离的测试用例里调用会直接编译失败：
+
+        error: call to main actor-isolated static method 'mask' in a
+               synchronous nonisolated context
+
+    这类错误的特点是**只有测试目标会报**（App 目标里的调用都在主 actor 上），
+    因此更值得提前挡掉——不挡就要为它单独等一轮 CI。
+
+    判定刻意保守，把误报压到零：
+
+    1. 只看**声明行带 `@MainActor`** 的类型（含注解写在声明前一两行的情况）；
+    2. 只收集它内部的 `static func` / `static var` / `static let` 名字，
+       **排除已标 `nonisolated` 的**——那些本来就可以从任何上下文调用；
+    3. 只在**测试目标、且整个文件都不含 `@MainActor`** 时才检查调用。
+       两条收窄都是被真实误报逼出来的：
+       - 一旦文件里有任何主 actor 上下文（例如 `@MainActor struct Suite`），
+         就整篇跳过——检查器没有能力区分作用域，那就干脆不判；
+       - App 目标里的 SwiftUI 代码（`body`、`#Preview`）本身就在主 actor 上，
+         但文件里**没有 `@MainActor` 字面量**，照字面判会把
+         `AppEnvironment.makeDefault()` 这类合法调用全报成错。
+         而这类错误的实际发生地是测试目标（App 目标的调用都在主 actor 上），
+         所以只查测试文件既覆盖了真问题，又不会误伤 UI 代码。
+
+    修法二选一：给成员加 `nonisolated`（纯函数就该这样），
+    或把调用方也标成 `@MainActor`。
+    """
+    type_decl = re.compile(
+        r"^(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?\s+)*"
+        r"(?:public\s+|internal\s+|private\s+|fileprivate\s+|final\s+|open\s+)*"
+        r"(?:class|struct|enum|actor)\s+([A-Za-z_][A-Za-z0-9_]*)"
+    )
+    static_member = re.compile(r"\bstatic\s+(?:func|var|let)\s+([A-Za-z_][A-Za-z0-9_]*)")
+
+    main_actor_members = {}
+    for path in files:
+        raw = io.open(path, encoding="utf-8").read()
+        current_type = None
+        pending_actor = False
+        for line in raw.split("\n"):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("//") or stripped.startswith("*"):
+                continue
+            if "@MainActor" in line and "(" not in stripped.split("@MainActor")[0]:
+                pending_actor = True
+            indent = len(line) - len(line.lstrip(" "))
+            if indent == 0:
+                match = type_decl.match(line)
+                if match:
+                    current_type = match.group(1)
+                    if pending_actor or "@MainActor" in line:
+                        main_actor_members.setdefault(current_type, set())
+                    pending_actor = False
+                elif not stripped.startswith(("@", "}", ")", "#")):
+                    current_type = None
+                    pending_actor = False
+                continue
+            if current_type is None or current_type not in main_actor_members:
+                continue
+            if "nonisolated" in stripped:
+                continue          # 已显式解除隔离，任何上下文都能调
+            for match in static_member.finditer(stripped):
+                main_actor_members[current_type].add(match.group(1))
+
+    problems = []
+    for path in files:
+        relative = os.path.relpath(path).replace("\\", "/")
+        if "MangaTranslaterTests/" not in relative:
+            continue          # 只查测试目标（见上文第 3 条）
+        raw = io.open(path, encoding="utf-8").read()
+        if "@MainActor" in raw:
+            continue          # 文件里有主 actor 上下文 → 不判
+        code = strip_literals_and_comments(raw)
+        for type_name, members in sorted(main_actor_members.items()):
+            for member in sorted(members):
+                pattern = re.compile(
+                    r"(?<![\w.])" + re.escape(type_name) + r"\s*\.\s*" + re.escape(member) + r"\s*\("
+                )
+                for match in pattern.finditer(code):
+                    line = code[: match.start()].count("\n") + 1
+                    problems.append(
+                        (
+                            relative,
+                            f"第 {line} 行在非主 actor 上下文里调用 `{type_name}.{member}(…)`；"
+                            f"它是 `@MainActor` 类型的静态成员，请在声明处加 `nonisolated`"
+                            f"（纯函数应当如此），或让调用方也处于主 actor",
+                        )
+                    )
+    return problems
+
+
 def main():
     files = swift_files("MangaTranslater") + swift_files("Packages")
     all_problems = []
@@ -702,6 +800,8 @@ def main():
         all_problems.append(problem)
     for problem in check_unguarded_throwing_calls(files):
         all_problems.append(problem)
+    for problem in check_main_actor_static_usage(files):
+        all_problems.append(problem)
 
     print(f"体检 Swift 文件：{len(files)} 个")
     if all_problems:
@@ -710,7 +810,7 @@ def main():
             print(f"  {path}: {problem}")
         return 1
     print("✅ 括号配平、条件编译配对、多行字符串缩进、JSON 编解码类型、"\
-          "静态成员限定、路径片段安全化、日期写法、throwing 调用均正常")
+          "静态成员限定、主 actor 静态成员、路径片段安全化、日期写法、throwing 调用均正常")
     return 0
 
 

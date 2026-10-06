@@ -245,7 +245,13 @@ final class CloudAccountModel {
     /// 邮箱脱敏：`abcd@example.com` → `a***@example.com`。
     ///
     /// 界面上不必完整显示邮箱（旁边就是自己的手机），少显示一点少一分泄露面。
-    static func mask(_ email: String) -> String {
+    ///
+    /// 标 `nonisolated`：它是**纯字符串函数**，不碰任何 actor 状态。
+    /// 不标的话它会继承类的 `@MainActor` 隔离，于是任何非主线程上下文
+    /// （比如不隔离的测试用例）都没法调用它——实测就是 `#expect` 宏里报
+    /// "call to main actor-isolated static method 'mask' in a synchronous
+    /// nonisolated context"。
+    nonisolated static func mask(_ email: String) -> String {
         guard let at = email.firstIndex(of: "@") else { return email }
         let local = String(email[email.startIndex..<at])
         let domain = String(email[at...])
