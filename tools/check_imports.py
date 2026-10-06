@@ -51,6 +51,10 @@ PKG_TYPES = {
         "PageFetching", "PageStoring", "FilePageStore", "InMemoryPageStore",
         "ZipArchiveWriter", "ZipArchiveReader", "ZipEntryInfo", "ZipArchiveError", "Crc32",
         "CbzExporter", "CbzPage", "CbzExportError",
+        # 后补：M3/M4 起 App 大量直接使用这两个类型。
+        # 之前漏登记，导致 TranslationModels 里用了 FileNameSanitizer 却没 import
+        # ComicDownload，一路烧到 CI 才报 "cannot find 'FileNameSanitizer' in scope"。
+        "FileNameSanitizer", "DownloadArchiveStore", "DownloadedChapter", "JobAwarePageFetching",
     ],
 }
 

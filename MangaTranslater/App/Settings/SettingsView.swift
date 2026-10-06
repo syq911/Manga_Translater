@@ -86,45 +86,29 @@ struct SettingsView: View {
     }
 
     private var translationSection: some View {
-        Section(L("settings.section.translation")) {
-            Picker(selection: Binding(
-                get: { settings.translationBackend },
-                set: { settings.translationBackend = $0 }
-            )) {
-                ForEach(TranslationBackend.allCases, id: \.self) { backend in
-                    Text(backend.displayName).tag(backend)
-                }
+        Section {
+            NavigationLink {
+                TranslationSettingsView(settings: settings)
             } label: {
-                Text("后端")
-            }
-
-            Picker(selection: Binding(
-                get: { settings.sourceLanguage },
-                set: { settings.sourceLanguage = $0 }
-            )) {
-                ForEach(TranslationLanguage.allCases, id: \.self) { language in
-                    Text(language.displayName).tag(language)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("translation.settings.title"))
+                    Text(translationSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-            } label: {
-                Text("原文语言")
             }
-
-            Picker(selection: Binding(
-                get: { settings.targetLanguage },
-                set: { settings.targetLanguage = $0 }
-            )) {
-                ForEach(TranslationLanguage.allCases, id: \.self) { language in
-                    Text(language.displayName).tag(language)
-                }
-            } label: {
-                Text("译文语言")
-            }
-
-            Toggle("漏行兜底", isOn: Binding(
-                get: { settings.usesLineDropFallback },
-                set: { settings.usesLineDropFallback = $0 }
-            ))
+        } header: {
+            Text(L("settings.section.translation"))
+        } footer: {
+            Text(L("settings.translation.footer"))
         }
+    }
+
+    /// 一句话概括当前翻译配置，省得每次都要点进去确认。
+    private var translationSubtitle: String {
+        let backend = settings.translationBackend.displayName
+        let pair = "\(settings.sourceLanguage.displayName) → \(settings.targetLanguage.displayName)"
+        return "\(backend) · \(pair)"
     }
 
     private var readerSection: some View {
@@ -164,19 +148,6 @@ struct SettingsView: View {
                 get: { settings.keepsScreenAwake },
                 set: { settings.keepsScreenAwake = $0 }
             ))
-
-            VStack(alignment: .leading) {
-                Text(String(format: "字号缩放：%.2f×", settings.fontScale))
-                    .font(.footnote)
-                Slider(
-                    value: Binding(
-                        get: { settings.fontScale },
-                        set: { settings.fontScale = $0 }
-                    ),
-                    in: AppSettings.fontScaleRange,
-                    step: 0.05
-                )
-            }
 
             Stepper(
                 "预加载页数：\(settings.preloadWindow)",

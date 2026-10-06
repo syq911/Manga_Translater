@@ -24,6 +24,7 @@
 
 import SwiftUI
 import UIKit
+import Translation
 import AppCore
 import SourceEngine
 
@@ -36,6 +37,8 @@ struct ReaderView: View {
     var startChapterID: String?
 
     @Environment(AppEnvironment.self) private var environment
+    /// 打开外部网页（「升级云服务」用）。App 内不出现收银台，付款只在官网完成。
+    @Environment(\.openURL) private var openURL
 
     @State private var session: ReaderSession?
     @State private var pages: [ComicPage] = []
@@ -46,6 +49,8 @@ struct ReaderView: View {
     @State private var isInLibrary = false
     /// 正在进行的预加载任务（换页前先取消，避免多批下载叠加）。
     @State private var preloadTask: Task<Void, Never>?
+    /// 页内翻译编排器（进入阅读器时创建，退出时重置）。
+    @State private var translation: TranslationController?
 
     /// 缩放 / 平移状态。
     @State private var zoom = ZoomState()
@@ -71,9 +76,27 @@ struct ReaderView: View {
 
             bottomBar
         }
+        .overlay(alignment: .top) { notices }
+        // Apple 端上翻译：框架要求由 SwiftUI 提供 TranslationSession，
+        // 桥负责把「待翻译文本 + continuation」和这次会话对上。
+        .translationTask(translation?.appleBridge.configuration) { session in
+            await translation?.appleBridge.run(session: session)
+        }
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    toggleTranslation()
+                } label: {
+                    Image(systemName: translation?.showsTranslation == true
+                          ? "character.book.closed.fill"
+                          : "character.book.closed")
+                }
+                .disabled(translation == nil || isLoading)
+                .accessibilityLabel(L("translation.reader.toggle"))
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     addToLibrary()
@@ -88,6 +111,7 @@ struct ReaderView: View {
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             preloadTask?.cancel()
+            translation?.stopAndReset()
         }
         .alert(L("common.notice"), isPresented: Binding(
             get: { message != nil },
@@ -130,7 +154,7 @@ struct ReaderView: View {
     private var content: some View {
         if isLoading {
             ProgressView("载入中…")
-        } else if let image = currentImage {
+        } else if let image = currentDisplayImage {
             GeometryReader { proxy in
                 Image(uiImage: image)
                     .resizable()
@@ -156,6 +180,81 @@ struct ReaderView: View {
         return UIImage(data: data)
     }
 
+    /// 实际显示的那张图：翻译开启且该页已有译文时返回译文图，否则原图。
+    private var currentDisplayImage: UIImage? {
+        guard let original = currentImage else { return nil }
+        guard let translation, let index = session?.pageIndex else { return original }
+        return translation.displayImage(for: manga, page: index, original: original) ?? original
+    }
+
+    /// 顶部提示条：翻译失败（可点掉）与额度用尽（带升级入口，**不打断阅读**）。
+    @ViewBuilder
+    private var notices: some View {
+        VStack(spacing: 8) {
+            if let translation, let text = translation.failureMessage {
+                noticeBar(
+                    text: text,
+                    systemImage: "exclamationmark.triangle",
+                    tint: .orange,
+                    actionTitle: nil,
+                    action: {}
+                ) {
+                    translation.dismissFailure()
+                }
+            }
+            if let translation, let text = translation.quotaMessage {
+                noticeBar(
+                    text: text,
+                    systemImage: "sparkles",
+                    tint: .accentColor,
+                    actionTitle: L("translation.quota.upgrade"),
+                    action: openUpgradePage
+                ) {
+                    translation.dismissQuotaNotice()
+                }
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
+
+    private func noticeBar(
+        text: String,
+        systemImage: String,
+        tint: Color,
+        actionTitle: String?,
+        action: @escaping () -> Void,
+        onDismiss: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+            Text(text)
+                .font(.footnote)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let actionTitle {
+                Button(actionTitle, action: action)
+                    .font(.footnote.weight(.semibold))
+                    .buttonStyle(.borderless)
+            }
+            Button {
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// 打开官网购买页（外部浏览器）。App 内不接入任何支付。
+    private func openUpgradePage() {
+        guard let url = environment.cloudUpgradeURL else { return }
+        openURL(url)
+    }
+
     /// 单击区：左右两条窄带。方向语义随阅读方向变化。
     private func tapZone(isLeading: Bool) -> some View {
         Color.clear
@@ -169,33 +268,46 @@ struct ReaderView: View {
     }
 
     private var bottomBar: some View {
-        HStack {
-            Button {
-                advance(forward: false)
-            } label: {
-                Label("上一页", systemImage: "chevron.left")
+        VStack(spacing: 6) {
+            HStack {
+                Button {
+                    advance(forward: false)
+                } label: {
+                    Label("上一页", systemImage: "chevron.left")
+                }
+                .disabled(session == nil)
+
+                Spacer()
+
+                VStack(spacing: 2) {
+                    Text(session?.currentChapter?.name ?? manga.title)
+                        .font(.footnote)
+                        .lineLimit(1)
+                    Text(pageLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button {
+                    advance(forward: true)
+                } label: {
+                    Label("下一页", systemImage: "chevron.right")
+                }
+                .disabled(session == nil)
             }
-            .disabled(session == nil)
 
-            Spacer()
-
-            VStack(spacing: 2) {
-                Text(session?.currentChapter?.name ?? manga.title)
-                    .font(.footnote)
-                    .lineLimit(1)
-                Text(pageLabel)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            if let translation, translation.isBusy {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text(String(format: L("translation.progress.remaining"), translation.remainingCount))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
             }
-
-            Spacer()
-
-            Button {
-                advance(forward: true)
-            } label: {
-                Label("下一页", systemImage: "chevron.right")
-            }
-            .disabled(session == nil)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
@@ -274,6 +386,12 @@ struct ReaderView: View {
     /// 首次进入：读取章节、恢复进度、载入当前章。
     private func bootstrap() async {
         guard session == nil else { return }
+
+        // 翻译编排器在这里创建（而不是作为环境单例）：它是**阅读会话级**的状态，
+        // 退出阅读器就该清掉在跑的翻译，但磁盘上的译文缓存留在环境里继续复用。
+        if translation == nil {
+            translation = environment.makeTranslationController()
+        }
 
         isInLibrary = libraryEntryExists()
         do {
@@ -365,6 +483,45 @@ struct ReaderView: View {
 
         // 释放窗口外的缓存
         pageImages = pageImages.filter { range.contains($0.key) }
+
+        // 图片到位后再通知翻译：翻译需要页图，早通知只会拿到空窗口
+        notifyTranslation()
+    }
+
+    // MARK: 页内翻译
+
+    /// 顶部翻译按钮：点一下开启连续翻译（当前页 + 前后几页），再点一下显示原文。
+    private func toggleTranslation() {
+        guard let translation, let session else { return }
+        translation.toggle(
+            manga: manga,
+            currentPage: session.pageIndex,
+            preloaded: preloadedImages(around: session.pageIndex)
+        )
+    }
+
+    /// 翻页 / 图片到位后，把新进入窗口的页补进翻译队列。
+    private func notifyTranslation() {
+        guard let translation, let session else { return }
+        translation.onVisiblePageChanged(
+            manga: manga,
+            currentPage: session.pageIndex,
+            preloaded: preloadedImages(around: session.pageIndex)
+        )
+    }
+
+    /// 取当前页附近**已加载**的页图（只取翻译窗口那么宽，别把整章都解成 UIImage）。
+    private func preloadedImages(around pageIndex: Int) -> [Int: UIImage] {
+        let window = environment.settings.translationPrefetchWindow
+        let lower = max(0, pageIndex - window)
+        let upper = pageIndex + window
+        guard lower <= upper else { return [:] }
+        var result: [Int: UIImage] = [:]
+        for index in lower...upper {
+            guard let data = pageImages[index], let image = UIImage(data: data) else { continue }
+            result[index] = image
+        }
+        return result
     }
 
     private func advance(forward: Bool) {
@@ -380,6 +537,7 @@ struct ReaderView: View {
             self.session = session
             schedulePreload(around: toPage)
             saveProgress()
+            notifyTranslation()
 
         case .needsNextChapter:
             guard session.moveToNextChapter() else { return }

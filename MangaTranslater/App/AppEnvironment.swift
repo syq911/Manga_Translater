@@ -52,6 +52,9 @@ final class AppEnvironment {
     let downloads: DownloadCoordinator
     /// 下载期间的后台执行断言（用户切走 App 后还能多跑一会儿）。
     let backgroundExecution: BackgroundExecutionKeeper
+    /// 译文缓存（内存 LRU + 磁盘，按作品分目录）。放这里而不是控制器里，
+    /// 是为了跨阅读会话保留：同一话重看时不必再花一次额度。
+    let translationStore: TranslationStore
 
     init(
         settings: AppSettings,
@@ -69,7 +72,8 @@ final class AppEnvironment {
         archiveStore: DownloadArchiveStore? = nil,
         downloads: DownloadCoordinator? = nil,
         serverStore: ServerStore? = nil,
-        dataSourceProvider: CompositeDataSourceProvider? = nil
+        dataSourceProvider: CompositeDataSourceProvider? = nil,
+        translationStore: TranslationStore? = nil
     ) {
         self.settings = settings
         self.sourceStore = sourceStore
@@ -152,6 +156,12 @@ final class AppEnvironment {
 
         let keeper = BackgroundExecutionKeeper()
         self.backgroundExecution = keeper
+
+        // 译文缓存与下载归档同级放在数据目录下；`Translations/` 里出现的东西
+        // 永远是「可以直接显示的整页 PNG + 一份行清单」。
+        self.translationStore = translationStore ?? TranslationStore(
+            root: dataDirectory.appendingPathComponent("Translations", isDirectory: true)
+        )
 
         if let downloads {
             self.downloads = downloads
@@ -515,5 +525,55 @@ final class AppEnvironment {
             diag("AppEnvironment: 加入书架失败 —— \(error.localizedDescription)")
             return nil
         }
+    }
+
+    // MARK: 页内翻译（M4）
+
+    /// 组装一次阅读会话用的翻译编排器。
+    ///
+    /// 后端解析刻意放在这里（而不是控制器里）：控制器只认 `MangaTranslator` 协议，
+    /// 「自备密钥 / 云服务 / 端上」的差别与各自的凭据来源全部集中在环境这一层，
+    /// 于是控制器可以完全离线地单测。
+    func makeTranslationController() -> TranslationController {
+        let settings = self.settings
+        return TranslationController(
+            store: translationStore,
+            settings: settings,
+            resolver: { backend in
+                switch backend {
+                case .bringYourOwnKey:
+                    // 每次现造：用户在设置里改完 Key / 地址后立刻生效，不需要重启
+                    return DeepSeekTranslator(
+                        apiKey: SecureValueStore.string(forKey: SecureValueStore.Key.translationAPIKey) ?? "",
+                        baseURL: settings.deepSeekBaseURL,
+                        model: settings.deepSeekModel
+                    )
+                case .cloudService:
+                    return cloudTranslator()
+                case .appleOnDevice:
+                    // 端上翻译走 AppleTranslationBridge（由控制器直接调，不经过协议）
+                    return nil
+                }
+            }
+        )
+    }
+
+    /// 自备密钥是否已配置（界面据此提示「去填 Key」）。
+    var hasTranslationAPIKey: Bool {
+        let key = SecureValueStore.string(forKey: SecureValueStore.Key.translationAPIKey) ?? ""
+        return !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// 云端翻译后端。未接入云服务时返回 nil（控制器会报「未登录」）。
+    func cloudTranslator() -> MangaTranslator? {
+        nil
+    }
+
+    /// 官网购买页地址（在**外部浏览器**打开）。
+    ///
+    /// 这是 App 内唯一的付费入口：不接支付 SDK、不出现收银台，
+    /// 所有收款都在官网网页完成（《开发手册》7.4 的资金流切割）。
+    var cloudUpgradeURL: URL? {
+        URL(string: settings.cloudUpgradeURL)
     }
 }

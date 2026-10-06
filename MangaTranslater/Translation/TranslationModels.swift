@@ -16,6 +16,7 @@ import Foundation
 import CoreGraphics
 import UIKit
 import AppCore
+import ComicDownload
 
 // MARK: - 平台图像
 

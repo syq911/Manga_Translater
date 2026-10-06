@@ -139,6 +139,11 @@ public struct SettingsSnapshot: Codable, Equatable, Sendable {
     public var hasConfirmedAdultContent: Bool
     public var deepSeekBaseURL: String
     public var deepSeekModel: String
+    public var translationUsesSampledBackground: Bool
+    public var translationShowsOriginalText: Bool
+    public var translationPrefetchWindow: Int
+    public var cloudServiceBaseURL: String
+    public var cloudUpgradeURL: String
     public var preferredLanguages: [String]
 
     public init(
@@ -158,6 +163,11 @@ public struct SettingsSnapshot: Codable, Equatable, Sendable {
         hasConfirmedAdultContent: Bool = false,
         deepSeekBaseURL: String = AppSettings.defaultDeepSeekBaseURL,
         deepSeekModel: String = AppSettings.defaultDeepSeekModel,
+        translationUsesSampledBackground: Bool = true,
+        translationShowsOriginalText: Bool = false,
+        translationPrefetchWindow: Int = AppSettings.defaultTranslationPrefetchWindow,
+        cloudServiceBaseURL: String = AppSettings.defaultCloudServiceBaseURL,
+        cloudUpgradeURL: String = AppSettings.defaultCloudUpgradeURL,
         preferredLanguages: [String] = ["zh-Hans", "en"]
     ) {
         self.readerMode = readerMode
@@ -176,6 +186,11 @@ public struct SettingsSnapshot: Codable, Equatable, Sendable {
         self.hasConfirmedAdultContent = hasConfirmedAdultContent
         self.deepSeekBaseURL = deepSeekBaseURL
         self.deepSeekModel = deepSeekModel
+        self.translationUsesSampledBackground = translationUsesSampledBackground
+        self.translationShowsOriginalText = translationShowsOriginalText
+        self.translationPrefetchWindow = translationPrefetchWindow
+        self.cloudServiceBaseURL = cloudServiceBaseURL
+        self.cloudUpgradeURL = cloudUpgradeURL
         self.preferredLanguages = preferredLanguages
     }
 
@@ -185,6 +200,9 @@ public struct SettingsSnapshot: Codable, Equatable, Sendable {
         case translationBackend, sourceLanguage, targetLanguage, usesLineDropFallback
         case showsNSFWSources, hasConfirmedAdultContent
         case deepSeekBaseURL, deepSeekModel, preferredLanguages
+        case translationUsesSampledBackground, translationShowsOriginalText
+        case translationPrefetchWindow
+        case cloudServiceBaseURL, cloudUpgradeURL
     }
 
     /// 容错解码：缺失 / 类型不符的字段一律回退到默认值。
@@ -219,6 +237,23 @@ public struct SettingsSnapshot: Codable, Equatable, Sendable {
         self.hasConfirmedAdultContent = value(Bool.self, .hasConfirmedAdultContent, fallback.hasConfirmedAdultContent)
         self.deepSeekBaseURL = value(String.self, .deepSeekBaseURL, fallback.deepSeekBaseURL)
         self.deepSeekModel = value(String.self, .deepSeekModel, fallback.deepSeekModel)
+        self.translationUsesSampledBackground = value(
+            Bool.self,
+            .translationUsesSampledBackground,
+            fallback.translationUsesSampledBackground
+        )
+        self.translationShowsOriginalText = value(
+            Bool.self,
+            .translationShowsOriginalText,
+            fallback.translationShowsOriginalText
+        )
+        self.translationPrefetchWindow = value(
+            Int.self,
+            .translationPrefetchWindow,
+            fallback.translationPrefetchWindow
+        )
+        self.cloudServiceBaseURL = value(String.self, .cloudServiceBaseURL, fallback.cloudServiceBaseURL)
+        self.cloudUpgradeURL = value(String.self, .cloudUpgradeURL, fallback.cloudUpgradeURL)
         self.preferredLanguages = value([String].self, .preferredLanguages, fallback.preferredLanguages)
     }
 }
@@ -232,6 +267,21 @@ public final class AppSettings: @unchecked Sendable {
     public static let defaultDeepSeekBaseURL = "https://api.deepseek.com"
     /// 默认模型。注意：`deepseek-chat` 别名已由官方弃用，不要回退到它。
     public static let defaultDeepSeekModel = "deepseek-v4-flash"
+    /// 默认云服务端点（官方托管的翻译代理 / 账号 / 额度接口）。
+    ///
+    /// 这只是**默认值**：自建部署的用户可以在设置里改到自己的地址。
+    /// 客户端与服务端的契约见 `docs/cloud-api.md`。
+    public static let defaultCloudServiceBaseURL = "https://api.mangatranslater.com"
+    /// 默认的「升级 Pro」落地页（官网购买页，在浏览器里打开）。
+    public static let defaultCloudUpgradeURL = "https://mangatranslater.com/upgrade"
+    /// 翻译预取窗口默认值（当前页前后各 N 页）。
+    ///
+    /// 刻意远小于阅读器的**图片**预加载窗口（默认 10）：看图是免费的，
+    /// 翻译是按页计费/耗额度的，默认值必须保守；想连着往后看更远的用户
+    /// 可以在设置里调大，代价是额度消耗更快。
+    public static let defaultTranslationPrefetchWindow = 2
+    /// 翻译预取窗口范围。
+    public static let translationPrefetchWindowRange: ClosedRange<Int> = 0...10
 
     /// 字号缩放范围。
     public static let fontScaleRange: ClosedRange<Double> = 0.5...2.0
@@ -272,6 +322,11 @@ public final class AppSettings: @unchecked Sendable {
         static let hasConfirmedAdultContent = prefix + "hasConfirmedAdultContent"
         static let deepSeekBaseURL = prefix + "deepSeekBaseURL"
         static let deepSeekModel = prefix + "deepSeekModel"
+        static let translationUsesSampledBackground = prefix + "translationUsesSampledBackground"
+        static let translationShowsOriginalText = prefix + "translationShowsOriginalText"
+        static let translationPrefetchWindow = prefix + "translationPrefetchWindow"
+        static let cloudServiceBaseURL = prefix + "cloudServiceBaseURL"
+        static let cloudUpgradeURL = prefix + "cloudUpgradeURL"
         static let preferredLanguages = prefix + "preferredLanguages"
     }
 
@@ -413,6 +468,59 @@ public final class AppSettings: @unchecked Sendable {
         }
     }
 
+    /// 排版：盖住原文框时是否取样周边底色（关闭则用纯白）。
+    public var translationUsesSampledBackground: Bool {
+        get { read(Key.translationUsesSampledBackground, fallback: true) }
+        set { write(newValue, for: Key.translationUsesSampledBackground) }
+    }
+
+    /// 排版：是否在译文旁额外标注一行小号原文。
+    public var translationShowsOriginalText: Bool {
+        get { read(Key.translationShowsOriginalText, fallback: false) }
+        set { write(newValue, for: Key.translationShowsOriginalText) }
+    }
+
+    /// 翻译预取窗口，自动钳制到 `translationPrefetchWindowRange`。
+    public var translationPrefetchWindow: Int {
+        get {
+            Self.clamp(
+                read(Key.translationPrefetchWindow, fallback: Self.defaultTranslationPrefetchWindow),
+                to: Self.translationPrefetchWindowRange
+            )
+        }
+        set { write(Self.clamp(newValue, to: Self.translationPrefetchWindowRange), for: Key.translationPrefetchWindow) }
+    }
+
+    /// 云服务端点。非法地址回退到默认值（否则会让「云服务」入口永久不可用）。
+    public var cloudServiceBaseURL: String {
+        get {
+            let stored = read(Key.cloudServiceBaseURL, fallback: Self.defaultCloudServiceBaseURL)
+            return ModelValidation.isValidURLString(stored) ? stored : Self.defaultCloudServiceBaseURL
+        }
+        set {
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            write(
+                ModelValidation.isValidURLString(trimmed) ? trimmed : Self.defaultCloudServiceBaseURL,
+                for: Key.cloudServiceBaseURL
+            )
+        }
+    }
+
+    /// 「升级 Pro」跳转的官网地址。非法地址回退到默认值。
+    public var cloudUpgradeURL: String {
+        get {
+            let stored = read(Key.cloudUpgradeURL, fallback: Self.defaultCloudUpgradeURL)
+            return ModelValidation.isValidURLString(stored) ? stored : Self.defaultCloudUpgradeURL
+        }
+        set {
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            write(
+                ModelValidation.isValidURLString(trimmed) ? trimmed : Self.defaultCloudUpgradeURL,
+                for: Key.cloudUpgradeURL
+            )
+        }
+    }
+
     /// 界面语言偏好顺序。
     public var preferredLanguages: [String] {
         get {
@@ -476,6 +584,11 @@ public final class AppSettings: @unchecked Sendable {
             hasConfirmedAdultContent: hasConfirmedAdultContent,
             deepSeekBaseURL: deepSeekBaseURL,
             deepSeekModel: deepSeekModel,
+            translationUsesSampledBackground: translationUsesSampledBackground,
+            translationShowsOriginalText: translationShowsOriginalText,
+            translationPrefetchWindow: translationPrefetchWindow,
+            cloudServiceBaseURL: cloudServiceBaseURL,
+            cloudUpgradeURL: cloudUpgradeURL,
             preferredLanguages: preferredLanguages
         )
     }
@@ -497,6 +610,11 @@ public final class AppSettings: @unchecked Sendable {
         hasConfirmedAdultContent = snapshot.hasConfirmedAdultContent
         deepSeekBaseURL = snapshot.deepSeekBaseURL
         deepSeekModel = snapshot.deepSeekModel
+        translationUsesSampledBackground = snapshot.translationUsesSampledBackground
+        translationShowsOriginalText = snapshot.translationShowsOriginalText
+        translationPrefetchWindow = snapshot.translationPrefetchWindow
+        cloudServiceBaseURL = snapshot.cloudServiceBaseURL
+        cloudUpgradeURL = snapshot.cloudUpgradeURL
         preferredLanguages = snapshot.preferredLanguages
         // NSFW 开关最后处理：它依赖年龄确认，且写入可能被拒绝。
         setShowsNSFWSources(snapshot.showsNSFWSources)

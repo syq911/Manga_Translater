@@ -233,3 +233,46 @@
 "translation.error.cloud" = "Cloud request failed: %@";
 "translation.prompt.autoSource" = "detect automatically";
 
+/* Page translation · reader and settings (M4 batch 2) */
+
+"translation.reader.toggle" = "Translate page";
+"translation.progress.remaining" = "Translating… %ld page(s) left";
+"translation.quota.upgrade" = "Upgrade";
+
+"translation.settings.title" = "Translation";
+"translation.settings.backend" = "Backend";
+"translation.settings.backendFooter" = "Own key: paste your API key; usage is billed to your own account with no limit. Cloud: no setup, a free daily quota, unlimited with a subscription. On-device: the system translation framework; works offline but supports fewer languages.";
+"translation.settings.language" = "Languages";
+"translation.settings.source" = "Source language";
+"translation.settings.target" = "Target language";
+"translation.settings.prefetch" = "Prefetch: %ld page(s) each way";
+"translation.settings.recognition" = "Recognition";
+"translation.settings.lineDropFallback" = "Missing-line fallback";
+"translation.settings.lineDropFallbackFooter" = "Recognition always runs directly on the original bitmap — no upscaling, no tiling. Some system versions of Vision drop whole lines; with this on, a horizontally squashed retry is merged in when the first pass finds too little (it only adds results, never overwrites them).";
+"translation.settings.byok" = "Own key (OpenAI-compatible)";
+"translation.settings.baseURL" = "Endpoint";
+"translation.settings.model" = "Model";
+"translation.settings.apiKey" = "API key";
+"translation.settings.byokFooter" = "The API key is stored in the system keychain (falling back to local storage). The endpoint can point at any OpenAI-compatible service, not only the default one.";
+"translation.settings.onDevice" = "On-device translation";
+"translation.settings.onDeviceDetail" = "Uses the system translation framework. The first use of a language pair may download a language pack.";
+"translation.settings.onDeviceFooter" = "On-device translation handles one page at a time; speed depends on the device.";
+"translation.settings.layout" = "Typesetting";
+"translation.settings.sampledBackground" = "Sample background colour (off: pure white)";
+"translation.settings.showOriginal" = "Also annotate the source text";
+"translation.settings.fontScale" = "Translated text scale";
+"translation.settings.cache" = "Translation cache";
+"translation.settings.cacheSize" = "Size on disk";
+"translation.settings.clearCache" = "Clear translation cache";
+"translation.settings.clearCacheDone" = "Cleared %ld translated page(s).";
+"translation.settings.cacheFooter" = "Finished pages are cached, so re-reading a chapter never translates it (or spends quota) twice.";
+
+"settings.translation.footer" = "Page translation replaces the text on the page. Once enabled you can keep reading — each new page is picked up automatically.";
+
+/* Cloud service (M4 batch 2 placeholder) */
+
+"cloud.entry" = "Cloud service";
+"cloud.section.account" = "Cloud service";
+"cloud.upgrade" = "Upgrade to Pro";
+"cloud.footer" = "The cloud translation service is operated by the developer. No payment is handled inside the app; purchases happen on the website.";
+

@@ -25,6 +25,16 @@ import CoreGraphics
 import ImageIO
 import AppCore
 
+/// OCR 能力抽象。
+///
+/// 存在的理由是可测性：编排器（`TranslationController`）要单独验证
+/// 「队列 / 进度 / 缓存 / 额度降级」这些规则，不该被迫跑真实 Vision
+/// （慢，且识别结果随系统版本浮动）。生产实现就是 `VisionTextRecognizer`。
+protocol TextRecognizing: Sendable {
+    /// 识别一页里的文本行。
+    func recognizeLines(in cgImage: CGImage) async throws -> [MangaTextLine]
+}
+
 struct VisionTextRecognizer {
 
     /// 识别语言（BCP-47，如 "ja-JP" / "zh-Hans"）。
@@ -260,5 +270,13 @@ struct VisionTextRecognizer {
         let interArea = inter.width * inter.height
         let union = a.width * a.height + b.width * b.height - interArea
         return union > 0 ? interArea / union : 0
+    }
+}
+
+/// 让排版方向（`orientation` 有默认值）不影响协议匹配：
+/// 默认参数不算重载，必须显式写一个只有一个参数的同名方法来满足协议。
+extension VisionTextRecognizer: TextRecognizing {
+    func recognizeLines(in cgImage: CGImage) async throws -> [MangaTextLine] {
+        try await recognize(in: cgImage, orientation: .up)
     }
 }

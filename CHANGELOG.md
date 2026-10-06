@@ -15,9 +15,81 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 - ~~M1 地基：泛化数据模型（Manga / Chapter / Page）、GRDB 书架、本地文件源、阅读器~~ ✅ 已完成
 - ~~M2 源引擎：JavaScriptCore 单文件 JS 源、仓库管理（添加 / 安装 / 更新 / NSFW 开关）~~ ✅ 已完成（契约 v1 冻结）
-- M3 补全：批量下载 + 后台续传 + CBZ 导出、Komga / Kavita、WebView 登录 + Cookie 收割、Cloudflare 兜底
+- ~~M3 补全：批量下载 + 后台续传 + CBZ 导出、Komga / Kavita、WebView 登录 + Cookie 收割、Cloudflare 兜底~~ ✅ 已完成
 - M4 翻译与云服务：页内翻译接入、BYOK、邮箱验证码账号、额度、Lemon Squeezy 订阅
 - M5 发布：中英双语文案、隐私政策、AltStore 源上线
+
+---
+
+## [Unreleased] · M4 翻译与云服务
+
+### ✨ 新增 / Added
+
+**页内翻译全链（M4 第一批）**
+
+- **数据模型**：`MangaTextLine` / `MangaTranslatedLine` / `TranslationStage` / `PageTranslation`，
+  缓存键 `PageTranslationKey` 为 **来源 + 作品地址 + 页号**（旧工程是 `(gid, page)`，
+  本项目没有 gid）。主键含 `/` 与 `:`，目录名统一经 `FileNameSanitizer` 安全化。
+- **OCR**：`VisionTextRecognizer` 同时跑现代（`RecognizeTextRequest`，自动语言检测）与
+  传统（`VNRecognizeTextRequest`，指定语言 + 系统语言）两套 API，按 IoU 0.4 合并去重，
+  保留置信度更高 / 更长的一条；竖排判定把归一化盒子换算成像素纵横比再比较，
+  页面非正方时不会误判。漏行兜底（横向压扁重试）可关。
+- **排版**：`MangaTypesetter` 盖框底色取文字框**外圈**平均色（避开框内文字像素），
+  文字颜色按底色亮度自动选黑/白；横排自动换行并逐级缩字号，
+  竖排逐字竖排、必要时分列、从右往左；可选择额外标注一行小号原文。
+- **后端**：`MangaTranslator` 协议 + `DeepSeekTranslator`（BYOK，任意 OpenAI 兼容端点）。
+  新增**分块**（一页几十行可能顶到上下文上限，按 40 条切块再按原顺序拼接）与
+  **可重试错误的退避重试**（408/429/5xx；4xx 不重试——重试只会把同一个错误再撞一遍）。
+- **端上翻译**：`AppleTranslationBridge`（iOS 18 `Translation` 框架），
+  由视图侧 `.translationTask` 消费会话。
+- **译文缓存**：`TranslationStore` 内存 LRU + 磁盘（按作品一个目录、页号作文件名），
+  写盘先写临时文件再原子替换；支持清空、按作品清理、损坏文件当作未命中。
+- **凭据存储**：`SecureValueStore`（Keychain 优先，失败回退本机存储；
+  侧载 / ad-hoc 签名下 Keychain 可能因缺 entitlement 而写入失败，功能不该因此不可用）。
+
+**翻译接入阅读器（M4 第二批）**
+
+- `TranslationController`：顶部按钮点一下开启连续翻译（当前页 + 前后 N 页并行），
+  再点一下显示原文；翻页自动补队列并**丢弃已翻过去的页**（不把额度花在不会看的页上）；
+  进度浮层显示「翻译中…剩余 N 页」；失败是可点掉的横幅；
+  **额度不足不打断阅读**——单独走 `quotaMessage`，界面给「升级云服务」入口。
+- 并行度是硬约束而非调优：现代 Vision 超过 2 个并行会死锁，端上翻译一次只支持一个会话，
+  因此上限分别是 2 / 1。
+- 新增设置「翻译预取页数」（默认前后各 2 页）：看图免费、翻译按页计费，
+  默认值刻意远小于读图的预加载窗口（默认 10）。
+- 设置页新增独立「翻译」子页：后端 / 语言 / 识别 / 自备密钥 / 排版 / 译文缓存占用与清理。
+- 设置项新增（含快照向后兼容解码）：`translationUsesSampledBackground`、
+  `translationShowsOriginalText`、`translationPrefetchWindow`、`cloudServiceBaseURL`、
+  `cloudUpgradeURL`；`TranslationLanguage` 新增 `promptName` 与 `targetChoices`
+  （`auto` 只能作原文语言）。
+
+### 🧪 测试 / Tests
+
+- `TranslationCoreTests`：竖排判定（含页面纵横比修正）、竖排布局（含退化输入）、
+  坐标映射、合并去重（含置信度/长度择优）、译文 JSON 解析（纯 JSON / 代码块 / 夹带散文 /
+  非字符串元素 / 条数不符 / 无数组）、分块顺序、请求头与**用户提示词必须是纯 JSON 数组**、
+  4xx 不重试、5xx 重试、分块跨请求顺序不变、排版尺寸不变；
+  以及**真实 Vision** 的三条：金标准夹具比对（行数 ≥3、字符召回 ≥0.60）、
+  合成密集页 ≥5/6 句召回、竖排方向判定。
+- `TranslationStoreTests`：键安全化与去重、内存往返、LRU 淘汰后磁盘仍可命中、
+  跨实例磁盘持久化、损坏 PNG 视为未命中、缺清单仍能用、清空/按作品清理、覆盖写。
+- `TranslationControllerTests`：开关语义、展示原图/译文、预取窗口边界（含 0）、
+  翻页补队列、未开启时不翻译、缓存命中不重复花额度、磁盘缓存跨会话复用、
+  条数不符与识别不到文字的失败横幅、**额度用尽走升级提示而非失败横幅**、
+  未登录云服务的提示、退出重置、按作品清理缓存。
+
+### 🛠 工具 / Tooling
+
+- `tools/make_ocr_fixture.py`：生成金标准 OCR 夹具（**中性内容**的合成页 + 基准文本）。
+  真实页图会把第三方作品内容带进公开仓库；合成页同样覆盖「位图 → Vision → 文本行」，
+  而且因为「先知道印了什么」，基准文本比人工抄写更权威。
+- `check_api_usage`：修 `split_top_level` 的深度问题——默认值闭包里的裸 `>`
+  （如 `guard interval > 0`）被当成泛型闭合，深度变负后闭包与其后**所有**参数之间的
+  逗号都不再被识别，参数被静默吞掉并报出「未声明的参数标签」这种假错误。
+- `check_imports`：补登记 `ComicDownload` 的 `FileNameSanitizer` / `DownloadArchiveStore` /
+  `DownloadedChapter` / `JobAwarePageFetching`——漏登记导致
+  「用了 `FileNameSanitizer` 却没 import」一路烧到 CI 才被编译器发现。
+
 
 ---
 

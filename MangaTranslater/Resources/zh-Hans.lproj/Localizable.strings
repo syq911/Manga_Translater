@@ -233,3 +233,46 @@
 "translation.error.cloud" = "云服务请求失败：%@";
 "translation.prompt.autoSource" = "自动判断";
 
+/* 页内翻译 · 阅读器与设置（M4 第二批） */
+
+"translation.reader.toggle" = "翻译本页";
+"translation.progress.remaining" = "翻译中…剩余 %ld 页";
+"translation.quota.upgrade" = "升级云服务";
+
+"translation.settings.title" = "翻译";
+"translation.settings.backend" = "翻译后端";
+"translation.settings.backendFooter" = "自备密钥：把 API Key 填进来，费用由你自己的账号承担，不限额。云服务：免配置，每天有免费额度，订阅后不限量。设备端：系统翻译框架，离线可用但只支持部分语言。";
+"translation.settings.language" = "语言";
+"translation.settings.source" = "原文语言";
+"translation.settings.target" = "译文语言";
+"translation.settings.prefetch" = "预取页数：前后各 %ld 页";
+"translation.settings.recognition" = "识别";
+"translation.settings.lineDropFallback" = "漏行兜底";
+"translation.settings.lineDropFallbackFooter" = "识别始终按「原图直接识别」进行，不做放大或分块。某些系统版本的 Vision 存在整页漏行问题，开启此项后，当直接识别命中过少时会用横向压扁重试并合并结果（只会增加识别内容，不会覆盖已有结果）。";
+"translation.settings.byok" = "自备密钥（OpenAI 兼容）";
+"translation.settings.baseURL" = "接口地址";
+"translation.settings.model" = "模型";
+"translation.settings.apiKey" = "API Key";
+"translation.settings.byokFooter" = "API Key 存在系统钥匙串里（失败时回退到本机存储）。接口地址可以指向任何 OpenAI 兼容服务，不限于默认那家。";
+"translation.settings.onDevice" = "设备端翻译";
+"translation.settings.onDeviceDetail" = "由系统「翻译」框架完成，首次使用某个语言对时可能需要联网下载语言包。";
+"translation.settings.onDeviceFooter" = "设备端翻译同时只处理一页，速度取决于机型。";
+"translation.settings.layout" = "排版";
+"translation.settings.sampledBackground" = "底色取样（关闭则用纯白）";
+"translation.settings.showOriginal" = "额外标注原文";
+"translation.settings.fontScale" = "译文字号缩放";
+"translation.settings.cache" = "译文缓存";
+"translation.settings.cacheSize" = "占用空间";
+"translation.settings.clearCache" = "清空译文缓存";
+"translation.settings.clearCacheDone" = "已清空 %ld 页译文缓存。";
+"translation.settings.cacheFooter" = "译好的整页图会缓存起来：同一话重看时不会再翻译一遍，也就不会重复消耗额度。";
+
+"settings.translation.footer" = "页内翻译把这一页的原文替换成译文；翻译开启后可以一路往下看，翻页会自动接续。";
+
+/* 云服务（M4 第二批占位，第四批展开） */
+
+"cloud.entry" = "云服务";
+"cloud.section.account" = "云服务";
+"cloud.upgrade" = "升级 Pro";
+"cloud.footer" = "云翻译服务由官方托管。App 内不接入任何支付，购买在官网页面上完成。";
+

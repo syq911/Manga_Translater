@@ -27,6 +27,16 @@ enum SecureValueStore {
     /// 因此服务名也跟着稳定，免得升级后读不到旧令牌而要用户重新登录。
     private static let service = "com.mangatranslater.ios"
 
+    /// 集中登记用到的键，避免各处拼字符串拼出错别字（读不到时会静默变成「未配置」）。
+    enum Key {
+        /// 自备翻译服务（OpenAI 兼容）的 API Key。
+        static let translationAPIKey = "translation_api_key"
+        /// 云服务的登录令牌（JWT）。
+        static let cloudToken = "cloud_token"
+        /// 云服务的匿名账号 ID（用于在官网购买页里带上 `custom[user_id]`）。
+        static let cloudAccountID = "cloud_account_id"
+    }
+
     /// 当前是否在用回退存储（诊断面板展示用）。
     private(set) static var isUsingFallback = false
 

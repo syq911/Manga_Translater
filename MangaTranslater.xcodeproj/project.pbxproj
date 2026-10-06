@@ -79,6 +79,7 @@
 				"MangaTranslaterTests/IntegrationTests.swift",
 				"MangaTranslaterTests/TranslationCoreTests.swift",
 				"MangaTranslaterTests/TranslationStoreTests.swift",
+				"MangaTranslaterTests/TranslationControllerTests.swift",
 			);
 			target = ABCDEF000000000000000010 /* MangaTranslater */;
 		};
@@ -130,6 +131,7 @@
 				"MangaTranslaterTests/IntegrationTests.swift",
 				"MangaTranslaterTests/TranslationCoreTests.swift",
 				"MangaTranslaterTests/TranslationStoreTests.swift",
+				"MangaTranslaterTests/TranslationControllerTests.swift",
 			);
 			target = ABCDEF000000000000000020 /* MangaTranslaterTests */;
 		};
