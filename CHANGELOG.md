@@ -420,6 +420,25 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `DownloadCoordinatorTests`：驱动期间后台断言恰好申请一次、归还一次
   （把申请 / 归还应成注入闭包，测试不碰 UIKit）
 
+### 🔧 修复 / Fixed（M3 第四批 · 五轮）
+
+首轮**完整跑完**的 CI（749 用例 / 53 套件，20 秒；编译与打包全绿），
+3 条失败全在 `CookieHarvest`，暴露一个真实的计数错误：
+
+- **`CookieJar.set(_:for:)` 返回的是「被拒绝的条数」，不是「写入的条数」**。
+  我把它当成了写入条数，于是收割成功也返回 0——界面上会显示
+  「没有找到可保存的登录凭据」，用户以为登录没生效（而 Cookie 其实已经存进去了）。
+  改成自己算：`stored.count - rejected`。
+- 顺带把「宿主存不下的 Cookie」在**过滤阶段**就拒掉（名称含 `;` `=` 换行、
+  值含换行）。这样「收下的一定写得进去」，「清空旧凭据再写入」不会白做。
+- 另一条失败是**测试期望写错**：我拿 `cdn.example.com` 的 Cookie 去比
+  `www.example.com`——两者是**兄弟域**，本来就不该收。改成站在
+  `cdn.example.com` 上验三条都收，并另外补一条「兄弟域不收」的用例钉住语义。
+- 给 `DownloadCoordinator` 的两处等待加**上界**（`waitUntilSettled` 超时、
+  驱动循环「长时间无进展即退出并写日志」）。纯粹是防御：`await task.value`
+  一旦停不下来，调用方就永久挂住，而这类问题在 CI 上的表现是「作业超时被强杀」，
+  日志里看不到任何线索。
+
 ### 🔧 修复 / Fixed（M3 第四批 · 四轮）
 
 - `SourceMangaDetailView` 的 `chapterDownloadActions` 漏了 `.queued` 分支

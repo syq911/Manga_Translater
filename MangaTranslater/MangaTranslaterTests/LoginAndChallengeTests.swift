@@ -82,8 +82,29 @@ struct CookieHarvestTests {
             cookie("", "1", domain: "example.com"),
             cookie("future", "1", domain: "example.com", expiresAt: now.addingTimeInterval(3600)),
         ]
-        let filtered = CookieHarvest.filter(cookies, forHost: "www.example.com", at: now)
+        // 站在 cdn.example.com 上：`example.com` 是父域（收），`cdn.example.com` 同域（收）
+        let filtered = CookieHarvest.filter(cookies, forHost: "cdn.example.com", at: now)
         #expect(filtered.map(\.name).sorted() == ["cdn", "future", "sid"])
+
+        // 站在 www.example.com 上：`cdn.example.com` 是**兄弟域**，不算自己的，不收
+        let sibling = CookieHarvest.filter(
+            [cookie("cdn", "1", domain: "cdn.example.com")],
+            forHost: "www.example.com",
+            at: now
+        )
+        #expect(sibling.isEmpty)
+    }
+
+    @Test("过滤：宿主存不下的 Cookie（非法名称 / 含换行的值）直接不收")
+    func filtersUnstorableCookies() {
+        let cookies = [
+            cookie("ok", "1", domain: "example.com"),
+            cookie("bad=name", "1", domain: "example.com"),
+            cookie("bad;name", "1", domain: "example.com"),
+            HarvestedCookie(name: "nl", value: "a\nb", domain: "example.com"),
+        ]
+        let filtered = CookieHarvest.filter(cookies, forHost: "example.com")
+        #expect(filtered.map(\.name) == ["ok"])
     }
 
     @Test("没有主机信息时全收（只在拿不到地址时发生）")

@@ -80,6 +80,19 @@ public struct HarvestedCookie: Equatable, Sendable {
         return expiresAt <= date
     }
 
+    /// 宿主容器能否真的存下这条 Cookie。
+    ///
+    /// 规则与 `CookieJar.set` 一致（它是唯一的事实来源）：
+    /// 名称非空、不含 `;` `=` 换行；值不含换行。
+    /// **在过滤阶段就拒掉**，这样「收下的一定写得进去」，
+    /// 于是清空旧凭据这件事不会白做。
+    public var isStorable: Bool {
+        guard !name.isEmpty else { return false }
+        guard !name.contains(";"), !name.contains("="), !name.contains("\n") else { return false }
+        guard !value.contains("\n") else { return false }
+        return true
+    }
+
     /// 转成宿主容器的存储形态。
     public var stored: StoredCookie {
         StoredCookie(
@@ -136,7 +149,7 @@ public enum CookieHarvest {
         at date: Date = Date()
     ) -> [HarvestedCookie] {
         cookies.filter { cookie in
-            guard !cookie.name.isEmpty else { return false }
+            guard cookie.isStorable else { return false }
             guard !cookie.isExpired(at: date) else { return false }
             guard let host else { return true }
             return belongs(domain: cookie.domain, to: host)
@@ -167,7 +180,10 @@ public enum CookieHarvest {
             let key = "\(cookie.name.lowercased())|\(HarvestedCookie.normalizeDomain(cookie.domain))|\(cookie.path)"
             unique[key] = cookie
         }
-        let count = jar.set(unique.values.map(\.stored), for: sourceID)
-        return count
+        // 注意 `CookieJar.set(_:for:)` 返回的是**被拒绝的条数**（不是写入条数）——
+        // 直接把它当「写了几条」会让界面显示「已保存 0 条凭据」，用户以为登录没生效。
+        let stored = unique.values.map(\.stored)
+        let rejected = jar.set(stored, for: sourceID)
+        return max(0, stored.count - rejected)
     }
 }

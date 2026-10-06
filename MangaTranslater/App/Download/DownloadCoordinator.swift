@@ -72,6 +72,12 @@ final class DownloadCoordinator {
     /// 驱动循环的轮询间隔（测试传 0 让循环尽快收敛）。
     private let pollIntervalNanoseconds: UInt64
 
+    /// 「无进展」容忍时长：超过就主动停掉驱动并写日志。
+    ///
+    /// 这是防御性的：正常路径一两轮就结束了，这里只是保证「万一卡住」时
+    /// 留下一条明确的日志，而不是让调用方一直等下去。
+    private static let staleLimitSeconds: TimeInterval = 30
+
     // MARK: 对外状态
 
     /// 队列快照（顺序 = 入队顺序）。
@@ -392,8 +398,16 @@ final class DownloadCoordinator {
     }
 
     /// 等待当前驱动任务结束。
-    func waitUntilSettled() async {
-        await driver?.value
+    ///
+    /// **带超时**：`await driver.value` 本身没有上界，一旦驱动因为某个未预料的
+    /// 状态停不下来，调用方（界面的一次 awaits、测试的一条用例）就永久挂住。
+    /// 轮询 `driver != nil` 既能正常等到结束，也能在异常时退出——
+    /// 让上层看到失败，而不是无声地卡在那里。
+    func waitUntilSettled(timeout: TimeInterval = 30) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while driver != nil, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
     }
 
     private func runDriver() async {
@@ -405,11 +419,32 @@ final class DownloadCoordinator {
         defer { endBackgroundWork() }
 
         // `processPending()` 会把当时所有待办跑完；跑完再看一次是否有新入队的。
+        //
+        // 带「长时间无进展」保护：队列状态连续若干秒完全没变却始终不是 idle，
+        // 基本可以判定有问题（例如某个任务永远停在 running）。
+        // 这时主动退出并写日志，而不是把调用方一直吊着。
+        var lastSnapshot: [DownloadJob] = []
+        // 用**墙钟**而不是轮数判「无进展」：测试里轮询间隔是 0，
+        // 按轮数会让正常的慢请求被误判成卡死；按时间则两边都稳。
+        var staleSince: Date?
         while true {
             await queue.processPending()
             await finalizeCompleted()
             await refreshJobs()
             if await queue.isIdle { break }
+
+            if jobs == lastSnapshot {
+                let start = staleSince ?? Date()
+                staleSince = start
+                if Date().timeIntervalSince(start) > Self.staleLimitSeconds {
+                    log("下载驱动超过 \(Int(Self.staleLimitSeconds)) 秒无进展，已停止（队列未进入空闲）")
+                    break
+                }
+            } else {
+                staleSince = nil
+                lastSnapshot = jobs
+            }
+
             if pollIntervalNanoseconds > 0 {
                 try? await Task.sleep(nanoseconds: pollIntervalNanoseconds)
             } else {
