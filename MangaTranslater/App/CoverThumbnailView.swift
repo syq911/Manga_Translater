@@ -54,9 +54,22 @@ struct CoverThumbnailView: View {
         // 先把引用取到局部：`AppEnvironment` 是 @MainActor 隔离的，
         // 但其持有的这两个对象本身线程安全，可交给后台任务使用。
         let cache = environment.coverCache
-        let source = environment.localSource
         let manga = manga
 
+        // 在线来源：封面要联网取（走来源 Cookie 与体积上限），
+        // 取到后再交给同一个缓存做缩放与落盘，缓存键与本地来源一致。
+        if manga.sourceID != .local {
+            guard let remote = await environment.loadRemoteCover(for: manga) else { return }
+            let thumb = await Task.detached(priority: .utility) { () -> Data? in
+                cache.thumbnail(mangaID: manga.id) { remote }
+            }.value
+            // 注意别写成 `(thumb ?? remote).flatMap { … }`：合并后 `Data` 不是 Optional，
+            // `.flatMap` 会解析到 `Sequence` 那个重载，编译不过。
+            image = UIImage(data: thumb ?? remote)
+            return
+        }
+
+        let source = environment.localSource
         let data = await Task.detached(priority: .utility) { () -> Data? in
             cache.thumbnail(mangaID: manga.id) {
                 try source.coverData(for: manga)

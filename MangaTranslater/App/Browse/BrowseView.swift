@@ -7,6 +7,9 @@
 //  注意：本页**不内置任何在线源**。空状态文案明确告诉用户
 //  「内容由你自己提供」，这是产品的合规底线，改动前请先读开发手册。
 //
+//  成人内容源由 `environment.visibleInstalledSources` 过滤（规则在
+//  `SourceVisibilityRule`，不要在这里再写一遍 `if !source.isNSFW`）。
+//
 
 import SwiftUI
 import AppCore
@@ -17,12 +20,12 @@ struct BrowseView: View {
     @Environment(AppEnvironment.self) private var environment
     @State private var showsComingSoon = false
 
-    private var installed: [InstalledSource] { environment.installedSources }
+    private var visible: [InstalledSource] { environment.visibleInstalledSources }
 
     var body: some View {
         NavigationStack {
             List {
-                if installed.isEmpty && environment.repositories.isEmpty {
+                if environment.installedSources.isEmpty && environment.repositories.isEmpty {
                     Section {
                         VStack(alignment: .leading, spacing: 8) {
                             Label(L("browse.empty.title"), systemImage: "tray")
@@ -56,40 +59,68 @@ struct BrowseView: View {
                     }
                 }
 
-                Section(L("browse.section.repositories")) {
-                    if environment.repositories.isEmpty {
-                        Text(L("browse.noInstalled"))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(environment.repositories, id: \.self) { repository in
-                            Text(repository)
-                                .font(.footnote)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                    }
-                }
-
-                Section(L("browse.installed")) {
-                    if installed.isEmpty {
-                        Text(L("browse.noInstalled"))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(installed, id: \.key) { source in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(source.name)
-                                Text("\(source.key) · \(source.version ?? "-")")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
+                repositoriesSection
+                installedSection
             }
             .navigationTitle(L("tab.browse"))
             .alert(L("common.notAvailableYet"), isPresented: $showsComingSoon) {
                 Button(L("common.ok"), role: .cancel) {}
             }
+        }
+    }
+
+    // MARK: 分区
+
+    private var repositoriesSection: some View {
+        Section {
+            NavigationLink {
+                RepositoryManagerView()
+            } label: {
+                Label(L("browse.manageRepositories"), systemImage: "shippingbox")
+            }
+            ForEach(environment.repositories, id: \.self) { repository in
+                Text(repository)
+                    .font(.footnote)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text(L("browse.section.repositories"))
+        } footer: {
+            Text(L("browse.repositories.footer"))
+        }
+    }
+
+    private var installedSection: some View {
+        Section {
+            if visible.isEmpty {
+                Text(L("browse.noInstalled"))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(visible, id: \.key) { source in
+                    NavigationLink {
+                        SourceBrowseView(source: source)
+                    } label: {
+                        sourceRow(source)
+                    }
+                }
+            }
+        } header: {
+            Text(L("browse.installed"))
+        } footer: {
+            if environment.hiddenSourceCount > 0 {
+                Text(String(format: L("browse.hiddenSources.format"), environment.hiddenSourceCount))
+            }
+        }
+    }
+
+    private func sourceRow(_ source: InstalledSource) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(source.name)
+            Text("\(source.key) · \(source.version ?? "-")")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

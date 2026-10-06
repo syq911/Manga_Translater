@@ -48,3 +48,64 @@
 "common.done" = "Done";
 "common.continue" = "Continue";
 "common.notAvailableYet" = "Coming soon";
+
+/* Source repositories (M2 batch 6) */
+
+"common.notice" = "Notice";
+
+"repo.section.add" = "Add repository";
+"repo.section.list" = "Added repositories";
+"repo.title" = "Source repositories";
+"repo.section.catalog" = "Available sources";
+"repo.add.placeholder" = "https://example.com/repo/";
+"repo.add.action" = "Add";
+"repo.add.footer" = "Enter the URL of a third-party source repository (a directory, or its index.json). This app bundles, recommends and hosts no repository; repository content is the responsibility of third parties.";
+"repo.add.duplicate" = "This repository has already been added.";
+"repo.empty" = "No repository added yet.";
+"repo.catalog.noRepo" = "Once you add a repository, installable sources will be listed here.";
+"repo.catalog.loading" = "Reading repository index…";
+"repo.catalog.allFailed" = "All repositories failed to load. Check the addresses and your network.";
+"repo.catalog.footer" = "Please judge the trustworthiness of repositories and source authors yourself; installed scripts run inside a restricted sandbox.";
+"repo.action.install" = "Install";
+"repo.action.update" = "Update";
+"repo.action.reinstall" = "Reinstall";
+"repo.installed.format" = "Installed %@ (version %@)";
+"repo.installed.nsfwHidden" = "This source is marked as adult content and is hidden in settings.";
+
+/* Source browsing (M2 batch 6) */
+
+"browse.manageRepositories" = "Manage repositories";
+"browse.repositories.footer" = "You provide the repository URLs; the app bundles and recommends none.";
+"browse.hiddenSources.format" = "%ld adult-content source(s) hidden (enable in Settings → Sources).";
+
+"source.mode.popular" = "Popular";
+"source.mode.search" = "Search";
+"source.search.placeholder" = "Keyword";
+"source.loading" = "Loading…";
+"source.failed" = "Failed to load";
+"source.retry" = "Retry";
+"source.empty" = "This source returned no titles.";
+"source.search.empty" = "No matching titles found.";
+"source.inLibrary" = "In library";
+
+"source.detail.loading" = "Loading title details…";
+"source.detail.author" = "Author";
+"source.detail.artist" = "Artist";
+"source.detail.chapters" = "Chapters";
+"source.detail.chaptersFailed" = "Failed to load chapter list";
+"source.detail.noChapters" = "This source returned no chapters.";
+"source.detail.onlineReadingFooter" = "Online reading and downloads arrive in the next batch; for now you can add the title to your library.";
+"source.detail.addToLibrary" = "Add to library";
+"source.detail.inLibrary" = "In library";
+"source.detail.libraryFooter" = "Once in your library, you can see where you left off.";
+"source.detail.added" = "Added to library.";
+"source.detail.addFailed" = "Could not add to library. Please try again.";
+
+"source.status.unknown" = "Unknown";
+"source.status.ongoing" = "Ongoing";
+"source.status.completed" = "Completed";
+"source.status.licensed" = "Licensed";
+"source.status.cancelled" = "Cancelled";
+"source.status.hiatus" = "On hiatus";
+
+"reader.remoteNotReady" = "This title comes from an online source. Online reading arrives in the next batch.";

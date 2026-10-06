@@ -22,6 +22,8 @@ final class RoutedHTTPTransport: HTTPTransporting, @unchecked Sendable {
     struct Response {
         let status: Int
         let data: Data
+        /// 响应头（小写键）。检查 `Content-Type` 相关逻辑时需要。
+        let headers: [String: String]
     }
 
     private let lock = NSLock()
@@ -38,13 +40,23 @@ final class RoutedHTTPTransport: HTTPTransporting, @unchecked Sendable {
         requests.compactMap { $0.url?.absoluteString }
     }
 
-    func set(_ body: String, status: Int = 200, for url: String) {
-        setRaw(Data(body.utf8), status: status, for: url)
+    func set(
+        _ body: String,
+        status: Int = 200,
+        headers: [String: String] = [:],
+        for url: String
+    ) {
+        setRaw(Data(body.utf8), status: status, headers: headers, for: url)
     }
 
-    func setRaw(_ data: Data, status: Int = 200, for url: String) {
+    func setRaw(
+        _ data: Data,
+        status: Int = 200,
+        headers: [String: String] = [:],
+        for url: String
+    ) {
         lock.lock()
-        routes[url] = Response(status: status, data: data)
+        routes[url] = Response(status: status, data: data, headers: headers)
         lock.unlock()
     }
 
@@ -57,12 +69,12 @@ final class RoutedHTTPTransport: HTTPTransporting, @unchecked Sendable {
         guard let url = request.url else {
             throw NetworkError.transport("替身收到没有地址的请求")
         }
-        let resolved = route ?? Response(status: 404, data: Data("not found".utf8))
+        let resolved = route ?? Response(status: 404, data: Data("not found".utf8), headers: [:])
         guard let response = HTTPURLResponse(
             url: url,
             statusCode: resolved.status,
             httpVersion: "HTTP/1.1",
-            headerFields: nil
+            headerFields: resolved.headers.isEmpty ? nil : resolved.headers
         ) else {
             throw NetworkError.transport("无法构造响应")
         }

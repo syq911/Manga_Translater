@@ -37,6 +37,7 @@ bash tools/preflight.sh
 | `tools/check_swift_syntax.py` | 括号配平、`#if/#endif` 配对、悬空 `else`、**多行字符串缩进规则**、**JSON 编解码类型必须 Codable**（本机无 Swift 工具链时的词法体检） |；`UPDATE 条目表` 必须同时写 payload
 | `tools/check_docs_sync.py` | `docs/source-api.md` 的契约示例与测试夹具必须逐字一致 |（含小节编号重复检查）
 | `tools/check_api_usage.py` | **构造调用与 init 声明一致性**：改签名忘改调用方（实测踩过） |
+| `tools/check_localization.py` | **本地化一致性**：各语言 key 集合一致（以并集为基准）、代码里 `L("…")` 的 key 必须已定义、同一 key 的占位符类型与数量一致、`String(format:)` 参数个数吻合 |
 | Python 语法检查 | CI 里 `release` job 会执行的脚本 |
 | `tools/check_redlines.py` | 合规红线：不得出现第三方站点名、不得提交源脚本（`*.js`）、不得提交凭据 |
 

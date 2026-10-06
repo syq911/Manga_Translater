@@ -244,6 +244,16 @@ struct ReaderView: View {
     /// 首次进入：读取章节、恢复进度、载入当前章。
     private func bootstrap() {
         guard session == nil else { return }
+
+        // 在线来源的阅读需要「异步取图」的页数据实现，随下载一起接入。
+        // 这里明确告知，而不是让本地文件源抛一个「找不到归档」的底层错误——
+        // 用户从书架点进来看到「归档损坏」会以为是自己操作错了。
+        guard manga.sourceID == .local else {
+            isLoading = false
+            message = L("reader.remoteNotReady")
+            return
+        }
+
         do {
             let chapters = try environment.localSource.chapters(for: manga)
             let entry = try? environment.libraryStore.entry(mangaID: manga.id)

@@ -48,3 +48,64 @@
 "common.done" = "完成";
 "common.continue" = "继续";
 "common.notAvailableYet" = "即将推出";
+
+/* 源仓库管理（M2 第六批） */
+
+"common.notice" = "提示";
+
+"repo.title" = "源仓库";
+"repo.section.add" = "添加仓库";
+"repo.section.list" = "已添加的仓库";
+"repo.section.catalog" = "可安装的源";
+"repo.add.placeholder" = "https://example.com/repo/";
+"repo.add.action" = "添加";
+"repo.add.footer" = "填第三方源仓库的地址（目录，或目录下的 index.json）。本 App 不内置、不推荐、不收录任何仓库，仓库内容由第三方负责。";
+"repo.add.duplicate" = "这个仓库已经添加过了。";
+"repo.empty" = "还没有添加任何仓库。";
+"repo.catalog.noRepo" = "添加仓库后，这里会列出可安装的源。";
+"repo.catalog.loading" = "正在读取仓库索引…";
+"repo.catalog.allFailed" = "所有仓库都读取失败，请检查地址与网络。";
+"repo.catalog.footer" = "安装前请自行确认仓库与源作者的可信度；安装后脚本运行在受限沙箱内。";
+"repo.action.install" = "安装";
+"repo.action.update" = "更新";
+"repo.action.reinstall" = "重新安装";
+"repo.installed.format" = "已安装 %@（版本 %@）";
+"repo.installed.nsfwHidden" = "该源标记为成人内容，已在设置中隐藏。";
+
+/* 来源浏览（M2 第六批） */
+
+"browse.manageRepositories" = "管理源仓库";
+"browse.repositories.footer" = "仓库地址由你自己填写；App 不内置、不推荐任何仓库。";
+"browse.hiddenSources.format" = "另有 %ld 个成人内容源已隐藏（可在设置 → 源中开启）。";
+
+"source.mode.popular" = "热门";
+"source.mode.search" = "搜索";
+"source.search.placeholder" = "关键词";
+"source.loading" = "正在载入…";
+"source.failed" = "加载失败";
+"source.retry" = "重试";
+"source.empty" = "这个源没有返回任何作品。";
+"source.search.empty" = "没有找到匹配的作品。";
+"source.inLibrary" = "已在书架";
+
+"source.detail.loading" = "正在载入作品信息…";
+"source.detail.author" = "作者";
+"source.detail.artist" = "画师";
+"source.detail.chapters" = "章节";
+"source.detail.chaptersFailed" = "章节列表加载失败";
+"source.detail.noChapters" = "这个源没有返回任何章节。";
+"source.detail.onlineReadingFooter" = "在线阅读与下载将在下一批接入；当前可以先把作品加入书架。";
+"source.detail.addToLibrary" = "加入书架";
+"source.detail.inLibrary" = "已在书架";
+"source.detail.libraryFooter" = "加入书架后可查看上次读到哪一话。";
+"source.detail.added" = "已加入书架。";
+"source.detail.addFailed" = "加入书架失败，请稍后再试。";
+
+"source.status.unknown" = "状态未知";
+"source.status.ongoing" = "连载中";
+"source.status.completed" = "已完结";
+"source.status.licensed" = "已授权";
+"source.status.cancelled" = "已腰斩";
+"source.status.hiatus" = "休载中";
+
+"reader.remoteNotReady" = "该作品来自在线源。在线阅读将在下一批接入，届时可直接翻页阅读。";

@@ -311,6 +311,50 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `installSource` / `uninstallSource` / `sourceRunner(for:)` 等入口；
   日志统一进诊断日志（每个来源带 key 前缀，便于排查）。
 
+### ✨ 新增 / Added（M2 第六批：浏览界面接真实源）
+
+界面（全程不内置任何源，也不提供仓库清单）：
+
+- **`RepositoryManagerView`**：添加 / 删除仓库、刷新可装源、逐个安装与更新。
+  单个仓库读取失败只在该行显示原因；安装按 key 记「进行中」防连点；
+  安装成人内容源时提示「已在设置中隐藏」。
+- **`SourceBrowseView`**：某个来源的热门 / 搜索 + 翻页（末行出现即预取下一页），
+  含加载 / 失败重试 / 空结果三种状态；**搜索在提交时才发请求**。
+- **`SourceMangaDetailView`**：作品信息（封面、作者、画师、状态、题材、简介）+
+  章节列表 + 加入书架；详情失败整页提示，章节失败只在章节区提示。
+- **`BrowseView`** 接入：已安装源列表（读 `visibleInstalledSources`，
+  底部提示「另有 N 个成人内容源已隐藏」）+ 「管理源仓库」入口。
+- **在线封面**：`CoverThumbnailView` 增加远程分支（走来源 Cookie + Referer），
+  取到后仍进同一个缩略图缓存，缓存键与本地来源一致。
+
+引擎：
+
+- **`SourceImageLoader`**：图片字节加载（封面与漫画页共用）。与文本桥接
+  刻意分开——返回二进制、上限 20 MB（契约 §5.3）、自动重试一次、
+  支持页级请求头（`PageRef.headers` / `Referer`）、自动带来源 Cookie；
+  **识别「200 + HTML 错误页」**（只拒绝 `text/*`、`html`、`json`、`xml`，
+  不用 `image/*` 白名单，因为很多图床返回 `application/octet-stream`）。
+
+范围说明：**在线阅读尚未接入**（需要阅读器支持异步取图，随下载一起做）。
+在线作品在阅读器里给出明确提示，而不是抛「归档损坏」这种让人误解的底层错误。
+
+### 🧪 测试 / Tests（M2 第六批新增 2 个套件 / 19 个用例）
+
+- `SourceImageLoaderTests`（9 例）：取回字节、页级 Referer 优先级、来源 Cookie、
+  HTML 错误页拒绝、`octet-stream`/缺 Content-Type 接受、空响应、
+  体积上限、HTTP 403、非 http(s) 地址不发起请求
+- `SourceBrowseModelTests`（10 例）：首屏加载、翻页追加而非覆盖、末页不再请求、
+  已加载不重复请求、refresh 强制重载、空结果不算失败、首屏失败可重试、
+  **翻页失败保留已见内容**、并发触发只发一次请求、错误文案映射
+
+### 🛠 工具 / Tooling
+
+- **新增预检第 7 项 `tools/check_localization.py`**：多语言 key 集合一致
+  （以并集为基准，避免报错方向反过来）、代码里 `L("…")` 的 key 必须已定义、
+  同一 key 的占位符类型/数量一致、`String(format:)` 参数个数吻合。
+  已做反向验证（注入三类问题 → 全部被拦下）。顺带修掉两处占位符问题：
+  `%d` 配 64 位 `Int`（改 `%ld`）、`%@` 与位置占位符混用导致同一参数被吃两次。
+
 ### 🧪 测试 / Tests（M2 第五批新增 4 个套件 / 45 个用例）
 
 - `SourceIndexURLTests`（4 例）：三种输入形式的规范化、端口与 IPv6、

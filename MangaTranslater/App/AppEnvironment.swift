@@ -36,6 +36,8 @@ final class AppEnvironment {
     let repositoryService: SourceRepositoryService
     /// 已安装源的运行时池（按需载入 JS 沙箱，上限内复用与回收）。
     let runtimePool: SourceRuntimePool
+    /// 图片字节加载器（封面 / 漫画页）。走来源 Cookie 与 20 MB 上限。
+    let imageLoader: SourceImageLoader
 
     init(
         settings: AppSettings,
@@ -48,7 +50,8 @@ final class AppEnvironment {
         isLibraryPersistent: Bool,
         coverCache: CoverThumbnailCache? = nil,
         repositoryService: SourceRepositoryService? = nil,
-        runtimePool: SourceRuntimePool? = nil
+        runtimePool: SourceRuntimePool? = nil,
+        imageLoader: SourceImageLoader? = nil
     ) {
         self.settings = settings
         self.sourceStore = sourceStore
@@ -60,6 +63,7 @@ final class AppEnvironment {
         self.isLibraryPersistent = isLibraryPersistent
         // 默认按数据目录派生，测试可注入替身
         self.coverCache = coverCache ?? CoverThumbnailCache(dataDirectory: dataDirectory)
+        self.imageLoader = imageLoader ?? SourceImageLoader(cookieJar: cookieJar)
 
         // 源侧依赖：仓库请求走一个独立的 HTTP 客户端（不带任何来源 Cookie——
         // 拉索引时用户还没选定来源，带上 Cookie 既无意义也泄露面更大）。
@@ -215,12 +219,31 @@ final class AppEnvironment {
 
     /// 本地作品的封面缩略图（取首页 → 缩放 → 缓存）。取不到返回 nil。
     ///
-    /// 只在 `sourceID == .local` 时可用；在线源的封面走网络（M2 接入）。
+    /// 只在 `sourceID == .local` 时可用；在线源的封面走 `loadRemoteCover(for:)`。
     func coverThumbnail(for manga: Manga) -> Data? {
         guard manga.sourceID == .local else { return nil }
         let source = localSource
         return coverCache.thumbnail(mangaID: manga.id) {
             try source.coverData(for: manga)
+        }
+    }
+
+    /// 在线来源的封面原始字节（未缩放）。
+    ///
+    /// 交给 `CoverThumbnailView` 后再进同一个缓存做缩放与落盘；
+    /// 这里只保证「带该来源的 Cookie、受体积上限保护、失败不抛给界面」。
+    func loadRemoteCover(for manga: Manga) async -> Data? {
+        guard manga.sourceID != .local, let coverURL = manga.coverURL else { return nil }
+        do {
+            return try await imageLoader.imageData(
+                forURL: coverURL,
+                sourceID: manga.sourceID,
+                // 防盗链站点常要求封面请求带作品页作 Referer
+                referer: manga.url
+            )
+        } catch {
+            diag("AppEnvironment: 封面下载失败 —— \(error.localizedDescription)")
+            return nil
         }
     }
 
