@@ -322,9 +322,23 @@ extension SourceResponseDecoder {
             return collapsed.isEmpty ? nil : collapsed
         }
         // 布尔不是文本；数字可以（`id: 12` 这类写法）
-        if value is Bool { return nil }
+        if Self.isBoolean(value) { return nil }
         if let number = value as? NSNumber { return number.stringValue }
         return nil
+    }
+
+    /// 判断一个 JSON 值是不是**真布尔**。
+    ///
+    /// 不能写 `value is Bool`：Darwin 上 `JSONSerialization` 产出的整数
+    /// `NSNumber` 也会通过 `is Bool`（ObjC 桥接把 NSNumber 视作可转 Bool），
+    /// 实测因此把 `chapterNumber: 1` 判成布尔、当成「没有编号」丢掉。
+    /// 真正的布尔在 ObjC 里的类型编码是 `c`（`__NSCFBoolean`），
+    /// 而 JSON 整数是 `q` / `i`，据此区分。
+    static func isBoolean(_ value: Any) -> Bool {
+        if let number = value as? NSNumber {
+            return String(cString: number.objCType) == "c"
+        }
+        return value is Bool
     }
 
     /// 布尔字段：接受 `true`/`false`、`1`/`0`、`"true"`/`"yes"`/`"1"`。
@@ -343,7 +357,7 @@ extension SourceResponseDecoder {
     /// 数值字段：接受数字与数字字符串（`"12.5"`）。
     static func doubleValue(_ value: Any?) -> Double? {
         guard let value, !(value is NSNull) else { return nil }
-        if value is Bool { return nil }
+        if Self.isBoolean(value) { return nil }
         if let number = value as? NSNumber { return number.doubleValue }
         guard let text = value as? String else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

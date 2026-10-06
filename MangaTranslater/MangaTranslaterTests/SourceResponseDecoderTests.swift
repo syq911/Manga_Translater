@@ -282,6 +282,25 @@ struct SourceResponseDecoderTests {
         #expect(outcome.value[2].dateUploaded != nil)
     }
 
+    @Test("数字不会被误判为布尔（NSNumber 桥接陷阱）")
+    func distinguishesNumbersFromBooleans() throws {
+        // 踩过的坑：Darwin 上 `JSONSerialization` 的整数 NSNumber 也能通过
+        // `is Bool`，于是 `chapterNumber: 1` 被当成布尔丢弃；改用 objCType 判定。
+        let numbers = try decoder().chapters(
+            from: #"[{"url":"/c/1","chapterNumber":1},{"url":"/c/2","chapterNumber":0},{"url":"/c/3","chapterNumber":2.5}]"#,
+            mangaID: "m",
+            mangaURL: nil
+        )
+        #expect(numbers.value.map(\.chapterNumber) == [1, 0, 2.5])
+
+        let boolean = try decoder().chapters(
+            from: #"[{"url":"/c/1","chapterNumber":true}]"#,
+            mangaID: "m",
+            mangaURL: nil
+        )
+        #expect(boolean.value.first?.chapterNumber == nil)
+    }
+
     @Test("可选字段回退：`null` 不应该吞掉备选字段")
     func fallsBackPastNull() throws {
         // `a ?? b` 只判 nil，而 JSON 的 null 会变成 NSNull（非 nil），
