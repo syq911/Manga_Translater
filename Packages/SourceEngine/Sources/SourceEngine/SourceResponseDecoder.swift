@@ -73,7 +73,7 @@ public struct SourceResponseDecoder: Sendable {
     /// - `null`（等价于空列表）。
     public func mangaList(from json: String) throws -> SourceDecodeOutcome<MangaListPage> {
         let root = try parseJSON(json)
-        guard !isNull(root) else {
+        guard !Self.isNull(root) else {
             return SourceDecodeOutcome(value: .empty)
         }
 
@@ -131,7 +131,7 @@ public struct SourceResponseDecoder: Sendable {
             genres: Self.genres(object["genres"]),
             status: Self.status(object["status"]),
             coverURL: urlValue(object["coverUrl"], bases: [resolvedURL, baseURL]),
-            lastUpdated: Self.dateValue(object["lastUpdated"] ?? object["lastUpdatedAt"])
+            lastUpdated: Self.dateValue(Self.firstPresent(object["lastUpdated"], object["lastUpdatedAt"]))
         )
     }
 
@@ -142,7 +142,7 @@ public struct SourceResponseDecoder: Sendable {
         mangaURL: String?
     ) throws -> SourceDecodeOutcome<[Chapter]> {
         let root = try parseJSON(json)
-        guard !isNull(root) else {
+        guard !Self.isNull(root) else {
             return SourceDecodeOutcome(value: [])
         }
         guard let items = root as? [Any] else {
@@ -172,7 +172,7 @@ public struct SourceResponseDecoder: Sendable {
                     url: chapterURL,
                     name: name,
                     chapterNumber: Self.doubleValue(entry["chapterNumber"]),
-                    dateUploaded: Self.dateValue(entry["dateUpload"] ?? entry["dateUploaded"])
+                    dateUploaded: Self.dateValue(Self.firstPresent(entry["dateUpload"], entry["dateUploaded"]))
                 )
             )
         }
@@ -189,7 +189,7 @@ public struct SourceResponseDecoder: Sendable {
         chapterURL: String?
     ) throws -> SourceDecodeOutcome<[ComicPage]> {
         let root = try parseJSON(json)
-        guard !isNull(root) else {
+        guard !Self.isNull(root) else {
             return SourceDecodeOutcome(value: [])
         }
         guard let items = root as? [Any] else {
@@ -220,7 +220,7 @@ public struct SourceResponseDecoder: Sendable {
     /// 解码 `getFilters` 的返回值（顶层必须是数组，`null` 视为无筛选）。
     public func filters(from json: String) throws -> SourceDecodeOutcome<[SourceFilter]> {
         let root = try parseJSON(json)
-        guard !isNull(root) else {
+        guard !Self.isNull(root) else {
             return SourceDecodeOutcome(value: [])
         }
         guard let items = root as? [Any] else {
@@ -267,7 +267,7 @@ public struct SourceResponseDecoder: Sendable {
             genres: Self.genres(entry["genres"]),
             status: Self.status(entry["status"]),
             coverURL: urlValue(entry["coverUrl"], bases: [rawURL]),
-            lastUpdated: Self.dateValue(entry["lastUpdated"] ?? entry["lastUpdatedAt"])
+            lastUpdated: Self.dateValue(Self.firstPresent(entry["lastUpdated"], entry["lastUpdatedAt"]))
         )
     }
 
@@ -293,6 +293,20 @@ public struct SourceResponseDecoder: Sendable {
     static func isNull(_ value: Any?) -> Bool {
         guard let value else { return true }
         return value is NSNull
+    }
+
+    /// 取第一个「真正有值」的候选项。
+    ///
+    /// 为什么需要它：`a ?? b` 只判断 `nil`，而 JSON 里的 `null` 会解码成
+    /// `NSNull`（非 nil），于是 `entry["dateUpload"] ?? entry["dateUploaded"]`
+    /// 会在前者为 `null` 时白白丢掉后者的值。这里把 `NSNull` 也算作「没有值」。
+    static func firstPresent(_ values: Any?...) -> Any? {
+        for value in values {
+            guard let value else { continue }
+            if value is NSNull { continue }
+            return value
+        }
+        return nil
     }
 }
 
@@ -455,8 +469,14 @@ extension SourceResponseDecoder {
         var options: [SourceFilterOption] = []
         for item in array {
             guard let entry = item as? [String: Any] else { continue }
-            // `value` 允许为空串（契约示例里「全部」就是空值）
-            let value = (entry["value"] as? String) ?? Self.textValue(entry["value"]) ?? ""
+            // `value` 允许为空串（契约示例里「全部」就是空值），
+            // 因此先看原样是不是字符串，再退到「宽松取文本」。
+            var value = ""
+            if let text = entry["value"] as? String {
+                value = text
+            } else if let text = Self.textValue(entry["value"]) {
+                value = text
+            }
             let label = Self.textValue(entry["label"]) ?? value
             guard !label.isEmpty || !value.isEmpty else { continue }
             options.append(SourceFilterOption(label: label, value: value))

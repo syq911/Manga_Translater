@@ -42,3 +42,7 @@ _scratch/
 *Fixtures.txt
 tmp/
 *.log
+
+# Python 缓存（预检工具的运行产物，不入库）
+__pycache__/
+*.pyc

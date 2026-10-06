@@ -282,6 +282,21 @@ struct SourceResponseDecoderTests {
         #expect(outcome.value[2].dateUploaded != nil)
     }
 
+    @Test("可选字段回退：`null` 不应该吞掉备选字段")
+    func fallsBackPastNull() throws {
+        // `a ?? b` 只判 nil，而 JSON 的 null 会变成 NSNull（非 nil），
+        // 早先的写法会让 `dateUpload: null` 白白盖掉 `dateUploaded`
+        let json = #"[{"url":"/c/1","dateUpload":null,"dateUploaded":"2024-01-02T03:04:05Z"}]"#
+        let outcome = try decoder().chapters(from: json, mangaID: "m", mangaURL: nil)
+        #expect(outcome.value.first?.dateUploaded != nil)
+
+        let details = try decoder().mangaDetails(
+            from: #"{"title":"T","url":"/m/1","lastUpdated":null,"lastUpdatedAt":"2024-05-06T07:08:09Z"}"#,
+            fallbackURL: "/m/1"
+        )
+        #expect(details.lastUpdated != nil)
+    }
+
     // MARK: 页面
 
     @Test("页面列表：字符串与 PageRef 混用，序号连续")

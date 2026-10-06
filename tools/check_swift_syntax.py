@@ -8,7 +8,8 @@ Swift 源码轻量体检（本地预检工具）。
 1. 括号 / 方括号 / 花括号配平（忽略字符串、字符、行注释、块注释内的括号）；
 2. `#if` / `#endif` 配对；
 3. 明显的 `else` 悬空（`else` 前面既不是 `}` 也不是同一 if 的行）；
-4. 每个 `@Test` / `@Suite` 是否在 struct/class/enum 内（顶层 @Test 在本项目约定外）。
+4. 每个 `@Test` / `@Suite` 是否在 struct/class/enum 内（顶层 @Test 在本项目约定外）；
+5. 实例方法里裸调用本类型的 `static` 成员（漏写 `Self.`）。
 
 用法：python3 tools/check_swift_syntax.py
 """
@@ -213,6 +214,112 @@ def check_file(path):
     return problems
 
 
+def check_static_member_qualification(files):
+    """
+    实例方法里**裸调用**本类型的 `static` 成员。
+
+    动机：CI 上出现过 `guard !isNull(root) else` —— Swift 不允许在实例方法中
+    不加限定地调用同一类型的静态成员，报
+    "static member 'isNull' cannot be used on instance of type 'X'"；
+    正确写法是 `Self.isNull(root)`。纯文本即可判定，不必耗一轮 CI。
+
+    判定要**带作用域**，否则满屏误报：静态方法里裸调静态成员完全合法
+    （`static func a()` 里调 `b()`），只有「实例方法 / 实例属性初值」
+    才要求限定。因此这里用花括号深度维护一个「当前所处的声明栈」，
+    只有栈顶是**非 static 的 func/var/let** 时才报。
+
+    为再避免一层误报：仅在「该名字在文件里只有 static 声明」时才判——
+    同名还有实例成员或全局函数时（可能重载/遮蔽），交给编译器判断。
+    """
+    declaration = re.compile(
+        r"^[ \t]*(?P<mods>(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?[ \t]+"
+        r"|public[ \t]+|internal[ \t]+|private[ \t]+|fileprivate[ \t]+"
+        r"|final[ \t]+|static[ \t]+|class[ \t]+)*)"
+        r"(?P<kind>func|var|let)[ \t]+(?P<name>[A-Za-z_][A-Za-z0-9_]*)",
+        re.M,
+    )
+
+    problems = []
+    for path in files:
+        raw = io.open(path, encoding="utf-8").read()
+        code = strip_literals_and_comments(raw)
+
+        declarations = []
+        static_names = set()
+        other_names = set()
+        for match in declaration.finditer(code):
+            is_static = "static" in match.group("mods").split()
+            name = match.group("name")
+            declarations.append((match.start(), name, is_static, match.group("kind") == "func"))
+            if is_static:
+                static_names.add(name)
+            else:
+                other_names.add(name)
+
+        candidates = static_names - other_names
+        if not candidates:
+            continue
+
+        # 每个字符位置的花括号深度（`{` 记外层深度，`}` 记闭合后的外层深度）
+        depths = []
+        depth = 0
+        for ch in code:
+            if ch == "}":
+                depth -= 1
+            depths.append(depth)
+            if ch == "{":
+                depth += 1
+
+        sites = []
+        for name in sorted(candidates):
+            for match in re.finditer(r"(?<![\w.])" + re.escape(name) + r"\s*\(", code):
+                prefix = code[: match.start()]
+                # 声明行本身（`static func name(`）不是调用
+                if re.search(r"(?:func|var|let)\s*$", prefix):
+                    continue
+                sites.append((match.start(), name))
+        if not sites:
+            continue
+
+        # 声明栈：[(声明所在深度, 是否 static, 是否函数体)]。
+        # 关键细节：函数**体内**的 `let` / `var` 是局部语句，不能当作新作用域压栈，
+        # 否则顶层 `static func` 会被它顶掉，静态成员调用全成了「实例上下文」。
+        contexts = []
+        cursor = 0
+        for position, name in sorted(sites):
+            while cursor < len(declarations):
+                start, _, is_static, is_function = declarations[cursor]
+                if start >= position:
+                    break
+                declared_at = depths[start]
+                while contexts and contexts[-1][0] >= declared_at:
+                    contexts.pop()
+                # 只要「最近的上下文是函数体，且本声明比它更深」，就是函数体内的
+                # 局部语句（`let` / `var`），不能当新作用域压栈。
+                # 注意不能要求 `declared_at == 上下文深度 + 1`：`for` / `if` 块里的
+                # 局部变量会更深，早先按 +1 判定，结果 `for token in tokens { let x }`
+                # 里的 `let` 被压栈，把外层的 `static func` 顶掉，造成误报。
+                enclosed = (
+                    contexts
+                    and contexts[-1][2]
+                    and declared_at > contexts[-1][0]
+                )
+                if not enclosed:
+                    contexts.append((declared_at, is_static, is_function))
+                cursor += 1
+            if not contexts or contexts[-1][1]:
+                continue       # 类型级 / 静态上下文里裸调静态成员是合法的
+            line = code[:position].count("\n") + 1
+            problems.append(
+                (
+                    os.path.relpath(path).replace("\\", "/"),
+                    f"第 {line} 行在实例方法里裸调用静态成员 `{name}`；"
+                    f"请写成 `Self.{name}(…)`",
+                )
+            )
+    return problems
+
+
 def check_codable_consistency(files):
     """
     JSON 编解码一致性：凡是以 `decode(X.self …)` 形式被解码的自有类型，
@@ -364,6 +471,8 @@ def main():
             all_problems.append((relative, problem))
     for problem in check_codable_consistency(files):
         all_problems.append(problem)
+    for problem in check_static_member_qualification(files):
+        all_problems.append(problem)
     for problem in check_payload_column_consistency(files):
         all_problems.append(problem)
 
@@ -373,7 +482,7 @@ def main():
         for path, problem in all_problems:
             print(f"  {path}: {problem}")
         return 1
-    print("✅ 括号配平、条件编译配对、多行字符串缩进、JSON 编解码类型均正常")
+    print("✅ 括号配平、条件编译配对、多行字符串缩进、JSON 编解码类型、静态成员限定均正常")
     return 0
 
 
