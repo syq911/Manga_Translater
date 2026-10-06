@@ -445,6 +445,63 @@ struct DownloadCoordinatorTests {
         #expect(archive.allChapters().isEmpty)
     }
 
+    // MARK: 后台执行
+
+    /// 记录后台断言的开合次数。
+    private final class BackgroundWorkLedger: @unchecked Sendable {
+        private let lock = NSLock()
+        private var begins = 0
+        private var ends = 0
+
+        func recordBegin() {
+            lock.lock(); begins += 1; lock.unlock()
+        }
+
+        func recordEnd() {
+            lock.lock(); ends += 1; lock.unlock()
+        }
+
+        var beginCount: Int {
+            lock.lock(); defer { lock.unlock() }; return begins
+        }
+
+        var endCount: Int {
+            lock.lock(); defer { lock.unlock() }; return ends
+        }
+    }
+
+    @Test("驱动下载期间申请后台时间，结束后归还")
+    func holdsBackgroundWorkWhileDownloading() async throws {
+        let root = try TestFileSystem.makeTemporaryDirectory()
+        defer { TestFileSystem.remove(root) }
+
+        let (chapter, pages) = Self.chapter(1)
+        let archive = DownloadArchiveStore(
+            rootDirectory: root.appendingPathComponent("Downloads", isDirectory: true)
+        )
+        let ledger = BackgroundWorkLedger()
+        let coordinator = DownloadCoordinator(
+            archive: archive,
+            scratchDirectory: root.appendingPathComponent("Scratch", isDirectory: true),
+            imageLoader: SourceImageLoader(transport: StubTransport(outcomes: [Self.imageOutcome()])),
+            configuration: DownloadQueueConfiguration(maxRetriesPerPage: 0),
+            pollIntervalNanoseconds: 0,
+            loadPageList: { _, _ in pages },
+            log: { _ in },
+            beginBackgroundWork: { ledger.recordBegin() },
+            endBackgroundWork: { ledger.recordEnd() }
+        )
+
+        _ = await coordinator.download(manga: Self.manga(), chapter: chapter)
+        await coordinator.waitUntilSettled()
+
+        #expect(coordinator.job(chapterID: chapter.id)?.state == .completed)
+        #expect(archive.hasChapter(mangaID: Self.manga().id, chapterID: chapter.id))
+        // 一次驱动 = 一次申请 + 一次归还；不归还的话系统会把进程强杀
+        #expect(ledger.beginCount == 1)
+        #expect(ledger.endCount == 1)
+    }
+
     @Test("归档时按「归档时间倒序」返回，最新的在最前")
     func archivedChaptersAreNewestFirst() async throws {
         let root = try TestFileSystem.makeTemporaryDirectory()

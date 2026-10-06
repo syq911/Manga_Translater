@@ -405,6 +405,21 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   抓取散图放 `DownloadScratch/`——两个目录分开，归档目录里出现任何东西都意味着
   「这一章能离线看」。
 
+### ✨ 新增 / Added（M3 收尾：后台执行断言）
+
+- **`BackgroundExecutionKeeper`**：下载驱动期间用 `beginBackgroundTask` 申请
+  一小段后台时间，用户切走 App 后下载还能多跑一会儿；驱动结束（或系统收回）
+  时归还。
+  为什么不用 `URLSession` 的后台传输：下载不是「一堆独立 GET」，而是
+  「脚本算页列表（JS 沙箱）→ 逐页抓取 → 打包 CBZ」，中间两步交不了给系统进程。
+  **必须归还**：不调 `endBackgroundTask` 会被强杀，已抓的页连同散图一起丢。
+  文案也不吹：说的是「可以离开这一页」，不是「关掉 App 也会继续」。
+
+### 🧪 测试 / Tests（M3 收尾新增 1 个用例）
+
+- `DownloadCoordinatorTests`：驱动期间后台断言恰好申请一次、归还一次
+  （把申请 / 归还应成注入闭包，测试不碰 UIKit）
+
 ### ✨ 新增 / Added（M3 第四批：登录与人机验证，契约 §8 落地）
 
 - **`SourceLoginView`**：内嵌 `WKWebView` 的登录 / 验证页。

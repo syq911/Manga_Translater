@@ -50,6 +50,8 @@ final class AppEnvironment {
     let archiveStore: DownloadArchiveStore
     /// 下载编排（入队 / 进度 / 归档）。界面只跟它打交道。
     let downloads: DownloadCoordinator
+    /// 下载期间的后台执行断言（用户切走 App 后还能多跑一会儿）。
+    let backgroundExecution: BackgroundExecutionKeeper
 
     init(
         settings: AppSettings,
@@ -148,6 +150,9 @@ final class AppEnvironment {
             archive: resolvedArchive
         )
 
+        let keeper = BackgroundExecutionKeeper()
+        self.backgroundExecution = keeper
+
         if let downloads {
             self.downloads = downloads
         } else {
@@ -160,6 +165,15 @@ final class AppEnvironment {
                 },
                 log: { message in
                     diagnostics.log("[下载] \(message)")
+                },
+                beginBackgroundWork: {
+                    // `@MainActor` 隔离：协调器本身就在主线程上跑，这里只是跳一次隔离
+                    Task { @MainActor in
+                        keeper.begin(name: "manga-download")
+                    }
+                },
+                endBackgroundWork: {
+                    Task { @MainActor in keeper.end() }
                 }
             )
         }

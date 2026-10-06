@@ -66,6 +66,9 @@ final class DownloadCoordinator {
     private let archive: DownloadArchiveStore
     private let loadPageList: PageListLoader
     private let log: (String) -> Void
+    /// 驱动期间申请 / 归还后台执行时间（注入成闭包，测试里是空实现）。
+    private let beginBackgroundWork: () -> Void
+    private let endBackgroundWork: () -> Void
     /// 驱动循环的轮询间隔（测试传 0 让循环尽快收敛）。
     private let pollIntervalNanoseconds: UInt64
 
@@ -103,12 +106,16 @@ final class DownloadCoordinator {
         configuration: DownloadQueueConfiguration = DownloadQueueConfiguration(),
         pollIntervalNanoseconds: UInt64 = 200_000_000,
         loadPageList: @escaping PageListLoader,
-        log: @escaping (String) -> Void = { _ in }
+        log: @escaping (String) -> Void = { _ in },
+        beginBackgroundWork: @escaping () -> Void = {},
+        endBackgroundWork: @escaping () -> Void = {}
     ) {
         self.archive = archive
         self.scratch = FilePageStore(rootDirectory: scratchDirectory)
         self.loadPageList = loadPageList
         self.log = log
+        self.beginBackgroundWork = beginBackgroundWork
+        self.endBackgroundWork = endBackgroundWork
         self.pollIntervalNanoseconds = pollIntervalNanoseconds
         self.queue = DownloadQueue(
             configuration: configuration,
@@ -376,6 +383,13 @@ final class DownloadCoordinator {
     }
 
     private func runDriver() async {
+        // 申请一点后台时间：用户下载完就切走 App 是常态，
+        // 没有这段申请，进程会立刻被挂起，下载停在中途。
+        // 注意这是「延长一会儿」而不是「后台无限下载」——
+        // 系统最多给几十秒，之后必须收尾（`beginBackgroundWork` 的实现负责这件事）。
+        beginBackgroundWork()
+        defer { endBackgroundWork() }
+
         // `processPending()` 会把当时所有待办跑完；跑完再看一次是否有新入队的。
         while true {
             await queue.processPending()
