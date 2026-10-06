@@ -15,6 +15,7 @@
 
 import Foundation
 import AppCore
+import ComicDownload
 
 // MARK: - 本地文件源
 
@@ -85,6 +86,8 @@ public actor RemoteReadingSource: MangaReadingSource {
     private let pool: SourceRuntimePool
     private let imageLoader: SourceImageLoader
     private let configuration: Configuration
+    /// 下载归档（可选）。装了它才有「离线可读 + 不重复下载」。
+    private let archive: DownloadArchiveStore?
 
     /// 作品主键 → 章节列表；以及最近使用顺序（末尾最新）。
     private var chapterLists: [String: [Chapter]] = [:]
@@ -96,10 +99,12 @@ public actor RemoteReadingSource: MangaReadingSource {
     public init(
         pool: SourceRuntimePool,
         imageLoader: SourceImageLoader,
+        archive: DownloadArchiveStore? = nil,
         configuration: Configuration = Configuration()
     ) {
         self.pool = pool
         self.imageLoader = imageLoader
+        self.archive = archive
         self.configuration = configuration
     }
 
@@ -127,6 +132,14 @@ public actor RemoteReadingSource: MangaReadingSource {
             touch(&pageOrder, chapter.id)
             return cached
         }
+        // 已下载的章节**不问脚本**：脚本要联网，而下载的意义就是没网也能看。
+        // 页定位符用归档私有 scheme，读图时由 `imageData` 直接命中归档
+        // （绝不会真的发出去，所以不必是 http(s)）。
+        if let archived = archivedPages(mangaID: manga.id, chapterID: chapter.id) {
+            store(archived, for: chapter.id, into: &pageLists, order: &pageOrder,
+                  limit: configuration.maxCachedPageLists)
+            return archived
+        }
         let key = manga.sourceID.rawValue
         let url = chapter.url
         let loaded = try await pool.withRunner(for: key) { runner in
@@ -137,18 +150,63 @@ public actor RemoteReadingSource: MangaReadingSource {
         return loaded
     }
 
+    // MARK: 归档（离线阅读）
+
+    /// 归档页的定位符前缀。
+    ///
+    /// 用私有 scheme 而不是伪造一个 http 地址：伪造地址一旦因为某条分支漏了拦截，
+    /// 就会真的朝一个不存在的域名发请求；私有 scheme 只会立刻报「不支持的协议」，
+    /// 问题定位成本低得多。
+    public static let archiveURLScheme = "manga-archive"
+
+    /// 某章是否已下载到本地。
+    public nonisolated func isChapterArchived(mangaID: String, chapterID: String) -> Bool {
+        archive?.hasChapter(mangaID: mangaID, chapterID: chapterID) ?? false
+    }
+
+    /// 某作品已下载的章节标识集合（作品详情页用来打「已下载」标记）。
+    public nonisolated func archivedChapterIDs(mangaID: String) -> Set<String> {
+        guard let archive else { return [] }
+        return Set(archive.chapters(mangaID: mangaID).map(\.chapterID))
+    }
+
+    /// 已归档章节的页列表；未归档返回 nil。
+    ///
+    /// 页数取归档里的**真实条目数**而不是清单记录：清单可能因为旧版本没有写全，
+    /// 而能读出来的页才是真能看的页。
+    private func archivedPages(mangaID: String, chapterID: String) -> [ComicPage]? {
+        guard let archive,
+              let count = archive.pageCount(mangaID: mangaID, chapterID: chapterID),
+              count > 0
+        else { return nil }
+        return (0..<count).map { index in
+            ComicPage(index: index, imageURL: "\(Self.archiveURLScheme)://\(index)")
+        }
+    }
+
     // MARK: 图片
 
     /// 取页图。
     ///
     /// 标记 `nonisolated` 是刻意的：这条路完全不碰 actor 状态（缓存里只有元数据），
     /// 而图片下载可能持续几百毫秒——没必要让它们排队经过同一个 actor。
+    ///
+    /// 顺序是**先归档、后网络**：已下载的章节不该再耗一次流量，
+    /// 且下载的意义就是没网也能看（离线时若先试网络，会先卡一次超时）。
     public nonisolated func imageData(
         for page: ComicPage,
         manga: Manga,
         chapter: Chapter
     ) async throws -> Data {
-        try await imageLoader.imageData(
+        if let archive,
+           let local = archive.pageData(
+               mangaID: manga.id,
+               chapterID: chapter.id,
+               pageIndex: page.index
+           ) {
+            return local
+        }
+        return try await imageLoader.imageData(
             for: page,
             sourceID: manga.sourceID,
             // 防盗链站点常要求图片请求带章节页作 Referer

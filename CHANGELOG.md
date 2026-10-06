@@ -379,6 +379,62 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **浏览页新增「最新更新」**（`getLatestUpdates`）；源未实现时由 `SourceRunner`
   自动回退到热门列表。
 
+### ✨ 新增 / Added（M3 第一批：下载与离线阅读打通）
+
+- **`DownloadArchiveStore`**（`ComicDownload`）：把下载完的一章打包成 CBZ 落盘，
+  并支持读回单页、列表、统计、删除。目录布局 `<Downloads>/<作品>/<章节>.cbz` +
+  同名 `.json` 清单；文件名是「可读部分 + FNV-1a 稳定哈希」
+  （`String.hashValue` 跨进程不稳定，用它命名会导致下次启动找不到自己写的文件）。
+  写入先落临时文件再替换：直接覆盖失败会留下**打不开的 CBZ**，
+  而它看起来「已下载完成」。
+- **`JobAwarePageFetching`**（`ComicDownload`）：让抓取器从任务上读来源信息的接缝。
+  Cookie 与防盗链 `Referer` 是来源侧知识，队列不该知道；有了这个协议，
+  一个 `SourcePageFetcher` 实例就能服务队列里多个来源的任务。
+- **`SourcePageFetcher`**（`SourceEngine`）：`SourceImageLoader` → `PageFetching` 适配。
+  按 `DownloadJob` 带来源 Cookie、`Referer`，并按 URL 取页级请求头
+  （契约允许每页自带 `headers`，不必退化成整章共用一个头）。
+- **`DownloadJob`** 增加 `pageHeaders`（按 URL）与 `referer`；`FilePageStore`
+  增加 `pages(jobID:)`（按文件名数字前缀排页序——`contentsOfDirectory` 顺序不保证）。
+- **`RemoteReadingSource` 归档优先**：有归档的章节，页列表从归档读（**不问脚本**，
+  因为脚本要联网）、页图从归档读（不发请求）。归档页用私有 scheme
+  `manga-archive://` 定位，避免伪造 http 地址被漏拦时真的发请求出去。
+- **`DownloadCoordinator`**（App 层）：下载的**唯一**入口。负责批量入队（单章取页失败
+  不中断整批）、跳过已下载与已在队列的、进度快照、暂停/继续/取消/重试、
+  完成后打包归档（在后台线程，避免几十 MB 压缩卡住界面）、归档的增删查。
+- **`AppEnvironment`** 接线：`archiveStore`（`Downloads/`）与 `downloads`（编排），
+  抓取散图放 `DownloadScratch/`——两个目录分开，归档目录里出现任何东西都意味着
+  「这一章能离线看」。
+
+### 🧪 测试 / Tests（M3 第一批新增 4 个套件 / 46 个用例）
+
+- `DownloadArchiveStoreTests`（10 例）：写入与读回、缺失/越界页的安静返回、
+  非 jpg 扩展名（webp/png）、重复归档整章替换、空页拒绝、主键含 `/|:` 不产生子目录、
+  命名唯一且稳定、删除单章/整部/全部
+- `DownloadCoordinatorTests`（15 例）：归档产出、跳过已下载与重复点击、
+  批量容错（单章失败不中断）、空页列表、页级请求头保留、失败不留半成品、
+  体积超限、重试、暂停/恢复、取消后可重下、清理记录、删除归档后可重下、按时间倒序
+- `SourcePageFetcherTests`（8 例）：带来源 Cookie、**不泄漏其他来源的 Cookie**、
+  Referer、页级头优先、回落任务级、空页级头不盖掉任务级、
+  无上下文时**一个请求都不发**并报错、HTML 错误页拒绝
+- `DownloadedReadingTests`（7 例）：页列表来自归档且**脚本零调用**、
+  取图**零网络请求**、未归档仍走网络、缺页回落、归档页数不按脚本撒谎、
+  已下载标识集合、未接归档时行为不变
+
+### 🔧 修复 / Fixed（M3 第一批）
+
+- `tools/check_swift_syntax.py` 的「悬空 `else`」规则会误报**多行条件**：
+
+  ```swift
+  guard let a,
+        let b = f(a),
+        b > 0
+  else { return nil }
+  ```
+
+  `else` 的上一行是 `b > 0`，既不以 `,` 也不以 `)` 结尾。改成往回找语句开头：
+  只要在撞上 `{` / `}` / `;` 之前先碰到 `guard` / `if` 就放行。
+  已双向验证：真悬空仍被报出，多行 guard 不再误报。
+
 ### 🧪 测试 / Tests（M2 收尾新增 1 个套件 / 9 个用例）
 
 - **`DemoRepositoryTests`（M2 验收）**：用自测仓库的真实脚本与页面，一次跑通

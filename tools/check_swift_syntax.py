@@ -164,13 +164,42 @@ def check_file(path):
 
     # 悬空 else：只检查「行首是 else」且不以 `}` 开头的写法。
     # `} else {` 是合法且常见的写法，直接放行。
+    #
+    # 还要放行**多行条件**：
+    #
+    #     guard let a,
+    #           let b = f(a),
+    #           b > 0
+    #     else { return nil }
+    #
+    # 这种写法里 `else` 的上一行是 `b > 0`，既不以 `,` 也不以 `)` 结尾。
+    # 判定方式是往回找这条语句的开头：只要在遇到 `{` / `}` / `;` 之前
+    # 先碰到 `guard` / `if`，就说明这个 `else` 属于一个合法的条件。
+    # 反过来，真正的悬空 else（前面是无关的普通语句）会在途中撞上 `}` 或
+    # 一直找不到 guard/if，仍会被报出来。
+    def belongs_to_condition(lines, index):
+        for offset in range(1, 21):
+            position = index - offset
+            if position < 0:
+                return False
+            text = lines[position].strip()
+            if not text or text.startswith("//"):
+                continue
+            if re.match(r"^(guard|if)\b", text):
+                return True
+            if text.startswith("}") or text.endswith(("{", "}", ";")):
+                return False
+        return False
+
     lines = raw.split("\n")
     for index, line in enumerate(lines):
         stripped = line.strip()
         if not re.match(r"^else\b", stripped):
             continue
         previous = lines[index - 1].strip() if index > 0 else ""
-        if previous.endswith("{") or previous.endswith("}") or previous.endswith(")"):
+        if previous.endswith(("{", "}", ")")):
+            continue
+        if belongs_to_condition(lines, index):
             continue
         problems.append(f"第 {index + 1} 行 else 可能悬空（上一行：{previous[:60]}）")
 

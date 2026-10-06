@@ -17,6 +17,12 @@
 "browse.installed" = "已安装的源";
 "browse.noInstalled" = "还没有安装任何源。";
 
+/* 下载（M3 第一批） */
+
+"downloads.nothingToDo" = "没有需要下载的章节（已下载或在队列中的会跳过）。";
+"downloads.enqueueFailed" = "无法获取章节内容，请检查网络或来源是否可用。";
+"downloads.archiveFailed" = "下载完成但打包失败，可以删除后重新下载。";
+
 "downloads.empty.title" = "没有下载任务";
 "downloads.empty.body" = "下载的章节会出现在这里，并可离线阅读。";
 

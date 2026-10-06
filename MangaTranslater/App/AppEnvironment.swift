@@ -40,8 +40,12 @@ final class AppEnvironment {
     let imageLoader: SourceImageLoader
     /// 本地文件源的阅读适配器。
     private let localReadingSource: LocalReadingSource
-    /// 在线来源的阅读适配器（章节 / 页列表缓存 + 图片加载）。
+    /// 在线来源的阅读适配器（章节 / 页列表缓存 + 图片加载 + 已下载章节优先）。
     private let remoteReadingSource: RemoteReadingSource
+    /// 下载归档（已下载章节的 CBZ）。
+    let archiveStore: DownloadArchiveStore
+    /// 下载编排（入队 / 进度 / 归档）。界面只跟它打交道。
+    let downloads: DownloadCoordinator
 
     init(
         settings: AppSettings,
@@ -55,7 +59,9 @@ final class AppEnvironment {
         coverCache: CoverThumbnailCache? = nil,
         repositoryService: SourceRepositoryService? = nil,
         runtimePool: SourceRuntimePool? = nil,
-        imageLoader: SourceImageLoader? = nil
+        imageLoader: SourceImageLoader? = nil,
+        archiveStore: DownloadArchiveStore? = nil,
+        downloads: DownloadCoordinator? = nil
     ) {
         self.settings = settings
         self.sourceStore = sourceStore
@@ -103,9 +109,40 @@ final class AppEnvironment {
         }
         self.runtimePool = resolvedPool
 
-        // 阅读适配器：本地走 LocalSource（同步 → 异步），在线走运行时池 + 图片加载器。
+        // 下载归档：`Downloads/` 存成品 CBZ，`DownloadScratch/` 是抓取过程中的散图。
+        // 分两个目录是刻意的——归档目录里出现任何东西都意味着「这一章能离线看」，
+        // 混进散图会让「文件在 = 下完了」这条判断失效。
+        let resolvedArchive = archiveStore ?? DownloadArchiveStore(
+            rootDirectory: dataDirectory.appendingPathComponent("Downloads", isDirectory: true)
+        )
+        self.archiveStore = resolvedArchive
+
+        // 阅读适配器：本地走 LocalSource（同步 → 异步），在线走运行时池 + 图片加载器；
+        // 在线侧带上归档，于是「已下载的章节」离线可读、也不会重复走网络。
         self.localReadingSource = LocalReadingSource(localSource: localSource)
-        self.remoteReadingSource = RemoteReadingSource(pool: resolvedPool, imageLoader: resolvedImageLoader)
+        self.remoteReadingSource = RemoteReadingSource(
+            pool: resolvedPool,
+            imageLoader: resolvedImageLoader,
+            archive: resolvedArchive
+        )
+
+        if let downloads {
+            self.downloads = downloads
+        } else {
+            self.downloads = DownloadCoordinator(
+                archive: resolvedArchive,
+                scratchDirectory: dataDirectory.appendingPathComponent("DownloadScratch", isDirectory: true),
+                imageLoader: resolvedImageLoader,
+                loadPageList: { sourceID, chapterURL in
+                    try await resolvedPool.withRunner(for: sourceID.rawValue) { runner in
+                        try await runner.pageList(chapterURL: chapterURL)
+                    }
+                },
+                log: { message in
+                    diagnostics.log("[下载] \(message)")
+                }
+            )
+        }
     }
 
     /// 按默认路径构建。任一步失败都降级而非崩溃，保证 App 一定能启动。
@@ -270,6 +307,19 @@ final class AppEnvironment {
             diag("AppEnvironment: 封面下载失败 —— \(error.localizedDescription)")
             return nil
         }
+    }
+
+    // MARK: 下载
+
+    /// 某章是否已下载到本地（界面据此显示「已下载」并停用下载按钮）。
+    func isChapterDownloaded(mangaID: String, chapterID: String) -> Bool {
+        archiveStore.hasChapter(mangaID: mangaID, chapterID: chapterID)
+    }
+
+    /// 下载一批章节（「下载全部」）。
+    @discardableResult
+    func downloadChapters(_ chapters: [Chapter], of manga: Manga) async -> DownloadRequestResult {
+        await downloads.download(manga: manga, chapters: chapters)
     }
 
     /// 加入书架。已存在时只更新作品信息，**不覆盖阅读进度**。

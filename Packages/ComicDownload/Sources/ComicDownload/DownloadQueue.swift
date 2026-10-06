@@ -50,6 +50,11 @@ public struct DownloadJob: Identifiable, Equatable, Sendable {
     public var chapterName: String
     public let pageURLs: [String]
     public var headers: [String: String]
+    /// 页级请求头（按 URL）。契约允许每页带自己的 `headers`，
+    /// 而队列抓页时只给得到 URL——所以这里按 URL 存一份，抓取器按 URL 取用。
+    public var pageHeaders: [String: [String: String]]
+    /// 抓图时的 `Referer`（通常是章节页地址）。防盗链站点的必需项。
+    public var referer: String?
     public var state: DownloadState
     public var completedPages: Int
     public var pageAttempts: Int
@@ -62,6 +67,8 @@ public struct DownloadJob: Identifiable, Equatable, Sendable {
         chapterName: String,
         pageURLs: [String],
         headers: [String: String] = [:],
+        pageHeaders: [String: [String: String]] = [:],
+        referer: String? = nil,
         state: DownloadState = .pending,
         completedPages: Int = 0,
         pageAttempts: Int = 0,
@@ -74,10 +81,17 @@ public struct DownloadJob: Identifiable, Equatable, Sendable {
         self.chapterName = chapterName
         self.pageURLs = pageURLs
         self.headers = headers
+        self.pageHeaders = pageHeaders
+        self.referer = referer
         self.state = state
         self.completedPages = completedPages
         self.pageAttempts = pageAttempts
         self.errorMessage = errorMessage
+    }
+
+    /// 某一页实际要带的请求头（页级优先，其次任务级）。
+    public func headers(forURL url: String) -> [String: String] {
+        pageHeaders[url] ?? headers
     }
 
     /// 进度 0...1。
@@ -327,7 +341,12 @@ public actor DownloadQueue {
 
             while true {
                 do {
-                    let data = try await fetcher.fetchPage(url: url, headers: job.headers)
+                    let data = try await Self.fetchPage(
+                        using: fetcher,
+                        url: url,
+                        headers: current.headers(forURL: url),
+                        job: current
+                    )
                     guard data.count <= configuration.maxPageBytes else {
                         throw AppError.invalidInput(
                             "单页数据过大（\(data.count) 字节，上限 \(configuration.maxPageBytes)）"
@@ -380,6 +399,20 @@ public actor DownloadQueue {
     }
 
     // MARK: 错误判定
+
+    /// 抓一页。支持 `JobAwarePageFetching` 的抓取器会拿到完整任务上下文
+    /// （来源 Cookie / Referer 都由它决定）。
+    private static func fetchPage(
+        using fetcher: PageFetching,
+        url: String,
+        headers: [String: String],
+        job: DownloadJob
+    ) async throws -> Data {
+        if let aware = fetcher as? JobAwarePageFetching {
+            return try await aware.fetchPage(url: url, headers: headers, job: job)
+        }
+        return try await fetcher.fetchPage(url: url, headers: headers)
+    }
 
     /// 是否可重试。网络层的错误类型携带更精细的判定
     /// （4xx 不重试、429/5xx/超时/离线可重试），优先使用它。

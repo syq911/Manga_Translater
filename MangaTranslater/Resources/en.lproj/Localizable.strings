@@ -17,6 +17,12 @@
 "browse.installed" = "Installed sources";
 "browse.noInstalled" = "No sources installed yet.";
 
+/* Downloads (M3 batch 1) */
+
+"downloads.nothingToDo" = "Nothing to download (already downloaded or queued chapters are skipped).";
+"downloads.enqueueFailed" = "Could not fetch the chapter contents. Check your network or the source.";
+"downloads.archiveFailed" = "Download finished but packaging failed. Delete it and try again.";
+
 "downloads.empty.title" = "No downloads";
 "downloads.empty.body" = "Chapters you download will appear here and stay readable offline.";
 

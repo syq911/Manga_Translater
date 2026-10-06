@@ -16,6 +16,15 @@ public protocol PageFetching: Sendable {
     func fetchPage(url: String, headers: [String: String]) async throws -> Data
 }
 
+/// 需要「按任务区分来源」的抓取器实现这个。
+///
+/// 动机：登录态（Cookie）与防盗链 `Referer` 都是**来源侧**的知识，
+/// 而队列只有一个 `fetcher`，它不该知道来源。让抓取器从任务上读即可——
+/// 于是一个实例就能服务队列里多个来源的任务。
+public protocol JobAwarePageFetching: PageFetching {
+    func fetchPage(url: String, headers: [String: String], job: DownloadJob) async throws -> Data
+}
+
 /// 页数据落盘。
 public protocol PageStoring: Sendable {
     /// 为任务准备目录；已存在时应清空（避免上次残留混入）。
@@ -110,5 +119,36 @@ public final class FilePageStore: PageStoring, @unchecked Sendable {
         if FileManager.default.fileExists(atPath: directory.path) {
             try FileManager.default.removeItem(at: directory)
         }
+    }
+
+    /// 已落盘的页，按页序返回（供下载完成后打包归档）。
+    ///
+    /// 页序取自**文件名里的数字前缀**而不是目录顺序：
+    /// `contentsOfDirectory` 的顺序不保证（实测不同文件系统上不一致），
+    /// 按它排序会得到「第 10 页排在第 2 页前面」这种结果。
+    public func pages(jobID: String) -> [CbzPage] {
+        guard let directory = try? directory(for: jobID),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path)
+        else {
+            return []
+        }
+        return names
+            .compactMap { name -> (Int, String, String)? in
+                guard let dot = name.lastIndex(of: ".") else { return nil }
+                let stem = String(name[name.startIndex..<dot])
+                let ext = String(name[name.index(after: dot)...]).lowercased()
+                guard let index = Int(stem), CbzExporter.allowedExtensions.contains(ext) else {
+                    return nil
+                }
+                // 文件名是 1 起的（`0001.jpg`），模型里是 0 起
+                return (index - 1, name, ext)
+            }
+            .sorted { $0.0 < $1.0 }
+            .compactMap { index, name, ext -> CbzPage? in
+                guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)) else {
+                    return nil
+                }
+                return CbzPage(index: index, data: data, fileExtension: ext)
+            }
     }
 }
