@@ -75,6 +75,14 @@ public actor SourceRuntimePool {
     /// 某个源的运行是否已驻留。
     public func isLoaded(_ key: String) -> Bool { entries[key] != nil }
 
+    /// 某个源是否已安装。
+    ///
+    /// 单独开一个方法而不是把 `store` 暴露出去：外部只需要问「这个 id 归不归我管」，
+    /// 让它够到 `SourceStore` 就等于把「谁能装 / 谁能删」的能力也一并给了。
+    public func isInstalled(_ key: String) -> Bool {
+        store.isInstalled(key)
+    }
+
     /// 某个源已驻留时的元信息（未驻留返回 nil）。
     public func loadedMeta(_ key: String) -> SourceScriptMeta? { entries[key]?.meta }
 

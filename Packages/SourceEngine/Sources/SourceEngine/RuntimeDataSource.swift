@@ -70,7 +70,7 @@ extension SourceRuntimePool: MangaDataSourceProviding {
     /// 这里**不预先载入**脚本：`RuntimeDataSource` 的每个方法内部才 `withRunner`，
     /// 于是「只是渲染一下来源列表」不会把一堆 JS 虚拟机拉起来。
     public func dataSource(for sourceID: SourceID) async throws -> MangaDataSource {
-        guard store.isInstalled(sourceID.rawValue) else {
+        guard isInstalled(sourceID.rawValue) else {
             throw SourceRunnerError.notInstalled(sourceID.rawValue)
         }
         return RuntimeDataSource(pool: self, sourceID: sourceID)
