@@ -460,7 +460,7 @@ SWIFT_HEADER_LINES = [
     '    static let baseURL = "http://127.0.0.1:8000"',
     "",
     "    /// 夹具用的真实 PNG 字节（内容不参与与生成器的比对，只需是合法图片）。",
-    "    static let pngBytes = Data(base64Encoded: @PNG@)!",
+    "@PNGBLOCK@",
     "",
     "    /// 页面文件名（顺序与生成器一致）。",
     "    static let pageNames = [",
@@ -492,9 +492,22 @@ def swift_literal(name: str, text: str, declaration: str, separator: str = " = "
 def emit_swift(path: str) -> None:
     """把语料写进 Swift 夹具（避免手抄出错）。"""
     pages = [(name, text) for name, text in TEXT_FILES if name not in ("index.json", "demo.js")]
+    # PNG 用**字节数组**而不是 base64 字符串：字符串一旦漏了引号，
+    # Swift 会把内容当成标识符（实测报过 `'H' is not a valid digit in integer literal`），
+    # 而字节数组既没有引号可漏，也便于人工核对。
+    raw = png_bytes(12, 18, (0x43, 0xA0, 0x47))
+    columns = 12
+    rows = [
+        ", ".join(f"0x{byte:02X}" for byte in raw[start:start + columns])
+        for start in range(0, len(raw), columns)
+    ]
+    byte_block = "    static let pngBytes = Data([\n" + "".join(
+        f"        {row},\n" for row in rows
+    ) + "    ])"
+
     header = "\n".join(
         line
-        .replace("@PNG@", base64.b64encode(png_bytes(12, 18, (0x43, 0xA0, 0x47))).decode())
+        .replace("@PNGBLOCK@", byte_block)
         .replace("@PAGENAMES@", "\n".join(f'        "{name}",' for name, _ in pages))
         for line in SWIFT_HEADER_LINES
     )
@@ -515,8 +528,15 @@ def emit_swift(path: str) -> None:
     parts.append("    ]\n")
     parts.append("}\n")
 
+    text = "".join(parts)
+    leftovers = re.findall(r"@[A-Z_]+@", text)
+    if leftovers:
+        raise SystemExit(f"❌ 夹具里残留未替换的占位符：{', '.join(sorted(set(leftovers)))}")
+    if "Data(base64Encoded:" in text or 'Data([\n' not in text:
+        raise SystemExit("❌ 夹具里的图片字节写法不符合预期（应为字节数组）")
+
     with open(path, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write("".join(parts))
+        handle.write(text)
     print(f"✅ 已写入 Swift 夹具：{path}")
 
 
