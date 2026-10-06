@@ -61,18 +61,24 @@ struct SettingsView: View {
 
     private var accountSection: some View {
         Section(L("settings.section.account")) {
-            Button {
-                // 付费入口：打开外部网页（官网购买页）。App 内不接入支付。
-                showsComingSoon = true
+            NavigationLink {
+                CloudAccountView()
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L("settings.cloud.entry"))
-                    Text(L("settings.cloud.subtitle"))
+                    Text(cloudSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
         }
+    }
+
+    /// 账号入口的一句话状态：未登录说清楚「能干什么」，已登录显示额度。
+    private var cloudSubtitle: String {
+        let cloud = environment.cloud
+        guard cloud.isSignedIn else { return L("settings.cloud.subtitle") }
+        return "\(cloud.planName) · \(cloud.quotaSummary)"
     }
 
     private var sourcesSection: some View {

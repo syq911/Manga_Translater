@@ -31,10 +31,8 @@ enum SecureValueStore {
     enum Key {
         /// 自备翻译服务（OpenAI 兼容）的 API Key。
         static let translationAPIKey = "translation_api_key"
-        /// 云服务的登录令牌（JWT）。
-        static let cloudToken = "cloud_token"
-        /// 云服务的匿名账号 ID（用于在官网购买页里带上 `custom[user_id]`）。
-        static let cloudAccountID = "cloud_account_id"
+        /// 云服务的登录会话（令牌 + 到期时刻 + 账号快照的 JSON）。
+        static let cloudSession = "cloud_session"
     }
 
     /// 当前是否在用回退存储（诊断面板展示用）。

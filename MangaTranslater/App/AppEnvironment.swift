@@ -55,6 +55,15 @@ final class AppEnvironment {
     /// 译文缓存（内存 LRU + 磁盘，按作品分目录）。放这里而不是控制器里，
     /// 是为了跨阅读会话保留：同一话重看时不必再花一次额度。
     let translationStore: TranslationStore
+    /// 云服务账号状态（登录 / 额度 / 订阅）。
+    let cloud: CloudAccountModel
+
+    /// 云服务请求共用的传输层。
+    ///
+    /// 刻意是 `static`：`URLSessionTransport` 内部持有一个 `URLSession`，
+    /// 每翻译一页新建一个既浪费又会让连接池无法复用；
+    /// 而写成实例属性的话，`init` 里在「所有存储属性就绪之前」不能读它。
+    private static let cloudTransport: HTTPTransporting = URLSessionTransport(timeoutSeconds: 30)
 
     init(
         settings: AppSettings,
@@ -73,7 +82,8 @@ final class AppEnvironment {
         downloads: DownloadCoordinator? = nil,
         serverStore: ServerStore? = nil,
         dataSourceProvider: CompositeDataSourceProvider? = nil,
-        translationStore: TranslationStore? = nil
+        translationStore: TranslationStore? = nil,
+        cloud: CloudAccountModel? = nil
     ) {
         self.settings = settings
         self.sourceStore = sourceStore
@@ -162,6 +172,7 @@ final class AppEnvironment {
         self.translationStore = translationStore ?? TranslationStore(
             root: dataDirectory.appendingPathComponent("Translations", isDirectory: true)
         )
+        self.cloud = cloud ?? CloudAccountModel(settings: settings, transport: Self.cloudTransport)
 
         if let downloads {
             self.downloads = downloads
@@ -564,16 +575,34 @@ final class AppEnvironment {
         return !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// 云端翻译后端。未接入云服务时返回 nil（控制器会报「未登录」）。
+    /// 云端翻译后端。未登录时返回 nil（控制器会报「未登录」，界面引导登录）。
+    ///
+    /// 每次现造：令牌可能在会话中被刷新（`/me` 或 401 处理都会更新会话），
+    /// 缓存住一个持有旧令牌的实例只会让翻译在令牌轮换后莫名失败。
     func cloudTranslator() -> MangaTranslator? {
-        nil
+        // 先在方法体里把 `self` 上的东西取成局部常量：转义闭包里**隐式**使用 self
+        // 会被编译器直接拒绝（"implicit use of 'self' in closure"），
+        // 显式捕获局部常量既过编译，也让「这个闭包到底带走了什么」一眼可见。
+        let model = cloud
+        guard let session = model.session else { return nil }
+        let endpoint = settings.cloudServiceBaseURL
+        return CloudTranslationService(
+            client: CloudServiceClient(baseURL: endpoint, transport: Self.cloudTransport),
+            token: session.token,
+            onRemaining: { remaining in
+                // 服务端每次翻译都会带回今天的剩余页数，顺手刷新界面上的额度
+                Task { @MainActor in
+                    model.applyRemaining(remaining)
+                }
+            }
+        )
     }
 
-    /// 官网购买页地址（在**外部浏览器**打开）。
+    /// 官网购买页地址（在**外部浏览器**打开），带上账号 ID 便于服务端把订阅绑到账号。
     ///
     /// 这是 App 内唯一的付费入口：不接支付 SDK、不出现收银台，
     /// 所有收款都在官网网页完成（《开发手册》7.4 的资金流切割）。
     var cloudUpgradeURL: URL? {
-        URL(string: settings.cloudUpgradeURL)
+        cloud.purchaseURL ?? URL(string: settings.cloudUpgradeURL)
     }
 }

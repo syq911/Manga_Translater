@@ -17,7 +17,6 @@ import AppCore
 struct TranslationSettingsView: View {
 
     @Environment(AppEnvironment.self) private var environment
-    @Environment(\.openURL) private var openURL
 
     @State private var backend: TranslationBackend
     @State private var source: TranslationLanguage
@@ -184,18 +183,23 @@ struct TranslationSettingsView: View {
 
     private var cloudSection: some View {
         Section {
-            Button(L("cloud.upgrade")) { openUpgradePage() }
+            NavigationLink {
+                CloudAccountView()
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("cloud.entry"))
+                    Text(environment.cloud.isSignedIn
+                         ? environment.cloud.quotaSummary
+                         : L("cloud.status.signedOut"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         } header: {
             Text(L("cloud.section.account"))
         } footer: {
             Text(L("cloud.footer"))
         }
-    }
-
-    /// 打开官网购买页（外部浏览器）。App 内不接入任何支付。
-    private func openUpgradePage() {
-        guard let url = environment.cloudUpgradeURL else { return }
-        openURL(url)
     }
 
     // MARK: 端上翻译

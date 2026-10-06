@@ -276,3 +276,50 @@
 "cloud.upgrade" = "Upgrade to Pro";
 "cloud.footer" = "The cloud translation service is operated by the developer. No payment is handled inside the app; purchases happen on the website.";
 
+/* Cloud service · account and quota (M4 batches 3 and 4) */
+
+"cloud.title" = "Cloud service";
+"cloud.section.status" = "Status";
+"cloud.section.upgrade" = "Subscription";
+"cloud.section.about" = "Notes";
+"cloud.status.signedOut" = "Not signed in (own key or on-device translation only)";
+"cloud.plan.free" = "Free quota";
+"cloud.plan.pro" = "Pro subscription";
+"cloud.quota.remaining" = "%ld of %ld pages left today";
+"cloud.quota.unlimited" = "Unlimited with a subscription";
+"cloud.quota.exhausted" = "Today's quota is used up; resets at %@";
+"cloud.quota.unknown" = "Not signed in";
+"cloud.quota.resetFooter" = "The free quota resets on each calendar day in UTC+8 (next reset at %@).";
+"cloud.account.plan" = "Plan";
+"cloud.account.quota" = "Today's quota";
+"cloud.account.expires" = "Subscription valid until";
+"cloud.account.email" = "Account";
+"cloud.account.refresh" = "Refresh";
+"cloud.account.signOut" = "Sign out";
+"cloud.account.footer" = "Signing out only clears this device. Your account and subscription stay; sign in again with the same email to get them back — that is what \u201Crestore\u201D means.";
+"cloud.login.title" = "Sign in / Sign up";
+"cloud.login.email" = "Email";
+"cloud.login.sendCode" = "Send code";
+"cloud.login.code" = "6-digit code";
+"cloud.login.verify" = "Sign in";
+"cloud.login.cancel" = "Use another email";
+"cloud.login.codeSent" = "Code sent to %@; valid for %ld minute(s).";
+"cloud.login.codeFooter" = "Check your inbox for the 6 digits. If it is not there, look in spam or start over with another email.";
+"cloud.login.footer" = "The first time you use an email it creates an account; after that it signs you in. There is no password — every sign-in uses an emailed code.";
+"cloud.login.signedIn" = "Signed in.";
+"cloud.login.signedOut" = "Signed out.";
+"cloud.login.sessionExpired" = "Your session expired. Please sign in again.";
+"cloud.upgradeFooter" = "Buying and renewing happen on the website (no payment inside the app). If you already subscribed, signing in with the email you used at checkout restores it automatically.";
+"cloud.privacyNote" = "Only the recognised text is sent for translation. Images are never sent, and comic URLs are never uploaded.";
+
+"cloud.error.invalidEmail" = "That does not look like an email address. Please check it.";
+"cloud.error.invalidCode" = "The code is wrong or expired. Request a new one.";
+"cloud.error.rateLimited" = "Too many requests. Try again in %ld second(s).";
+"cloud.error.unauthorized" = "Your session is no longer valid. Please sign in again.";
+"cloud.error.quotaExceeded" = "Today's free quota is used up (%ld page(s) left).";
+"cloud.error.subscriptionRequired" = "Both cloud quota and subscription are exhausted.";
+"cloud.error.server" = "The cloud service returned an error: %@";
+"cloud.error.badResponse" = "The cloud response could not be understood (possible version mismatch).";
+"cloud.error.transport" = "Cannot reach the cloud service: %@";
+"cloud.error.missingBaseURL" = "The cloud service address is missing or malformed.";
+

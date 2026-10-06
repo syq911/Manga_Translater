@@ -78,6 +78,30 @@ end-to-end test uses, so what you tweak locally is what CI verifies.
 `python3 tools/make_demo_repo.py` 生成一个完全中性的自测仓库并本机托管即可
 （不涉及任何真实站点），详见 [docs/development.md](docs/development.md) 第 9 节。
 
+## Page translation / 页内翻译
+
+Pipeline: **on-device OCR (Apple Vision) → translation → typesetting back onto the
+page image**. Three interchangeable backends:
+
+| Backend | Cost | Setup |
+|---|---|---|
+| Own API key (OpenAI-compatible) | your own account, unlimited | paste a key |
+| Hosted cloud service | free daily quota, unlimited with a subscription | sign in with email |
+| On-device (system Translation framework) | free | none; fewer languages |
+
+翻译链路是「**设备端 OCR → 翻译 → 排版回填页图**」，三条后端可随时切换。
+配好之后在阅读器里点一下顶部翻译按钮就会连续翻译，再点一下显示原文。
+
+**What leaves your device**: only the recognized text. OCR runs on-device; images
+never leave the phone, and neither does the manga URL. The hosted service's request
+body contains exactly `lines` / `source` / `target` — the contract is documented in
+[docs/cloud-api.md](docs/cloud-api.md), and its server schema has no column that
+could hold an image, a URL, or any text.
+
+**只有文字会离开你的设备**：OCR 在设备端完成，图片不出手机，作品地址也不上传；
+云服务的请求体只有 `lines` / `source` / `target` 三个字段
+（契约见 [docs/cloud-api.md](docs/cloud-api.md)）。
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).

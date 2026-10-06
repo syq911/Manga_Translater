@@ -342,4 +342,26 @@ public enum ModelValidation {
     public static func categoryNameKey(_ value: String) -> String {
         sanitizeCategoryName(value).lowercased()
     }
+
+    /// 邮箱规范化：去首尾空白 + 转小写。
+    ///
+    /// 邮箱的本地部分技术上区分大小写，但**所有主流邮箱服务都不区分**。
+    /// 不做规范化就会出现「用大写字母注册、用小写登录 → 变成两个账号」这种事故。
+    public static func normalizeEmail(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// 邮箱格式校验。
+    ///
+    /// 刻意**不做**完整 RFC 5322 解析：那是几百行的正则，且判对判错都不影响
+    /// 「这封信能不能送到」。这里只要拦住明显不是邮箱的输入（没有 @、有空格的、
+    /// 域名没有点的），省掉一次没意义的往返即可——真正的权威判断是
+    /// 「用户能不能收到那 6 位验证码」。
+    public static func isValidEmail(_ value: String, maxLength: Int = 254) -> Bool {
+        let trimmed = normalizeEmail(value)
+        guard (6...maxLength).contains(trimmed.count) else { return false }
+        guard !trimmed.contains(" ") else { return false }
+        let pattern = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$"
+        return trimmed.range(of: pattern, options: .regularExpression) != nil
+    }
 }

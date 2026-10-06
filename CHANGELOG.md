@@ -63,6 +63,43 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `cloudUpgradeURL`；`TranslationLanguage` 新增 `promptName` 与 `targetChoices`
   （`auto` 只能作原文语言）。
 
+**云服务客户端（M4 第三批）**
+
+- 契约 `docs/cloud-api.md` v1 冻结：`POST /auth/email/send`、`POST /auth/email/verify`、
+  `GET /me`、`POST /translate`、`POST /webhooks/lemonsqueezy`；统一错误信封，
+  以及「**只有文本过境**」的铁律——`/translate` 请求体只有
+  `lines` / `source` / `target`，客户端用显式 CodingKeys 写死，并由测试断言。
+- `CloudServiceClient`：邮箱验证码登录、账号与额度查询、翻译代理；错误按语义分类
+  （401 未登录、402 额度用尽、429 限流、坏 JSON、5xx），传输层可注入因此全部离线可测。
+- `CloudSessionStore`：会话（令牌 + 到期时刻 + 账号快照）整体序列化后存钥匙串，
+  损坏自动清除；协议化以便测试注入内存实现（不碰真实钥匙串）。
+- `CloudAccountModel`：状态机（发码 → 验证 → 登录 → 刷新 / 退出）。
+  **401 视为「会话过期」并自动退回未登录**，而不是让之后每次请求都失败一次；
+  邮箱脱敏展示；「恢复订阅」就是用同一邮箱再登录一次，不另开凭据通道。
+- `QuotaPolicy`：免费额度按 **UTC+8 自然日**重置的纯计算（只用于展示，不参与记账），
+  与服务端 `src/quota.js` 用同一组时间戳交叉断言。
+- `CloudTranslationService`：`MangaTranslator` 的云端实现，与 BYOK 共用分块与提示词；
+  每次翻译回传「今天还剩几页」，界面额度实时更新而无需再发 `/me`。
+
+**云服务界面与充值入口（M4 第四批）**
+
+- `CloudAccountView`：状态（档位 / 额度 / 订阅有效期）、登录注册（邮箱 + 验证码）、
+  刷新、退出、「升级 Pro」= **打开官网购买页**（外部浏览器，带 `custom[user_id]`
+  便于服务端把订阅绑到账号）。App 内不出现收银台、不接任何支付 SDK。
+- 三处入口到位：设置 → 账号与云服务、设置 → 翻译 → 云服务、阅读器额度用尽横幅。
+
+**服务端与闭环自测（M4 第五批，仓库外）**
+
+- 服务端实现放在公开仓库**之外**的 `MangaTranslater-Cloud/`（《开发手册》7.1 要求
+  独立私有仓库）：Cloudflare Workers + D1 —— 邮箱验证码、HS256 JWT、额度记账、
+  DeepSeek 代理、Lemon Squeezy webhook（HMAC 验签 + 事件去重）。
+- `schema.sql` 只有五张表，**没有任何一列能装下原文 / 译文 / 图片 / 作品 URL**：
+  「只有文本过境」由表结构保证，并由测试断言钉死。
+- 闭环自测 20 条（`npm test`，用 `node:sqlite` 跑**真实 schema**）：
+  注册 → 额度 → 翻译扣额度 → 用尽被拒 → 下单 webhook → 权益升 Pro →
+  不再受每日限制 → 取消到期回落免费 → 跨自然日重置；外加验证码重放/过期、
+  发码限流、坏令牌、webhook 验签失败与重投幂等、上游条数不符（不扣额度）等失败路径。
+
 ### 🧪 测试 / Tests
 
 - `TranslationCoreTests`：竖排判定（含页面纵横比修正）、竖排布局（含退化输入）、
@@ -77,6 +114,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   翻页补队列、未开启时不翻译、缓存命中不重复花额度、磁盘缓存跨会话复用、
   条数不符与识别不到文字的失败横幅、**额度用尽走升级提示而非失败横幅**、
   未登录云服务的提示、退出重置、按作品清理缓存。
+- `CloudClientTests`：请求路径/方法/鉴权头、**`/translate` 请求体恰好只有三个字段**
+  且不含任何 URL 字样、错误语义映射（401/402/429/坏 JSON/5xx）、
+  邮箱规范化与校验、额度重置时刻（东八区自然日，含 UTC 日界不同的用例）、
+  剩余比例钳制与三态摘要。
+- `CloudAccountTests`：未登录/已登录开局、发码与校验的成功与失败、
+  验证码为空不发请求、刷新更新额度、**401 自动退回未登录并清会话**、
+  退出登录、额度回传按上限钳制、购买链接带账号 ID、
+  云端后端的错误映射与分块顺序、网络失败映射。
 
 ### 🛠 工具 / Tooling
 

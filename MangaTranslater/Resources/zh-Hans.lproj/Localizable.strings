@@ -276,3 +276,50 @@
 "cloud.upgrade" = "升级 Pro";
 "cloud.footer" = "云翻译服务由官方托管。App 内不接入任何支付，购买在官网页面上完成。";
 
+/* 云服务 · 账号与额度（M4 第三 / 四批） */
+
+"cloud.title" = "云服务";
+"cloud.section.status" = "状态";
+"cloud.section.upgrade" = "订阅";
+"cloud.section.about" = "说明";
+"cloud.status.signedOut" = "未登录（只能用自备密钥或设备端翻译）";
+"cloud.plan.free" = "免费额度";
+"cloud.plan.pro" = "Pro 订阅";
+"cloud.quota.remaining" = "今日剩余 %ld / %ld 页";
+"cloud.quota.unlimited" = "订阅用户不限量";
+"cloud.quota.exhausted" = "今日额度已用完，%@ 重置";
+"cloud.quota.unknown" = "未登录";
+"cloud.quota.resetFooter" = "免费额度按北京时间自然日重置（下一次 %@）。";
+"cloud.account.plan" = "当前档位";
+"cloud.account.quota" = "今日额度";
+"cloud.account.expires" = "订阅有效期至";
+"cloud.account.email" = "账号";
+"cloud.account.refresh" = "刷新状态";
+"cloud.account.signOut" = "退出登录";
+"cloud.account.footer" = "退出登录只会清掉这台设备上的登录状态，账号与订阅都保留；想回来时用同一个邮箱重新登录即可（也就是「恢复订阅」）。";
+"cloud.login.title" = "登录 / 注册";
+"cloud.login.email" = "邮箱";
+"cloud.login.sendCode" = "发送验证码";
+"cloud.login.code" = "6 位验证码";
+"cloud.login.verify" = "登录";
+"cloud.login.cancel" = "换一个邮箱";
+"cloud.login.codeSent" = "验证码已发往 %@，%ld 分钟内有效。";
+"cloud.login.codeFooter" = "去邮箱里看那 6 位数字。收不到就检查垃圾邮件，或者换一个邮箱重来。";
+"cloud.login.footer" = "第一次用这个邮箱就是注册，之后就是登录。没有密码要记——每次登录都用邮箱验证码。";
+"cloud.login.signedIn" = "已登录。";
+"cloud.login.signedOut" = "已退出登录。";
+"cloud.login.sessionExpired" = "登录状态已过期，请重新登录。";
+"cloud.upgradeFooter" = "购买与续费都在官网页面上完成（App 内不接入支付）。已有订阅的话，用购买时的同一个邮箱登录就会自动恢复。";
+"cloud.privacyNote" = "只把识别出的文字发给翻译服务，不发送图片，也不上传作品的地址。";
+
+"cloud.error.invalidEmail" = "邮箱格式看起来不对，检查一下再试。";
+"cloud.error.invalidCode" = "验证码不对或已经过期，重新获取一个。";
+"cloud.error.rateLimited" = "请求太频繁了，%ld 秒后再试。";
+"cloud.error.unauthorized" = "登录状态已失效，请重新登录。";
+"cloud.error.quotaExceeded" = "今日免费额度已用完（剩 %ld 页）。";
+"cloud.error.subscriptionRequired" = "云服务额度与订阅都已用尽。";
+"cloud.error.server" = "云服务返回错误：%@";
+"cloud.error.badResponse" = "云服务的响应看不懂（可能版本不匹配）。";
+"cloud.error.transport" = "连不上云服务：%@";
+"cloud.error.missingBaseURL" = "云服务地址没有配置或格式不对。";
+

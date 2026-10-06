@@ -91,6 +91,31 @@ protocol MangaTranslator: Sendable {
     ) async throws -> [String]
 }
 
+// MARK: - 分块
+
+/// 把一批文本切成定长块（保留顺序）。
+///
+/// 抽出来给所有后端共用：一页可能有几十行对白，整批发过去可能顶到上下文上限，
+/// 结果就是模型丢掉一部分、条数与输入不符而整页失败。
+/// 按块翻译再按原顺序拼起来，单块失败只影响该块。
+enum TranslationChunking {
+    /// 默认块大小（条）。
+    static let defaultSize = 40
+
+    static func chunks(of texts: [String], size: Int = defaultSize) -> [[String]] {
+        guard size > 0 else { return texts.isEmpty ? [] : [texts] }
+        guard !texts.isEmpty else { return [] }
+        var result: [[String]] = []
+        var index = 0
+        while index < texts.count {
+            let end = min(index + size, texts.count)
+            result.append(Array(texts[index..<end]))
+            index = end
+        }
+        return result
+    }
+}
+
 // MARK: - 自备密钥（OpenAI 兼容）
 
 /// 走 OpenAI 兼容 `/chat/completions` 的后端。
@@ -160,15 +185,7 @@ struct DeepSeekTranslator: MangaTranslator {
 
     /// 把输入切成定长块（保留顺序）。
     static func chunks(of texts: [String], size: Int) -> [[String]] {
-        guard size > 0, !texts.isEmpty else { return texts.isEmpty ? [] : [texts] }
-        var result: [[String]] = []
-        var index = 0
-        while index < texts.count {
-            let end = min(index + size, texts.count)
-            result.append(Array(texts[index..<end]))
-            index = end
-        }
-        return result
+        TranslationChunking.chunks(of: texts, size: size)
     }
 
     // MARK: 单块
