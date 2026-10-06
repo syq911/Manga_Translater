@@ -44,6 +44,11 @@
 - **外部实现的夹具优先**：验证 ZIP deflate 解压时，夹具由 Python `zipfile` 生成并
   base64 内联（`ZipDeflateTests.swift`）——用自己的编码器造夹具验证自己的解码器
   是自证循环，独立实现才有意义。
+- **能脱离 JS 就脱离 JS**：源的「返回值 → 模型」转换放在纯值类型
+  `SourceResponseDecoder` 里，24 个边界用例全部只吃 JSON 文本、秒级跑完；
+  真实 JS 只留给一个端到端套件（`SourceEndToEndTests`），
+  它跑的是 `docs/source-api.md` 里那份 canonical 示例源——
+  这样「文档示例能运行」是被 CI 证明的，而不是靠人工记得验证。
 - 套件名用中文短语描述被测对象：`@Suite("Cookie 存储")`。
 - 用例名描述**行为**而非实现：`@Test("未确认年龄时无法开启 NSFW 源")`。
 - 参数化用例优先用 `arguments:` 覆盖同类分支。

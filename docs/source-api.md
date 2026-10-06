@@ -7,10 +7,11 @@
 > **不提供、不收录、不分发任何源脚本**。源由第三方社区各自编写与托管。
 >
 > **实现状态标注**（阅读时请注意）：
-> - ✅ **已实现并冻结**：§3 仓库格式、§4 脚本与静态校验、§5 方法契约（静态预检部分）；
->   对应 `Packages/SourceEngine/Sources/SourceEngine/`。
-> - 🚧 **M2 实现中**：§7 桥接能力的运行期落地（JavaScriptCore 沙箱）、§8 登录收割。
->   接口形态已冻结，实现落地前源作者可先按本文件编写。
+> - ✅ **已实现并冻结**：§3 仓库格式、§4 脚本与静态校验、§5 方法契约、§7 桥接能力
+>   （JavaScriptCore 沙箱 + `net` / `html` / `json` / `cookies` / `prefs` / `log`）、
+>   §9 宿主错误语义；对应 `Packages/SourceEngine/Sources/SourceEngine/`。
+> - 🚧 **M2 进行中**：§8 登录收割（内嵌网页登录与 Cookie 交回宿主）。
+> - 📖 **宿主行为**：返回值的解码规则与「条目被跳过」的语义见 §9.1。
 
 ---
 
@@ -238,7 +239,7 @@ type Filter =
 ### 5.4 数据结构与宿主模型映射
 
 ```ts
-type MangaLite = { title: string; coverUrl?: string; url: string };
+type MangaLite = { title: string; coverUrl?: string; url: string; lastUpdated?: string };
 type Chapter   = { name: string; url: string; chapterNumber?: number; dateUpload?: string };
 type PageRef   = { url: string; headers?: Record<string, string> };
 ```
@@ -248,6 +249,15 @@ type PageRef   = { url: string; headers?: Record<string, string> };
 | `MangaLite` | `Manga` | `id = "<sourceID>|<url>"` |
 | `Chapter` | `Chapter` | `id = "<mangaID>|<url>"`；`dateUpload` 用 ISO8601 字符串 |
 | `PageRef` / `string` | `ComicPage` | `index` 由宿主按数组顺序赋值（从 0 开始） |
+
+**可选扩展字段**（`1.x` 内只增不改，缺省不影响旧源）：
+
+| 字段 | 类型 | 位置 | 说明 |
+|---|---|---|---|
+| `lastUpdated` | ISO8601 字符串 / 时间戳 | `MangaLite`、作品详情 | 「最近更新」排序用；缺失即不排序 |
+| `chapterNumber` | 数字或数字字符串 | `Chapter` | 两者都接受（`"12.5"` 也认） |
+| `genres` | 字符串数组**或**单个字符串 | 作品详情 | 单个字符串会被包成一个元素的数组 |
+| `status` | 字符串 | 作品详情 | 大小写不敏感；`finished` / `complete` 等价于 `completed`，认不出的值按 `unknown` 处理 |
 
 ---
 
@@ -266,17 +276,19 @@ type PageRef   = { url: string; headers?: Record<string, string> };
 
 ---
 
-## 7. 桥接能力（宿主注入，接口已冻结）
+## 7. 桥接能力（宿主注入）
 
 | 调用 | 说明 | 状态 |
 |---|---|---|
-| `net.get(url, headers?)` | 自动带该源 Cookie、受 `rateLimitMs` 节流、15 秒超时 | 🚧 M2 |
-| `net.post(url, body, headers?)` | 同上 | 🚧 M2 |
-| `html.parse(body)` | 返回可查询对象（CSS 选择器），用于 HTML 站点 | 🚧 M2 |
-| `json.parse(text)` | 原生 JSON 解析 | 🚧 M2 |
-| `cookies.get(name)` / `cookies.set(name, value)` | 仅能读写**本来源**的 Cookie 容器 | 🚧 M2 |
-| `log(message)` | 写入 App 诊断日志（排查用） | 🚧 M2 |
-| `source.getPreference(key)` | 读取用户在源设置页填写的值 | 🚧 M2 |
+| `net.get(url, headers?)` | 自动带该源 Cookie、受 `rateLimitMs` 节流、15 秒超时 | ✅ |
+| `net.post(url, body, headers?)` | 同上；默认 `Content-Type: application/x-www-form-urlencoded`，可用 headers 覆盖 | ✅ |
+| `net.fetch(url, { method, headers, body, contentType })` | 上面两个的底层形式（`get` / `post` 是它的薄包装） | ✅ |
+| `html.parse(body)` | 返回可查询对象（CSS 选择器），用于 HTML 站点 | ✅ |
+| `json.parse(text)` / `json.stringify(value)` | 与原生 `JSON` 同义，仅为对齐契约名字 | ✅ |
+| `cookies.get(url, name)` / `cookies.set(url, values)` | 仅能读写**本来源**的 Cookie 容器 | ✅ |
+| `log.info(msg)` / `log.warn(msg)` / `log.error(msg)` | 写入 App 诊断日志（排查用） | ✅ |
+| `prefs.get(key, fallback)` / `prefs.set(key, value)` | 读取/写入用户在源设置页填写的值（按来源隔离） | ✅ |
+| `source.getPreference(key, fallback)` | 同 `prefs.get`；宿主在脚本求值后为源自己声明的 `source` 对象补上该方法 | ✅ |
 
 **沙箱约束**：不能访问文件系统、钥匙串、其他源的数据；不能发起未经 `net` 的请求；
 不能动态加载或执行代码（见 §4.2）。
@@ -309,6 +321,32 @@ type PageRef   = { url: string; headers?: Record<string, string> };
 
 **容错要求**：单个字段缺失应尽量给出合理缺省（如无 `coverUrl`），
 而不是整次调用失败。
+
+### 9.1 宿主解码时的具体取舍（照此写最不容易掉数据）
+
+宿主把返回值解码成模型时遵循下表。**整份结构不可用**才报 `invalidResponse`；
+单条数据有问题时丢弃该条并记诊断日志（设置 → 诊断日志可见），
+而不是让整个列表打不开。
+
+| 情况 | 宿主行为 |
+|---|---|
+| 顶层为 `null` | 视为空结果（列表为空 / 章节约空 / 页面为空 / 无筛选） |
+| 列表顶层是裸数组 | 按 `{ mangas: [...], hasNextPage: false }` 处理 |
+| 条目缺 `title` | 用 `url` 的路径末段兜底（百分号转义会解码），全空则显示「未命名」 |
+| 条目缺 `url` / `url` 为空 | **丢弃该条**（没有地址就无法去重与跳转） |
+| `url` 是相对地址 | 依次用「当前页面地址 → 来源 `baseUrl`」补全为绝对地址 |
+| `url` 不是 http(s)（如 `javascript:`、`data:`） | 丢弃该条 |
+| `url` 是无法补全的自定义标识（如 `series:123`） | 作品/章节保留原样；**图片地址必须可解析**，否则丢弃该页 |
+| `hasNextPage` 缺失或非布尔 | 视为 `false`；返回空数组时强制为 `false`（避免死循环） |
+| `chapterNumber` 是 `"12.5"` 这类字符串 | 按数字解析；解析不了视为无编号 |
+| `dateUpload` 是 `yyyy-MM-dd` / 秒或毫秒时间戳 | 都接受；认不出则视为无日期 |
+| `status` 认不出 | 按 `unknown` 处理，详情页照常打开 |
+| `getFilters` 里 `key` 重复、类型未知、`select`/`sort` 没有候选项 | 丢弃该筛选项 |
+| `getPageList` 元素同时有 `string` 与 `{ url, headers }` | 都接受；`headers` 只保留字符串键值 |
+
+**注意**：`index` 由宿主按**有效页面**的顺序从 0 重新编号。若你返回的地址里有
+无法使用的一项，它会消失、后续页序号前移——这不是宿主「改了顺序」，
+而是那一页本来就没有可用地址。
 
 ---
 
@@ -460,6 +498,8 @@ function getFilters() {
    §4 全部通过；失败时诊断日志（设置 → 诊断日志）会给出具体拒绝原因。
 2. 仓库发布前，可用本项目的测试夹具方式自查：
    `MangaTranslaterTests/SourceAPIDocTests.swift` 演示了如何对一份脚本做
-   「静态校验 + 必需方法预检 + 元信息字段断言」。
+   「静态校验 + 必需方法预检 + 元信息字段断言」；
+   `MangaTranslaterTests/SourceRunnerTests.swift` 里的端到端套件则演示了
+   如何用**一份 HTML 夹具**驱动全部契约方法，验证返回值能被宿主正确解码。
 3. 修改 `docs/source-api.md` 中的示例后，请同步更新测试夹具，
    否则 `tools/preflight.sh` 的文档同步检查会失败。

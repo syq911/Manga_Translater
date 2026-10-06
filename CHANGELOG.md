@@ -184,8 +184,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **`JSSourceRuntime`**（`SourceRuntimeExecuting` 的 M2 实现）：
   - 每个源一个 `JSVirtualMachine`，沙箱互不可见；`load` 即替换沙箱
   - 装载前二次静态校验（体积 / 禁用 API / 必需方法 / id 一致性）
-  - `call` 通过 `callAsyncJavaScript` 支持脚本里的 `async/await`
-  - 调用超时用任务组竞速：超时后调用方立即返回（不阻塞 UI）
+  - **自建 Promise 桥**支持脚本里的 `async/await`：把 async 调用包成 Promise，
+    再挂 `then`/`catch` 取结果（该 SDK 没有 `callAsyncJavaScript`，
+    这条路也让我们完全掌握结算点、错误信息与取消）
+  - 调用超时用「detached 工作 + 独立计时器 + 一次性结果盒」竞速：
+    超时后调用方**立即**返回，不等待 JS 侧结束（任务组必须等所有子任务，
+    实测出现过单次调用拖到 28 秒并连累同套件其他用例）
 - **四个桥接 API**（JS 侧只看到普通对象，Swift 侧只传字符串）：
   `net.fetch`（自动带该源 Cookie + 节流 + 体积上限）、`cookies.get/set`、
   `prefs.get/set`（键按来源隔离）、`log.info/warn/error`（截断、不落内容）
@@ -216,6 +220,64 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **选择器非法不致命**：返回错误对象，JS 侧记日志并给出空集合
 - `html()` 按需序列化（避免每次查询都序列化整棵子树）
 - 与 `docs/source-api.md` 的契约示例逐字对应，避免文档与实现分叉
+
+### ✨ 新增 / Added（M2 第四批：响应解码 + 类型化门面）
+
+- **`SourceResponseDecoder`**（`Packages/SourceEngine`）：契约返回值 → 宿主模型的
+  **纯解码层**，不依赖 JavaScriptCore，可以脱离 JS 单测。容错策略集中于此：
+  - 地址：相对地址按「页面地址 → 来源 `baseUrl`」依次补全；协议相对 `//host/path`
+    借用基地址协议；非 http(s)（`javascript:` / `data:` / `blob:`）一律拒绝；
+    作品/章节地址允许保留**来源自定义标识**（如 `series:123`），图片地址不允许
+  - 弱类型字段：`status` 容错映射（`FINISHED`→`completed`、认不出→`unknown`）、
+    `genres` 接受单字符串或数组、`chapterNumber` 接受数字与数字字符串、
+    日期支持 ISO8601（含/不含毫秒）/`yyyy-MM-dd`/秒·毫秒时间戳
+  - 条目容错：缺 `url` 的条目**跳过而不是整次失败**，被丢弃的条数经
+    `SourceDecodeOutcome.skippedItems` 回传给上层写诊断日志
+- **`SourceRunner`**：actor 门面，把「调用脚本 + 解码」合成一次可读调用
+  （`popularManga` / `latestUpdates` / `search` / `mangaDetails` / `chapterList` /
+  `pageList` / `filters`），并承担三类降级与收口：
+  - 参数按契约以**独立 JSON 片段**编码（页码是数字字面量、查询串只编码一层、
+    筛选是对象），不再让 `JSONSerialization` 把参数多包一层引号
+  - 可选方法缺失时降级：`getLatestUpdates` 回退热门列表、`getFilters` 返回空数组
+  - 错误语义统一：运行时的 `SourceRunnerError` 原样传播，外来错误包装为
+    `executionFailed`，`CancellationError` 映射为 `cancelled`
+- **`AppCore.SourceFilter`**：契约 §5.2 的筛选项模型（`text`/`checkbox`/`select`/`sort`），
+  含 `defaultValue`、`defaultValues()` 与 `sanitize(_:)`（源升级删掉筛选项后，
+  把用户上次留下的旧键裁剪掉再发请求）
+
+### 🔧 修复 / Fixed（M2 第四批：补齐契约 §7 里未落地的桥接）
+
+- **`net.get(url, headers?)` / `net.post(url, body, headers?)`**：契约 §7 冻结、
+  §12 的示例源也在用，但此前只实现了 `net.fetch`。**任何照文档写的源都会在
+  运行期抛 `net.get is not a function`**——由端到端用例抓到并补上。
+- **`json.parse` / `json.stringify`**：按契约名字显式对齐（原生 `JSON` 一直在，
+  但源作者照文档写就会踩空）。
+- **`source.getPreference(key, fallback)`**：`source` 是脚本自己声明的对象，
+  宿主在桥接阶段拿不到（桥接早于脚本求值，且顶层 `const` 挂在全局词法环境、
+  不是 `globalThis` 属性）。改为**脚本求值之后**用另一段脚本在同一词法环境里补齐，
+  并对「对象被冻结 / 没声明 source」做了兜底：补齐失败只写日志，不影响载入。
+
+### 📖 文档 / Docs（M2 第四批）
+
+- `docs/source-api.md` §7 的桥接能力由 🚧 更新为 ✅ 已实现，并补上 §5.4 的
+  `lastUpdated` 可选字段与「条目被跳过时的行为」说明。
+- `docs/architecture.md` 新增 §3.14（响应解码）与 §3.15（类型化门面），
+  并修正依赖表：HTML 解析为**零依赖自研**，不再计划引入 SwiftSoup。
+
+### 🧪 测试 / Tests（新增 4 个套件 / 58 个用例）
+
+- `SourceResponseDecoderTests`（24 例）：地址补全与 scheme 拒绝、自定义标识、
+  裸数组/`null` 顶层、字段缺失与类型不符的容错、日期与状态映射、
+  筛选项去重与候选项校验、丢弃计数在 `map` 后仍保留
+- `SourceRunnerTests`（17 例）：参数编码（含「只编码一层」与空筛选 `{}`）、
+  未载入报错、载入失败传播、`teardown` 后可重载、可选方法降级、
+  丢弃项写日志、外来错误被包装
+- `SourceEndToEndTests`（10 例）：用真实 `JSSourceRuntime` 跑
+  **`docs/source-api.md` 的 canonical 示例源**（与文档逐字一致），
+  断言五个必需方法与 `getFilters` 全部跑通、地址与模型字段正确——
+  这份用例的存在意味着「文档里的示例确实可运行」
+- `JSSourceBridgeTests`（7 例）：`net.get`/`net.post`/`json.parse`/`source.getPreference`
+  逐个钉住，含请求描述解码与「source 被冻结仍能载入」
 
 ### 📖 文档 / Docs
 

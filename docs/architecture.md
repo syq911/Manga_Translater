@@ -246,6 +246,42 @@ doc.select("a.next").length > 0
 - `html()`（序列化）按需通过 `htmlOuter` 取，元素列表的 JSON 里不带它——
   否则每次查询都要序列化整棵子树。
 
+### 3.14 响应解码：把「任意 JSON」收束成模型（M2 第四批）
+
+脚本返回的是**任意 JSON**（源作者写的，契约只是约束），模型层却要求
+「主键稳定、字段有界、枚举合法」。中间必须有一层专职转换，即
+`SourceResponseDecoder`——它**不依赖 JavaScriptCore**，只吃 JSON 文本。
+
+三个设计取舍：
+
+- **容错集中在解码层，而不是散落在 UI**。`status` 认不出按 `unknown`、
+  日期支持四种写法、`genres` 收单个字符串——这些「宽容」如果写在界面里，
+  每个界面都要重复一遍，且行为会逐渐分叉。
+- **丢弃要计数，不能静默**。缺 `url` 的条目必须丢（没有地址就无法生成主键），
+  但「丢了 3 条」这件事要经 `SourceDecodeOutcome.skippedItems` 回到上层写日志。
+  静默丢数据比报错更危险：用户只会觉得「这个源少了几话」。
+- **地址补全有优先级**：`页面地址 → 来源 baseUrl`。章节页里的 `1.jpg` 应该
+  相对**章节页**解析（HTML 语义如此），源没写 `baseUrl` 时再退回相对来源根。
+  作品/章节地址允许保留「来源自定义标识」（如 `series:123`）——契约允许
+  `url` 不是真 URL；**图片地址不允许**，取不到内容留着只会是破图。
+
+### 3.15 类型化门面：`SourceRunner` 负责降级，运行时只负责跑（M2 第四批）
+
+`JSSourceRuntime` 只知道「怎么跑 JS」，`SourceResponseDecoder` 只知道
+「怎么变模型」，`SourceRunner` 是粘合处，也是**降级策略的唯一落点**：
+
+- 参数按契约以**独立 JSON 片段**编码（页码是数字字面量、查询串只编码一层）；
+  把整个参数数组交给 `JSONSerialization` 会多包一层引号，源拿到
+  `"\"query\""` —— 实测踩过。
+- 可选方法缺失时降级：`getLatestUpdates` 回退热门列表、`getFilters` 返回空数组。
+  判断依据是**装载时的静态预检结果**，而不是「调用失败后再猜」——
+  后者要靠匹配错误文本，脆弱且会掩盖真实错误。
+- 错误语义统一：运行时的 `SourceRunnerError` 原样传播（保留 `invalidResponse`
+  与 `executionTimeout` 的区别），外来错误包装为 `executionFailed`，
+  `CancellationError` 映射为 `cancelled`。
+- 它是 `actor`：同一来源的调用天然串行。JS 上下文不可重入，并发调用同一个源
+  只会让状态互相打架；要并行就为每个来源各建一个 runner。
+
 
 ## 4. 目录结构
 
@@ -270,7 +306,7 @@ MangaTranslater/
 | 依赖 | 用途 | 许可证 | 状态 |
 |---|---|---|---|
 | GRDB.swift | 本地数据库（书架 / 历史 / 下载） | MIT | **已引入**（`Packages/AppDatabase`，`from: 7.11.0`） |
-| SwiftSoup | 源脚本 HTML 解析桥 | MIT | 计划于 M2 引入 |
+| SwiftSoup | 源脚本 HTML 解析桥 | MIT | **不引入**：HTML 解析与 CSS 选择器已零依赖自研（见 §3.12），少一个依赖就少一份供应链风险 |
 
 引入新依赖前请同步更新本表、`NOTICE` 与 `README`。
 
