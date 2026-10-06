@@ -77,9 +77,10 @@ struct DemoRepositoryTests {
         )
 
         let pool = SourceRuntimePool(store: store) { _ in
+            // 实参顺序必须与 init 声明一致（configuration 在前）
             JSSourceRuntime(
-                transport: pageTransport,
-                configuration: SourceRuntimeConfiguration(callTimeoutSeconds: 10)
+                configuration: SourceRuntimeConfiguration(callTimeoutSeconds: 10),
+                transport: pageTransport
             )
         }
 

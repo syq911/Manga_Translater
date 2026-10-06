@@ -158,7 +158,13 @@ def collect_inits(files):
 
 
 def collect_call_labels(code, type_name):
-    """找出 `TypeName(` 调用的实参标签集合；返回 [set(labels)]。"""
+    """找出 `TypeName(` 调用的实参标签；返回 [[按出现顺序的标签]]。
+
+    顺序很重要：Swift 要求实参顺序与声明一致，
+    `JSSourceRuntime(transport: t, configuration: c)` 会被编译器拒绝
+    「argument 'configuration' must precede argument 'transport'」
+    （实测踩过一轮 CI），因此这里保留顺序供后面校验。
+    """
     calls = []
     for match in re.finditer(r"\b" + re.escape(type_name) + r"\s*\(", code):
         # 排除声明本身（`init(` / 类型定义行）
@@ -168,7 +174,7 @@ def collect_call_labels(code, type_name):
         inner, _ = extract_paren_group(code, match.end() - 1)
         if inner is None:
             continue
-        labels = set()
+        labels = []
         for chunk in split_top_level(inner):
             piece = chunk.strip()
             depth = 0
@@ -180,10 +186,22 @@ def collect_call_labels(code, type_name):
                 elif ch == ":" and depth == 0:
                     label = piece[:index].strip()
                     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", label):
-                        labels.add(label)
+                        labels.append(label)
                     break
         calls.append(labels)
     return calls
+
+
+def out_of_order(provided, declared):
+    """`provided` 是否为 `declared` 的**顺序子序列**；不是则返回首个错位的标签。"""
+    index = 0
+    for label in provided:
+        while index < len(declared) and declared[index] != label:
+            index += 1
+        if index == len(declared):
+            return label
+        index += 1
+    return None
 
 
 def check_mutating_calls_inside_expect(files):
@@ -236,14 +254,26 @@ def main():
             required = {label for label, has_default in params if label and not has_default}
             if not required:
                 continue
+            declared_order = [label for label, _ in params if label]
             for labels in collect_call_labels(code, type_name):
                 checked += 1
-                missing = required - labels
+                relative = os.path.relpath(path).replace("\\", "/")
+                missing = required - set(labels)
                 if missing:
                     problems.append(
                         (
-                            os.path.relpath(path).replace("\\", "/"),
+                            relative,
                             f"{type_name}(...) 缺少必需参数：{', '.join(sorted(missing))}",
+                        )
+                    )
+                # 顺序也要对：Swift 不允许「声明是 a,b 却写成 b,a」
+                misplaced = out_of_order(labels, declared_order)
+                if misplaced:
+                    problems.append(
+                        (
+                            relative,
+                            f"{type_name}(...) 参数顺序与声明不符：实参以 `{misplaced}` 出现在 "
+                            f"不应该的位置；声明顺序为 ({', '.join(declared_order)})",
                         )
                     )
 
