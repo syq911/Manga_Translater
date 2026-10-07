@@ -401,3 +401,15 @@
 "verify.kind.captcha" = "Captcha";
 "verify.kind.cloudflare" = "Cloudflare check";
 "verify.kind.generic" = "Manual verification";
+
+/* 注销账号（M5 合规项） */
+
+"cloud.delete.action" = "Delete account";
+"cloud.delete.confirm.action" = "Delete permanently";
+"cloud.delete.confirm.message" = "Type your email address to confirm. This deletes the account on the server; signing out is a different, reversible action.";
+"cloud.delete.confirm.placeholder" = "Your email address";
+"cloud.delete.confirm.title" = "Delete account?";
+"cloud.delete.done" = "Account deleted.";
+"cloud.delete.footer" = "Deleting the account removes it, its quota counters and its subscription records from the server within 30 days. This cannot be undone — to come back later, sign in again with the same email to create a fresh account.";
+"cloud.error.emailMismatch" = "The email you typed does not match this account.";
+"cloud.section.delete" = "Delete account";

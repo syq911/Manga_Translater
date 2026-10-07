@@ -146,6 +146,8 @@ enum CloudError: LocalizedError, Equatable {
     case invalidEmail
     /// 验证码错误或已过期。
     case invalidCode
+    /// 注销账号时输入的确认邮箱与账号不符。
+    case emailMismatch
     /// 请求过于频繁（含服务端给出的建议等待秒数）。
     case rateLimited(retryAfterSeconds: Int)
     /// 未登录或令牌过期。
@@ -169,6 +171,8 @@ enum CloudError: LocalizedError, Equatable {
             return L("cloud.error.invalidEmail")
         case .invalidCode:
             return L("cloud.error.invalidCode")
+        case .emailMismatch:
+            return L("cloud.error.emailMismatch")
         case let .rateLimited(seconds):
             return String(format: L("cloud.error.rateLimited"), seconds)
         case .unauthorized:

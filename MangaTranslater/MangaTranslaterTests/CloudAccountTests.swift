@@ -98,6 +98,86 @@ struct CloudAccountTests {
         #expect(model.entitlementDescription != nil)
     }
 
+    // MARK: 注销账号
+
+    @Test("注销账号：确认邮箱不符时什么都不做（连请求都不发）")
+    func deleteAccountRejectsMismatchedEmail() async throws {
+        let (settings, defaults, suite) = try Self.makeSettings()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (model, transport, store) = Self.makeModel(
+            settings: settings,
+            outcomes: [CloudFixture.json(["ok": true], statusCode: 200)],
+            session: CloudFixture.session()
+        )
+
+        let ok = await model.deleteAccount(email: "someone-else@example.com")
+
+        #expect(!ok)
+        #expect(model.notice == CloudError.emailMismatch.errorDescription)
+        #expect(transport.requestCount == 0, "客户端应当先拦下来，省一次往返")
+        #expect(model.isSignedIn, "确认失败不能把会话也清掉")
+        #expect(store.load() != nil)
+    }
+
+    @Test("注销账号：邮箱大小写与空白不影响判定")
+    func deleteAccountNormalizesEmail() async throws {
+        let (settings, defaults, suite) = try Self.makeSettings()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (model, transport, store) = Self.makeModel(
+            settings: settings,
+            outcomes: [CloudFixture.json(["ok": true, "deleted": true], statusCode: 200)],
+            session: CloudFixture.session()
+        )
+
+        let ok = await model.deleteAccount(email: "  Reader@Example.COM  ")
+
+        #expect(ok)
+        let body = try #require(transport.requests.first?.httpBody)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: String])
+        #expect(json["email"] == "reader@example.com", "发给服务端的必须是规范化后的邮箱")
+        #expect(json.keys.sorted() == ["email"], "注销请求体只有 email 一个字段")
+        #expect(!model.isSignedIn, "账号已删，本机会话必须一起清掉")
+        #expect(store.load() == nil)
+        #expect(model.notice == L("cloud.delete.done"))
+    }
+
+    @Test("注销账号：令牌过期（401）时退回未登录态")
+    func deleteAccountHandlesExpiredToken() async throws {
+        let (settings, defaults, suite) = try Self.makeSettings()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (model, _, store) = Self.makeModel(
+            settings: settings,
+            outcomes: [CloudFixture.json(["error": "unauthorized"], statusCode: 401)],
+            session: CloudFixture.session()
+        )
+
+        let ok = await model.deleteAccount(email: "reader@example.com")
+
+        #expect(!ok)
+        #expect(!model.isSignedIn)
+        #expect(store.load() == nil)
+        #expect(model.notice == L("cloud.login.sessionExpired"))
+    }
+
+    @Test("注销账号：服务端报邮箱不符时按「不符」提示，不谎报成功")
+    func deleteAccountSurfacesServerMismatch() async throws {
+        let (settings, defaults, suite) = try Self.makeSettings()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (model, _, store) = Self.makeModel(
+            settings: settings,
+            outcomes: [CloudFixture.json(["error": "email_mismatch"], statusCode: 400)],
+            session: CloudFixture.session()
+        )
+
+        // 客户端与账号一致，但服务端说不对（例如服务端记录已变）→ 以服务端为准
+        let ok = await model.deleteAccount(email: "reader@example.com")
+
+        #expect(!ok)
+        #expect(model.notice == CloudError.emailMismatch.errorDescription)
+        #expect(model.isSignedIn, "没删成功就不能清会话")
+        #expect(store.load() != nil)
+    }
+
     @Test("订阅档的额度摘要是「不限量」")
     func proQuotaSummary() throws {
         let (settings, defaults, suite) = try Self.makeSettings()

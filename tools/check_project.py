@@ -99,10 +99,44 @@ def check_packages(errors, info):
         path = os.path.join("Packages", name)
         if not os.path.isdir(path):
             continue
-        if not os.path.exists(os.path.join(path, "Package.swift")):
+        manifest = os.path.join(path, "Package.swift")
+        if not os.path.exists(manifest):
             errors.append(f"Packages/{name} 缺少 Package.swift")
+        else:
+            check_package_localization(errors, name, path, manifest)
         if text and f"relativePath = Packages/{name};" not in text:
             errors.append(f"Packages/{name} 未登记进 pbxproj")
+
+
+def check_package_localization(errors, name, path, manifest):
+    """
+    包内有 `.lproj` 本地化资源时，`Package.swift` 必须声明 `defaultLocalization`。
+
+    起因（CI 实测）：给 AppCore 加了 `Resources/{en,zh-Hans}.lproj/Localizable.strings`
+    并声明 `resources:` 之后，SwiftPM 直接拒绝解析依赖图：
+
+        manifest property 'defaultLocalization' not set;
+        it is required in the presence of localized resources
+
+    这个错误发生在 `Resolve Swift packages` 阶段，**编译都没走到**，
+    而且报的是 manifest 的问题、指向的是包清单而不是那个 `.lproj` 目录，
+    靠读报错很难联想到「我加了本地化资源」。所以在这里提前拦。
+    """
+    has_lproj = False
+    for dirpath, dirnames, _ in os.walk(path):
+        if any(d.endswith(".lproj") for d in dirnames):
+            has_lproj = True
+            break
+    if not has_lproj:
+        return
+    manifest_text = io.open(manifest, encoding="utf-8").read()
+    # 用「参数名 + 冒号」而不是包含子串来判断：包含子串会把
+    # `defaultLocalizationXXX:` 这种写错的参数名也当成合规（反向验证时踩过）。
+    if not re.search(r"\bdefaultLocalization\s*:", manifest_text):
+        errors.append(
+            f"Packages/{name} 含 .lproj 本地化资源，但 Package.swift 未声明 "
+            f"defaultLocalization（SwiftPM 会直接拒绝解析依赖图）"
+        )
 
 
 def check_config_files(errors):

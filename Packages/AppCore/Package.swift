@@ -6,6 +6,11 @@ import PackageDescription
 
 let package = Package(
     name: "AppCore",
+    // 只要包里有本地化资源（`.lproj`），SwiftPM **强制**要求声明默认语言，
+    // 否则连依赖图都解析不出来（CI 报 "manifest property 'defaultLocalization'
+    // not set; it is required in the presence of localized resources"，
+    // 而且失败发生在 Resolve Swift packages 这一步，连编译都没走到）。
+    defaultLocalization: "en",
     platforms: [
         .iOS("18.0")
     ],

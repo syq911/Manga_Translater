@@ -102,6 +102,19 @@ struct CloudServiceClient: Sendable {
         return try decode(data)
     }
 
+    // MARK: - 注销账号
+
+    /// 注销账号。
+    ///
+    /// 与「退出登录」是两件事：退出登录只清本机会话（可用同一邮箱重新登录恢复），
+    /// 注销是**服务端删号**——账号、额度计数、订阅权益一并删除，不可撤销。
+    /// 因此请求体里必须再带一次邮箱，与服务端记录的邮箱一致才执行
+    /// （拿着令牌的第三方不该能一键毁号）。
+    func deleteAccount(email: String, token: String) async throws {
+        let body = try encode(["email": email])
+        _ = try await perform(path: "/auth/delete", method: "POST", body: body, token: token)
+    }
+
     // MARK: - 翻译
 
     /// 走云端代理翻译一批文本。
@@ -212,6 +225,9 @@ struct CloudServiceClient: Sendable {
         }
         if status == 400, code == "invalid_code" {
             return .invalidCode
+        }
+        if status == 400, code == "email_mismatch" {
+            return .emailMismatch
         }
         if status == 429 {
             return .rateLimited(retryAfterSeconds: max(1, envelope?.retryAfterSeconds ?? 60))

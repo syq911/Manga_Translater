@@ -32,6 +32,7 @@ final class CloudAccountModel {
         case sendingCode
         case verifying
         case refreshing
+        case deleting
     }
 
     private(set) var session: CloudSession?
@@ -182,6 +183,45 @@ final class CloudAccountModel {
             signOut(notice: L("cloud.login.sessionExpired"))
         } catch {
             notice = CloudAccountModel.message(for: error)
+        }
+    }
+
+    /// 注销账号（**服务端删号**，不可撤销）。
+    ///
+    /// - Parameter email: 用户重新输入的邮箱，必须与当前账号一致；
+    ///   这是防「令牌被盗后一键毁号」的二次确认，服务端也会再校验一次。
+    /// - Returns: 是否成功。
+    @discardableResult
+    func deleteAccount(email: String) async -> Bool {
+        guard let current = session else {
+            notice = CloudError.unauthorized.errorDescription
+            return false
+        }
+        let typed = ModelValidation.normalizeEmail(email)
+        let actual = ModelValidation.normalizeEmail(account?.email ?? "")
+        guard !typed.isEmpty, typed == actual else {
+            // 客户端先拦一道：省一次往返，也避免把「填错了」报成「服务端错误」。
+            notice = CloudError.emailMismatch.errorDescription
+            return false
+        }
+        step = .deleting
+        defer { step = .idle }
+        do {
+            try await client.deleteAccount(email: typed, token: current.token)
+            // 账号没了，本机会话必须一起清掉：留着它只会让每个请求失败一次。
+            sessionStore.clear()
+            session = nil
+            account = nil
+            pendingEmail = nil
+            codeExpiresInSeconds = nil
+            notice = L("cloud.delete.done")
+            return true
+        } catch CloudError.unauthorized {
+            signOut(notice: L("cloud.login.sessionExpired"))
+            return false
+        } catch {
+            notice = CloudAccountModel.message(for: error)
+            return false
         }
     }
 

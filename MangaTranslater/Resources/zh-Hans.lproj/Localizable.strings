@@ -401,3 +401,15 @@
 "verify.kind.captcha" = "人机验证";
 "verify.kind.cloudflare" = "Cloudflare 校验";
 "verify.kind.generic" = "人工验证";
+
+/* 注销账号（M5 合规项） */
+
+"cloud.delete.action" = "注销账号";
+"cloud.delete.confirm.action" = "永久注销";
+"cloud.delete.confirm.message" = "请输入你的邮箱以确认。这会删除服务端的账号；「退出登录」是另一件事，可以随时用同一邮箱回来。";
+"cloud.delete.confirm.placeholder" = "你的邮箱地址";
+"cloud.delete.confirm.title" = "确定要注销账号吗？";
+"cloud.delete.done" = "账号已注销。";
+"cloud.delete.footer" = "注销会把账号、额度计数与订阅记录从服务端删除（30 天内完成），且不可撤销。以后想回来，用同一个邮箱重新登录即可注册一个新账号。";
+"cloud.error.emailMismatch" = "输入的邮箱与当前账号不一致。";
+"cloud.section.delete" = "注销账号";

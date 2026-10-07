@@ -23,6 +23,9 @@ struct CloudAccountView: View {
 
     @State private var email = ""
     @State private var code = ""
+    /// 注销账号的二次确认（要用户把邮箱再打一遍）。
+    @State private var isConfirmingDeletion = false
+    @State private var deletionEmail = ""
 
     private var model: CloudAccountModel { environment.cloud }
     private var settings: AppSettings { environment.settings }
@@ -33,6 +36,7 @@ struct CloudAccountView: View {
             if model.isSignedIn {
                 accountSection
                 upgradeSection
+                deletionSection
             } else {
                 loginSection
                 upgradeSection
@@ -42,6 +46,19 @@ struct CloudAccountView: View {
         .navigationTitle(L("cloud.title"))
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.refresh() }
+        .alert(L("cloud.delete.confirm.title"), isPresented: $isConfirmingDeletion) {
+            TextField(L("cloud.delete.confirm.placeholder"), text: $deletionEmail)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button(L("common.cancel"), role: .cancel) { deletionEmail = "" }
+            Button(L("cloud.delete.confirm.action"), role: .destructive) {
+                let typed = deletionEmail
+                deletionEmail = ""
+                Task { _ = await model.deleteAccount(email: typed) }
+            }
+        } message: {
+            Text(L("cloud.delete.confirm.message"))
+        }
         .alert(L("common.notice"), isPresented: Binding(
             get: { model.notice != nil },
             set: { if !$0 { model.clearNotice() } }
@@ -145,6 +162,24 @@ struct CloudAccountView: View {
             Text(L("cloud.login.title"))
         } footer: {
             Text(model.isAwaitingCode ? L("cloud.login.codeFooter") : L("cloud.login.footer"))
+        }
+    }
+
+    // MARK: 注销账号
+
+    /// 注销与「退出登录」放在相邻两处，但文案必须把差别说清楚：
+    /// 一个是清本机、一个是删服务端，混起来会让用户误删。
+    private var deletionSection: some View {
+        Section {
+            Button(L("cloud.delete.action"), role: .destructive) {
+                deletionEmail = ""
+                isConfirmingDeletion = true
+            }
+            .disabled(model.isBusy)
+        } header: {
+            Text(L("cloud.section.delete"))
+        } footer: {
+            Text(L("cloud.delete.footer"))
         }
     }
 

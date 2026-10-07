@@ -182,6 +182,45 @@ struct CloudClientTests {
         }
     }
 
+    // MARK: 注销账号
+
+    @Test("注销账号：打到 /auth/delete，带 Bearer 令牌，请求体只有 email")
+    func deleteAccountRequestShape() async throws {
+        let (client, transport) = CloudFixture.client([
+            CloudFixture.json(["ok": true, "deleted": true])
+        ])
+        try await client.deleteAccount(email: "reader@example.com", token: "token-abc")
+
+        let request = try #require(transport.requests.first)
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://cloud.example.com/auth/delete")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer token-abc")
+
+        let body = try #require(request.httpBody)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: String])
+        #expect(json == ["email": "reader@example.com"])
+    }
+
+    @Test("注销账号：400 email_mismatch → emailMismatch（不当成通用服务端错误）")
+    func deleteAccountMapsEmailMismatch() async {
+        let (client, _) = CloudFixture.client([
+            CloudFixture.json(["error": "email_mismatch", "message": "nope"], statusCode: 400)
+        ])
+        await expectThrowsAsync(CloudError.emailMismatch) {
+            try await client.deleteAccount(email: "other@example.com", token: "token-abc")
+        }
+    }
+
+    @Test("注销账号：401 → unauthorized（界面据此退回未登录）")
+    func deleteAccountMapsUnauthorized() async {
+        let (client, _) = CloudFixture.client([
+            CloudFixture.json(["error": "unauthorized"], statusCode: 401)
+        ])
+        await expectThrowsAsync(CloudError.unauthorized) {
+            try await client.deleteAccount(email: "reader@example.com", token: "stale")
+        }
+    }
+
     // MARK: 翻译（铁律）
 
     @Test("翻译请求体只含 lines / source / target 三个字段")
