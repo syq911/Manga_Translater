@@ -61,13 +61,13 @@ struct CookieJarTests {
     @Test("空名 / 含分隔符的名称被拒绝")
     func rejectsInvalidNames() {
         let jar = CookieJar()
-        expectThrows(AppError.invalidInput("Cookie 名称不能为空")) {
+        expectThrows(AppError.invalidInput(Copy.text("error.cookie.nameEmpty"))) {
             try jar.set(StoredCookie(name: "   ", value: "v"), for: alpha)
         }
-        expectThrows(AppError.invalidInput("Cookie 名称含非法字符：a=b")) {
+        expectThrows(AppError.invalidInput(Copy.format("error.cookie.nameInvalid", "a=b"))) {
             try jar.set(StoredCookie(name: "a=b", value: "v"), for: alpha)
         }
-        expectThrows(AppError.invalidInput("Cookie 值含换行符")) {
+        expectThrows(AppError.invalidInput(Copy.text("error.cookie.valueHasNewline"))) {
             try jar.set(StoredCookie(name: "ok", value: "x\ny"), for: alpha)
         }
     }

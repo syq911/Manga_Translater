@@ -259,7 +259,10 @@ struct DownloadQueueTests {
     @Test("错误描述优先使用网络层文案")
     func errorDescriptionPrefersNetworkText() {
         let described = DownloadQueue.describe(NetworkError.timeout(seconds: 15))
-        #expect(described?.contains("超时") == true)
+        // 直接与网络层自己的文案比较：既证明「优先用网络层文案」，
+        // 又不依赖当前语言（文案现在是本地化的）。
+        #expect(described == NetworkError.timeout(seconds: 15).errorDescription)
+        #expect(described?.contains("15") == true, "秒数应被带进文案")
         #expect(DownloadQueue.describe(AppError.invalidInput("x")) == nil)
     }
 
@@ -371,7 +374,7 @@ struct DownloadQueueTests {
     @Test("空页列表被拒绝")
     func rejectsEmptyPages() async {
         let queue = makeQueue(fetcher: StubPageFetcher(), store: InMemoryPageStore())
-        await expectThrowsAsync(AppError.invalidInput("章节没有可下载的页")) {
+        await expectThrowsAsync(AppError.invalidInput(Copy.text("error.download.chapterHasNoPages"))) {
             _ = try await queue.enqueue(self.makeJob(pages: []))
         }
     }
@@ -379,7 +382,7 @@ struct DownloadQueueTests {
     @Test("空章节标识被拒绝")
     func rejectsEmptyChapterID() async {
         let queue = makeQueue(fetcher: StubPageFetcher(), store: InMemoryPageStore())
-        await expectThrowsAsync(AppError.invalidInput("章节标识为空")) {
+        await expectThrowsAsync(AppError.invalidInput(Copy.text("error.download.emptyChapterID"))) {
             _ = try await queue.enqueue(self.makeJob(chapter: "", pages: ["https://example.com/1.jpg"]))
         }
     }
@@ -389,7 +392,7 @@ struct DownloadQueueTests {
         let queue = makeQueue(fetcher: StubPageFetcher(), store: InMemoryPageStore())
         try await queue.enqueue(makeJob(chapter: "dup", pages: ["https://example.com/1.jpg"]))
 
-        await expectThrowsAsync(AppError.invalidInput("任务已存在：dup")) {
+        await expectThrowsAsync(AppError.invalidInput(Copy.format("error.download.jobExists", "dup"))) {
             _ = try await queue.enqueue(self.makeJob(chapter: "dup", pages: ["https://example.com/2.jpg"]))
         }
     }

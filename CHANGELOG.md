@@ -57,6 +57,25 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - 云客户端 +3 条（注销请求形状与请求体只含 email、`email_mismatch`、401）；
   账号模型 +4 条（本地拦截不发请求、邮箱规范化、401 退回未登录、服务端不符不谎报成功）。
 
+### 🔧 修复 / Fixed（M5 · CI 两轮）
+
+- **包内有 `.lproj` 就必须声明 `defaultLocalization`**：不加会 SwiftPM 在
+  `Resolve Swift packages` 阶段直接拒绝（连编译都没走到），报的是 manifest 属性、
+  指向包清单，很难联想到「我加了本地化资源」。
+- **`ChallengeKind` 缺 `CaseIterable`**：测试里用 `allCases` 才暴露。
+- **测试断言了本地化文案的字面值**（一轮红了 18 个用例）：文案改成两张表之后，
+  `expectThrows(AppError.invalidInput("Cookie 名称不能为空"))` 这类断言在英文模拟器上
+  必然失配。统一改成三种与语言无关的写法之一：
+  ① 期望值用同一个 key 生成（`Copy.text("error.cookie.nameEmpty")`，顺带钉住 key 映射）、
+  ② 断言稳定错误码（`appError.code == "invalid_input"`）、
+  ③ 断言关键片段（`payload.contains("x")`）。
+  这一轮也把规则固化进 `check_localization.py`（第 7 项的新子检查）：
+  测**试里逐字出现某条中文文案**即报错；规则刻意只看「含汉字且长度 ≥ 6」的值
+  ——第一版把英文值也算进去，误报了 `"Cancelled"` / `"Sources"` 这类
+  与枚举 rawValue 重合的正当断言。
+- `check_redlines` 的「禁止 `.js`」规则收窄：放行 `website/assets/` 下的官网脚本，
+  但继续扫源脚本标记。
+
 ### 🛠 工具 / Tooling（M5，预检 9 → 13 项）
 
 - `check_hardcoded_copy.py`：用户可见文案扫描。只认字符串字面量（注释不参与），

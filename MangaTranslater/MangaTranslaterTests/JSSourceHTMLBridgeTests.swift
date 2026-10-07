@@ -266,7 +266,9 @@ struct JSSourceHTMLBridgeTests {
         #expect(payload["hasNextPage"] as? Bool == false)
 
         try await Task.sleep(nanoseconds: 200_000_000)
-        #expect(logs.all.contains { $0.contains("html 查询失败") })
+        // 桥接日志刻意用英文：读者是**源脚本作者**（源 API 契约面向国际作者），
+        // 不随界面语言变化。
+        #expect(logs.all.contains { $0.contains("html query failed") })
     }
 
     @Test("未匹配的选择器：单值取空串，集合取空数组（都不报错）")

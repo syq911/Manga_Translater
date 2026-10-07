@@ -315,6 +315,62 @@ def check_table(label, tables, used, problems, check_format_arguments=False):
     return union
 
 
+def check_test_literals(problems, tables):
+    """
+    测试不得**断言本地化文案的字面值**。
+
+    起因（CI 实测，一轮红了 18 个用例）：文案从硬编码中文改成两张表之后，
+    测试里那些 `expectThrows(AppError.invalidInput("Cookie 名称不能为空"))`
+    全部失配——因为 CI 模拟器跑在英文下，生产代码解析出的是英文。
+
+    正确写法有三种，都不依赖当前语言：
+    1. 期望值用同一个 key 生成：`AppError.invalidInput(Copy.text("error.cookie.nameEmpty"))`
+       —— 既与语言无关，又顺手把「映射到了哪个 key」钉住；
+    2. 断言稳定错误码：`appError.code == "invalid_input"`；
+    3. 断言「关键信息被带进去了」：`payload.contains("x")`。
+
+    判定保守（第一版误报了一批，因此收窄两步）：
+
+    - **只看含汉字的文案值**。表里的英文值常与枚举 rawValue 重合
+      （`"Cancelled"`、`"Sources"`），而测试断言 rawValue 是完全正当的；
+      这类缺陷的原始形态就是「中文硬编码」，所以只查中文。
+    - **只查长度 ≥ 6 的**。短词（「连载中」「作者」）既可能是文案也可能是夹具数据，
+      误报成本很高。
+    另外已经用了 `L(` / `Copy.` 的行直接放过。
+    """
+    import glob
+
+    values = set()
+    for entries in tables.values():
+        for value in entries.values():
+            plain = re.sub(r"%[0-9]*[$]?[-+ #0-9.]*[@difsuxXeEgGc]", "", value)
+            if not re.search(r"[\u4e00-\u9fff]", plain):
+                continue
+            if len(plain) >= 6:
+                values.add(plain)
+            # 带占位符的前缀部分也要查（测试里常只写前半句）
+            head = plain.split("：")[0]
+            if len(head) >= 6:
+                values.add(head)
+
+    for path in sorted(glob.glob(os.path.join("MangaTranslater", "MangaTranslaterTests", "*.swift"))):
+        text = io.open(path, encoding="utf-8").read()
+        for index, line in enumerate(text.split("\n"), start=1):
+            stripped = line.strip()
+            if stripped.startswith(("@Test(", "@Suite(", "//", "///")):
+                continue
+            if 'L("' in line or "Copy." in line:
+                continue
+            for value in values:
+                if f'"{value}"' in line:
+                    problems.append(
+                        f"{os.path.relpath(path).replace(chr(92), '/')}:{index} "
+                        f"测试断言了本地化文案的字面值（「{value}」）；改用 "
+                        f'L("…")/Copy.text("…")、稳定错误码，或断言关键片段'
+                    )
+                    break
+
+
 def main():
     problems = []
     app_tables = load_tables(APP_TABLE_DIR, problems)
@@ -325,6 +381,11 @@ def main():
 
     app_keys = check_table("App 表", app_tables, app_used, problems, check_format_arguments=True)
     package_keys = check_table("包层表", package_tables, package_used, problems)
+
+    combined = dict(app_tables)
+    for name, entries in package_tables.items():
+        combined.setdefault(name, {}).update(entries)
+    check_test_literals(problems, combined)
 
     for key in sorted(app_keys & package_keys):
         problems.append(f"`{key}` 同时存在于 App 表与包层表（两张表不得重名）")

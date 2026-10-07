@@ -80,7 +80,7 @@ struct SourceStoreTests {
         let (store, root) = try makeStore()
         defer { TestFileSystem.remove(root) }
 
-        expectThrows(AppError.invalidInput("仓库地址不合法：\(value)")) {
+        expectThrows(AppError.invalidInput(Copy.format("error.store.invalidRepositoryURL", value))) {
             _ = try store.addRepository(value)
         }
         #expect(store.repositories.isEmpty)
@@ -163,7 +163,7 @@ struct SourceStoreTests {
         let (store, root) = try makeStore()
         defer { TestFileSystem.remove(root) }
 
-        expectThrows(AppError.notFound("源脚本 demo")) {
+        expectThrows(AppError.notFound(Copy.format("error.store.payloadScript", "demo"))) {
             _ = try store.script(for: "demo")
         }
     }
@@ -173,10 +173,10 @@ struct SourceStoreTests {
         let (store, root) = try makeStore()
         defer { TestFileSystem.remove(root) }
 
-        expectThrows(AppError.invalidInput("源标识不合法：\(key)")) {
+        expectThrows(AppError.invalidInput(Copy.format("error.store.invalidKey", key))) {
             _ = try store.script(for: key)
         }
-        expectThrows(AppError.invalidInput("源标识不合法：\(key)")) {
+        expectThrows(AppError.invalidInput(Copy.format("error.store.invalidKey", key))) {
             _ = try store.uninstall(key: key)
         }
     }

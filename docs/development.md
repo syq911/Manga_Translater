@@ -40,7 +40,7 @@ bash tools/preflight.sh
 | 4 | `tools/check_docs_sync.py` | `docs/source-api.md` 的契约示例与测试夹具必须逐字一致；`docs/*.md` 小节编号不得重复或回退 |
 | 5 | `tools/check_api_usage.py` | **构造调用与 init 声明一致性**：改签名忘改调用方（实测踩过） |
 | 6 | Python 脚本语法 | CI 里 `release` / `pages` job 会执行的脚本 |
-| 7 | `tools/check_localization.py` | **本地化一致性（两张表）**：App 表与包层表各自 key 集合一致、代码引用的 key 必须存在、占位符类型与数量一致、`String(format:)` 实参个数吻合、**死文案**与**重复 key** 报错、两表 key 不得重名；先剥注释再扫描 |
+| 7 | `tools/check_localization.py` | **本地化一致性（两张表）**：App 表与包层表各自 key 集合一致、代码引用的 key 必须存在、占位符类型与数量一致、`String(format:)` 实参个数吻合、**死文案**与**重复 key** 报错、两表 key 不得重名、**测试不得断言文案字面值**；先剥注释再扫描 |
 | 8 | `tools/check_hardcoded_copy.py` | **用户可见文案不得硬编码中文**（含中日韩标点）；放行 `diag` / `logSink` 等开发者日志，`// i18n-exempt` 可显式豁免并会被打印出来 |
 | 9 | `tools/check_legal_sync.py` | **法务文本三份载体不得分叉**（`docs/legal` ↔ App 内置副本 ↔ 官网）；`--emit` 由 Markdown 单向生成 |
 | 10 | `tools/check_demo_repo.py` | **自测仓库语料与 CI 夹具逐字一致**：生成器里的 10 个文本块与 `DemoCorpus.swift` 必须相同，图片文件名集合也要一致 |

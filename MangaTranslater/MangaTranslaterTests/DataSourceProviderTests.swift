@@ -189,10 +189,10 @@ struct AppBrowseSourceTests {
         )
         #expect(second.id == "kavita-home-2")
 
-        #expect(throws: AppError.invalidInput("服务器地址要以 http:// 或 https:// 开头")) {
+        #expect(throws: AppError.invalidInput(L("server.error.badAddress"))) {
             try environment.addHostedServer(kind: .komga, name: "Bad", baseURL: "nas.local")
         }
-        #expect(throws: AppError.invalidInput("请填一个名字")) {
+        #expect(throws: AppError.invalidInput(L("server.error.missingName"))) {
             try environment.addHostedServer(kind: .komga, name: "   ", baseURL: "https://a.com")
         }
     }

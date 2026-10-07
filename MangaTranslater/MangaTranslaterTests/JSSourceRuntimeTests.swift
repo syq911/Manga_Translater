@@ -378,7 +378,9 @@ struct JSSourceRuntimeTests {
                 Issue.record("错误类型不符：\(error)")
                 return
             }
-            #expect(reason.contains("超时") || reason.lowercased().contains("timeout"))
+            // 网络层的文案现在是本地化的（中英各一份），因此这里断言
+            // 「秒数被带进来了」——与语言无关，且能证明网络层文案确实透传到了 JS。
+            #expect(reason.contains("15"), "实际：\(reason)")
         }
     }
 

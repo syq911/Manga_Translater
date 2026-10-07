@@ -183,10 +183,10 @@ struct LocalizationAndLegalTests {
                 }
             }
             #expect(titles == 1, "\(name) 应有且仅有一个大标题")
-            #expect(headings >= 5, "\(name) 的小节太少：\(headings)")
-            #expect(bullets > 0, "\(name) 没有解析出列表")
-            // 表格只在隐私政策与开源许可里出现，这里只要求「块类型都用上了」。
-            _ = rows
+            // 各文档的小节数不同（开源许可比隐私政策短），这里只要求「结构成篇」。
+            #expect(headings >= 3, "\(name) 的小节太少：\(headings)")
+            // 隐私政策与条款用列表，开源许可主要用表格——两者至少有一种。
+            #expect(bullets + rows > 0, "\(name) 既没有列表也没有表格")
         }
     }
 

@@ -165,7 +165,7 @@ struct ServerStoreTests {
         defer { TestFileSystem.remove(root) }
 
         try store.add(server("komga-nas"))
-        #expect(throws: AppError.invalidInput("标识已存在：komga-nas")) {
+        #expect(throws: AppError.invalidInput(Copy.format("error.hosted.duplicateID", "komga-nas"))) {
             try store.add(server("komga-nas", name: "另一台"))
         }
         #expect(store.all().count == 1)
@@ -176,7 +176,7 @@ struct ServerStoreTests {
     func rejectsInvalidIdentifier() throws {
         let (store, root) = try makeStore()
         defer { TestFileSystem.remove(root) }
-        #expect(throws: AppError.invalidInput("服务器标识不合法")) {
+        #expect(throws: AppError.invalidInput(Copy.text("error.hosted.invalidServerID"))) {
             try store.add(server("含中文"))
         }
         #expect(store.isEmpty())
@@ -186,7 +186,7 @@ struct ServerStoreTests {
     func updateMissingThrows() throws {
         let (store, root) = try makeStore()
         defer { TestFileSystem.remove(root) }
-        #expect(throws: AppError.notFound("服务器：komga-x")) {
+        #expect(throws: AppError.notFound(Copy.format("error.hosted.payloadServer", "komga-x"))) {
             try store.update(server("komga-x"))
         }
     }

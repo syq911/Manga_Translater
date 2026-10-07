@@ -200,7 +200,11 @@ struct KomgaDataSourceTests {
     @Test("无法识别的作品地址报「字段不完整」而不是发一个怪请求")
     func detailsRejectsForeignURL() async throws {
         let transport = RoutedHTTPTransport()
-        await expectThrowsAsync(HostedServerError.malformedResponse("无法识别的作品地址：https://x.com/book/1")) {
+        await expectThrowsAsync(
+            HostedServerError.malformedResponse(
+                Copy.format("error.hosted.unrecognizedMangaURL", "https://x.com/book/1")
+            )
+        ) {
             _ = try await makeSource(transport: transport).mangaDetails(url: "https://x.com/book/1")
         }
         #expect(transport.requests.isEmpty)
@@ -316,7 +320,7 @@ struct KomgaDataSourceTests {
         let transport = RoutedHTTPTransport()
         transport.set("[]", for: "\(Self.base)/api/v1/libraries")
         let text = try await makeSource(transport: transport).probe()
-        #expect(text.contains("没有书库"))
+        #expect(text == Copy.text("text.hosted.probeNoLibraries"))
     }
 }
 
@@ -524,7 +528,7 @@ struct KavitaDataSourceTests {
             "\(Self.base)/api/Reader/chapter-info?chapterId=11": #"{"pages":0}"#
         ])
         let source = KavitaDataSource(server: Self.server(), client: HTTPClient(transport: transport))
-        await expectThrowsAsync(HostedServerError.malformedResponse("章节 11 没有可读页")) {
+        await expectThrowsAsync(HostedServerError.malformedResponse(Copy.format("error.hosted.chapterHasNoPages", "11"))) {
             _ = try await source.pageList(chapterURL: "\(Self.base)/api/Reader/chapter/11")
         }
     }
