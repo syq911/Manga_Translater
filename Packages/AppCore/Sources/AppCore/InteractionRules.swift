@@ -250,9 +250,22 @@ public enum DestructiveActionPolicy {
 // MARK: - 书架的筛选菜单
 
 /// 书架分类筛选菜单里的一项（不含文案：标题由 App 层映射成 `L("…")`）。
-public enum LibraryFilterTarget: Hashable, Sendable {
+///
+/// 带 `Identifiable`：界面要用 `ForEach` 遍历它，而**元组没有 keypath**
+/// （`ForEach(Array(….enumerated()), id: \.offset)` 编译不过），
+/// 所以标识得由类型自己给出，而不是从外部拼。
+public enum LibraryFilterTarget: Hashable, Identifiable, Sendable {
     case all
     case category(id: String, name: String)
+
+    /// 用作 `ForEach` 的标识。分类用存储层给的 ID，`all` 用一个前缀固定的哨兵值
+    /// ——两者不可能撞（分类 ID 是 UUID，不含 `#`）。
+    public var id: String {
+        switch self {
+        case .all: return "#all"
+        case let .category(id, _): return id
+        }
+    }
 }
 
 /// 筛选菜单的项与「分类被删之后选中项怎么办」。

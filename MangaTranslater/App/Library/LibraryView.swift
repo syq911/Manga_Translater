@@ -204,7 +204,7 @@ struct LibraryView: View {
             Menu {
                 // 菜单的**形状**（有哪些项、顺序、哪一项被选中）来自可单测的
                 // `LibraryFilterMenu`；这里只把中性枚举映射成文案与图标。
-                ForEach(Array(LibraryFilterMenu.targets(categories: categories).enumerated()), id: \.offset) { _, target in
+                ForEach(LibraryFilterMenu.targets(categories: categories)) { target in
                     switch target {
                     case .all:
                         Button {

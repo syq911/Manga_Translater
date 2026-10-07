@@ -142,17 +142,31 @@ struct TranslationControllerTests {
         )
     }
 
-    /// 等编排器把手头的活干完（含 finish() 的收尾）。
+    /// 等编排器把手头的活干完（含 `finish()` 的收尾）。
     ///
-    /// 超时给得比较宽松（默认 10 秒）：这些用例本身是毫秒级的，
-    /// 但测试进程里同时可能有真机 Vision 在跑（大图 OCR，CPU 密集），
-    /// 协作线程池被抢占会让 `Task.detached` 就绪得慢一些。
-    /// 超时太紧会把「机器忙」误判成「逻辑错」——那种红灯最难查。
-    private static func settle(_ controller: TranslationController, timeout: TimeInterval = 10) async {
+    /// **等的是「结果」，不是「不忙」。** 传了 `expecting` 就一直等到完成的页数到位
+    /// （或出现失败提示 / 超时）；只传 `expecting == nil` 时才退化成等 `isBusy`。
+    ///
+    /// 为什么不能只等 `isBusy`：它是给界面画进度条的，语义是「现在没事干」，
+    /// 用它当同步点，一旦与「该干的事都干完了」有偏差，测试就会以
+    /// 「少了一页」这种最难查的形式随机红（本轮真实踩到：10 秒预算被
+    /// 正在并行跑的真机 Vision 吃光，于是第 3 页还没落盘就断言了）。
+    ///
+    /// 超时给到 30 秒同样是刻意的：这些用例本身是毫秒级的，慢只可能来自
+    /// 机器忙——**超时太紧会把「机器忙」误判成「逻辑错」**。
+    private static func settle(
+        _ controller: TranslationController,
+        expecting expected: Int? = nil,
+        timeout: TimeInterval = 30
+    ) async {
         let deadline = Date().addingTimeInterval(timeout)
-        while controller.isBusy, Date() < deadline {
+        while Date() < deadline {
+            if let expected, controller.completedCount >= expected { break }
+            if controller.failureMessage != nil || controller.quotaMessage != nil { break }
+            if expected == nil, !controller.isBusy { break }
             try? await Task.sleep(nanoseconds: 2_000_000)
         }
+        // 给 finish() 的收尾留一拍（队列清空后 pendingCount 归零）
         try? await Task.sleep(nanoseconds: 5_000_000)
     }
 
@@ -176,7 +190,7 @@ struct TranslationControllerTests {
         #expect(controller.showsTranslation)
         #expect(controller.isBusy)
 
-        await Self.settle(controller)
+        await Self.settle(controller, expecting: 1)
         #expect(!controller.isBusy)
         #expect(controller.completedCount == 1)
         #expect(controller.hasTranslation(for: Self.manga, page: 0))
@@ -228,7 +242,7 @@ struct TranslationControllerTests {
         )
         let original = Self.makePage()
         controller.toggle(manga: Self.manga, currentPage: 0, preloaded: [0: original])
-        await Self.settle(controller)
+        await Self.settle(controller, expecting: 1)
 
         let shown = try #require(controller.displayImage(for: Self.manga, page: 0, original: original))
         #expect(shown.size == original.size)
@@ -250,8 +264,11 @@ struct TranslationControllerTests {
         )
         // 当前页 2，窗口 ±1 → 只该翻译 1/2/3（即便已加载 0…5）
         controller.toggle(manga: Self.manga, currentPage: 2, preloaded: Self.preloaded(pages: 0...5))
-        await Self.settle(controller)
+        await Self.settle(controller, expecting: 3)
 
+        // 先断言「没有失败」：否则「少了一页」既可能是没跑完，也可能是某一页
+        // 因为真出错被静默记成失败（`handleFailure` 只记横幅，不抛给调用方）。
+        #expect(controller.failureMessage == nil)
         #expect(translator.callCount == 3)
         #expect(controller.completedCount == 3)
         #expect(controller.hasTranslation(for: Self.manga, page: 0) == false)
@@ -271,7 +288,7 @@ struct TranslationControllerTests {
             translator: translator
         )
         controller.toggle(manga: Self.manga, currentPage: 3, preloaded: Self.preloaded(pages: 0...6))
-        await Self.settle(controller)
+        await Self.settle(controller, expecting: 1)
 
         #expect(translator.callCount == 1)
         #expect(controller.hasTranslation(for: Self.manga, page: 3))
@@ -290,11 +307,12 @@ struct TranslationControllerTests {
             translator: translator
         )
         controller.toggle(manga: Self.manga, currentPage: 0, preloaded: Self.preloaded(pages: 0...2))
-        await Self.settle(controller)
+        // 窗口 ±1 覆盖 0/1 两页
+        await Self.settle(controller, expecting: 2)
 
-        // 翻到第 3 页：窗口变成 2/3/4
+        // 翻到第 3 页：窗口变成 2/3/4（第 2 页已翻过，现在是新的）
         controller.onVisiblePageChanged(manga: Self.manga, currentPage: 3, preloaded: Self.preloaded(pages: 2...4))
-        await Self.settle(controller)
+        await Self.settle(controller, expecting: 5)
 
         #expect(controller.hasTranslation(for: Self.manga, page: 3))
         #expect(controller.hasTranslation(for: Self.manga, page: 4))
@@ -331,7 +349,7 @@ struct TranslationControllerTests {
         )
 
         controller.toggle(manga: Self.manga, currentPage: 0, preloaded: Self.preloaded(pages: 0...0))
-        await Self.settle(controller)
+        await Self.settle(controller, expecting: 1)
         #expect(translator.callCount == 1)
 
         // 关掉再开：这一页已在缓存里，不该再花一次额度
@@ -357,7 +375,7 @@ struct TranslationControllerTests {
             store: TranslationStore(root: root)
         )
         first.toggle(manga: Self.manga, currentPage: 0, preloaded: Self.preloaded(pages: 0...0))
-        await Self.settle(first)
+        await Self.settle(first, expecting: 1)
         #expect(firstTranslator.callCount == 1)
 
         // 新会话（新实例、新内存缓存）：这一页应当从磁盘命中
@@ -509,7 +527,7 @@ struct TranslationControllerTests {
             store: store
         )
         first.toggle(manga: Self.manga, currentPage: 0, preloaded: Self.preloaded(pages: 0...0))
-        await Self.settle(first)
+        await Self.settle(first, expecting: 1)
 
         let second = Self.makeController(
             settings: settings,
@@ -518,7 +536,7 @@ struct TranslationControllerTests {
             store: store
         )
         second.toggle(manga: other, currentPage: 0, preloaded: Self.preloaded(pages: 0...0, seed: 0.7))
-        await Self.settle(second)
+        await Self.settle(second, expecting: 1)
         #expect(second.completedCount == 1)
 
         #expect(second.hasTranslation(for: Self.manga, page: 0))

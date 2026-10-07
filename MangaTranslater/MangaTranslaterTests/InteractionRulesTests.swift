@@ -31,11 +31,14 @@ struct ReaderGestureTests {
 
     // MARK: 点两侧
 
+    // 参数顺序与下面的形参一致：`(isRightToLeft, isLeading, 期望是否前进)`。
+    // `isLeading` 是「靠屏幕前缘的那条带」（左到右语言里就是左侧），
+    // 因此「右侧」是 `isLeading: false`——第一版把这两个写反了，四条全红。
     @Test("点两侧窄带：模式 × 侧 四种组合穷举", arguments: [
-        (false, false, false),   // 左到右 · 点左侧 → 后退
-        (false, true, true),     // 左到右 · 点右侧 → 前进
-        (true, false, true),     // 右到左 · 点左侧 → 前进
-        (true, true, false),     // 右到左 · 点右侧 → 后退
+        (false, true, false),    // 左到右 · 点左侧 → 后退
+        (false, false, true),    // 左到右 · 点右侧 → 前进
+        (true, true, true),      // 右到左 · 点左侧 → 前进
+        (true, false, false),    // 右到左 · 点右侧 → 后退
     ])
     func tapZoneDirection(isRightToLeft: Bool, isLeading: Bool, expected: Bool) {
         #expect(
@@ -142,13 +145,23 @@ struct ReaderGestureTests {
 
     @Test("点击带宽度随容器单调不减，且永不宽于容器")
     func tapZoneWidthIsMonotonic() {
+        // 从 20 起步，**跳过 0**：宽度 0 走的是「容器还没测出来」的兜底值（60），
+        // 而兜底值比下限 44 大，所以从 0 起步必然出现一次「回退」——
+        // 那是这条断言写错了，不是实现错了（第一版就是这样假红）。
         var previous = 0.0
-        for width in stride(from: 0.0, through: 2000.0, by: 20.0) {
+        for width in stride(from: 20.0, through: 2000.0, by: 20.0) {
             let zone = ReaderNavigation.tapZoneWidth(containerWidth: width)
             #expect(zone >= previous, "宽度 \(width) 处出现了回退")
             #expect(zone <= max(width, 60), "点击带不该宽过容器")
             previous = zone
         }
+    }
+
+    @Test("容器宽度未知时用兜底值（首帧 / 载入中）")
+    func tapZoneWidthFallsBackBeforeLayout() {
+        #expect(ReaderNavigation.tapZoneWidth(containerWidth: 0) == 60)
+        #expect(ReaderNavigation.tapZoneWidth(containerWidth: -1) == 60)
+        #expect(ReaderNavigation.tapZoneWidth(containerWidth: 0, fallback: 30) == 30)
     }
 
     @Test("窄屏上两侧点击带加起来不超过 40%，中间区域留得住")
@@ -410,21 +423,22 @@ struct ChapterSwipeMenuTests {
         #expect(ChapterActionMenu.action(for: .downloaded) == .deleteArchive)
     }
 
-    @Test("只有「删除归档」需要二次确认，「下载」永远不需要")
+    @Test("只有「删除归档」需要二次确认；「下载」不是破坏性操作、「取消」不需要确认")
     func confirmationFollowsPolicy() {
         for state in Self.allStates {
-            let destructive = ChapterActionMenu.destructiveAction(for: state)
             switch ChapterActionMenu.action(for: state) {
             case .download:
-                #expect(destructive == nil, "下载不该被当成破坏性操作")
+                #expect(ChapterActionMenu.destructiveAction(for: state) == nil, "下载不该被当成破坏性操作")
             case .cancel:
-                #expect(destructive == .cancelDownload)
+                // 取消单个任务可以一键重来，按策略**不**确认；
+                // 但它确实是破坏性操作的一种（会丢掉已抓的页），所以映射要给出它。
+                #expect(ChapterActionMenu.destructiveAction(for: state) == .cancelDownload)
+                #expect(!DestructiveActionPolicy.requiresConfirmation(.cancelDownload))
             case .deleteArchive:
-                #expect(destructive == .deleteChapterArchive)
-            }
-            if let destructive {
-                // 与策略层保持一致：同一个动作在作品详情页与下载页必须同一种行为
-                #expect(DestructiveActionPolicy.requiresConfirmation(destructive))
+                // 删归档是**唯一**需要确认的那个：它是用户攒下来的离线数据，
+                // 站点没了就永久没了（策略层与界面都据此裁决）
+                #expect(ChapterActionMenu.destructiveAction(for: state) == .deleteChapterArchive)
+                #expect(DestructiveActionPolicy.requiresConfirmation(.deleteChapterArchive))
             }
         }
     }
@@ -573,6 +587,19 @@ struct LibraryMenuTests {
         let after = LibraryFilterMenu.targets(categories: [Self.category("a", "Renamed")])
         #expect(before != after)
         #expect(after.contains(.category(id: "a", name: "Renamed")))
+    }
+
+    @Test("菜单项的标识互不重复（`ForEach` 依赖它，撞了会丢行）")
+    func targetIdentifiersAreUnique() {
+        let categories = [
+            Self.category("a", "Alpha"),
+            Self.category("b", "Beta"),
+        ]
+        let ids = LibraryFilterMenu.targets(categories: categories).map(\.id)
+        #expect(Set(ids).count == ids.count)
+        // 「全部作品」的哨兵值不能与分类 ID 撞：分类 ID 是 UUID，不含 `#`
+        #expect(LibraryFilterTarget.all.id == "#all")
+        #expect(!ids.contains(where: { $0 != "#all" && $0.hasPrefix("#") }))
     }
 
     @Test("选中项仍然存在时保持不变")
