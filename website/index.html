@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MangaTranslater — a comic reader with built-in page translation</title>
+<meta name="description" content="A free, open-source comic reader for iOS. Ships with no online sources: read local files, connect your own Komga / Kavita server, or add third-party source repositories. Built-in on-device OCR page translation.">
+<script>
+// 语言：优先跟随浏览器，其次英文。写在 head 里、CSS 之前，避免刷新时闪一下双语。
+document.documentElement.dataset.lang =
+  (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh-Hans' : 'en';
+</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="index.html">MangaTranslater</a>
+  <nav>
+    <a href="index.html" class="active"><span data-lang="en">Home</span><span data-lang="zh-Hans">首页</span></a>
+    <a href="upgrade.html"><span data-lang="en">Pricing</span><span data-lang="zh-Hans">定价</span></a>
+    <a href="privacy.html"><span data-lang="en">Privacy</span><span data-lang="zh-Hans">隐私</span></a>
+    <a href="terms.html"><span data-lang="en">Terms</span><span data-lang="zh-Hans">条款</span></a>
+  </nav>
+  <button id="lang-toggle" type="button" aria-label="Switch language">EN / 中文</button>
+</header>
+
+<main>
+  <section class="hero">
+    <div>
+      <p class="kicker">
+        <span data-lang="en">iOS · open source · sideload</span>
+        <span data-lang="zh-Hans">iOS · 开源 · 侧载</span>
+      </p>
+      <h1>
+        <span data-lang="en">Your comics. Your sources. Translated on the page.</span>
+        <span data-lang="zh-Hans">你的漫画，你的源，页内直接翻译。</span>
+      </h1>
+      <p class="lead">
+        <span data-lang="en">
+          A free, open-source comic reader for iOS with built-in page translation.
+          It ships with <strong>no online sources</strong> — you bring your own:
+          local files, your own server, or third-party source repositories you choose to add.
+        </span>
+        <span data-lang="zh-Hans">
+          免费开源的 iOS 漫画阅读器，内置页内翻译。它<strong>不自带任何在线源</strong>，
+          内容由你自己提供：本地文件、你自己的服务器，或你自行添加的第三方源仓库。
+        </span>
+      </p>
+      <div class="actions">
+        <a class="button" href="upgrade.html"><span data-lang="en">See pricing</span><span data-lang="zh-Hans">查看定价</span></a>
+        <a class="button secondary" href="https://github.com/syq911/Manga_Translater/releases/latest/download/source.json">
+          <span data-lang="en">Add AltStore source</span><span data-lang="zh-Hans">添加到 AltStore 源</span>
+        </a>
+      </div>
+      <p class="dim" style="margin-top:14px">
+        <span data-lang="en">iOS 18.0 or later. Install with AltStore / SideStore / Sideloadly using your own certificate.</span>
+        <span data-lang="zh-Hans">需要 iOS 18.0 或更高。用 AltStore / SideStore / Sideloadly 以你自己的证书安装。</span>
+      </p>
+    </div>
+    <div>
+      <img class="shot" src="assets/screenshots/reader.png" alt="Reader with a translated page">
+    </div>
+  </section>
+
+  <section>
+    <h2><span data-lang="en">What it does</span><span data-lang="zh-Hans">它做什么</span></h2>
+    <div class="cards">
+      <div class="card">
+        <h3><span data-lang="en">Reader</span><span data-lang="zh-Hans">阅读器</span></h3>
+        <ul>
+          <li><span data-lang="en">Paged left-to-right or right-to-left, continuous vertical, double page</span><span data-lang="zh-Hans">左/右翻页、条漫连续滚动、双页</span></li>
+          <li><span data-lang="en">Local CBZ / ZIP imports, read offline</span><span data-lang="zh-Hans">导入本地 CBZ / ZIP，离线阅读</span></li>
+          <li><span data-lang="en">Batch download with background continuation and CBZ export</span><span data-lang="zh-Hans">批量下载、后台续传、导出 CBZ</span></li>
+          <li><span data-lang="en">Library, categories, reading progress</span><span data-lang="zh-Hans">书架、分类、阅读进度</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span data-lang="en">Sources you control</span><span data-lang="zh-Hans">源由你掌握</span></h3>
+        <ul>
+          <li><span data-lang="en">No built-in sources, none recommended, none hosted</span><span data-lang="zh-Hans">不内置、不推荐、不收录任何源</span></li>
+          <li><span data-lang="en">Add a repository URL and install community sources</span><span data-lang="zh-Hans">填第三方仓库 URL，安装社区维护的源</span></li>
+          <li><span data-lang="en">Connect your own Komga / Kavita server</span><span data-lang="zh-Hans">连接你自己的 Komga / Kavita 服务器</span></li>
+          <li><span data-lang="en">Source scripts run in a restricted sandbox</span><span data-lang="zh-Hans">源脚本运行在受限沙箱里</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span data-lang="en">Page translation</span><span data-lang="zh-Hans">页内翻译</span></h3>
+        <ul>
+          <li><span data-lang="en">On-device OCR (Apple Vision) — images never leave the phone</span><span data-lang="zh-Hans">设备端 OCR（Apple Vision）——图片不出手机</span></li>
+          <li><span data-lang="en">Typeset back onto the page, vertical and horizontal</span><span data-lang="zh-Hans">按原排版回填，支持竖排与横排</span></li>
+          <li><span data-lang="en">Bring your own API key, or use the hosted service</span><span data-lang="zh-Hans">可自备 API Key，也可用官方云服务</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span data-lang="en">Screens</span><span data-lang="zh-Hans">界面</span></h2>
+    <div class="shots">
+      <img src="assets/screenshots/library.png" alt="Library">
+      <img src="assets/screenshots/reader.png" alt="Reader with translation">
+      <img src="assets/screenshots/translation.png" alt="Translation settings">
+    </div>
+    <p class="dim">
+      <span data-lang="en">Screenshots show invented titles and placeholder text only.</span>
+      <span data-lang="zh-Hans">截图中的书名与文字均为虚构，仅作界面示意。</span>
+    </p>
+  </section>
+
+  <section>
+    <h2><span data-lang="en">Install</span><span data-lang="zh-Hans">安装</span></h2>
+    <p>
+      <span data-lang="en">
+        This app is distributed outside the App Store as an ad-hoc signed IPA.
+        Add the source to AltStore / SideStore to get updates automatically, or
+        download the IPA from the latest release and sign it with Sideloadly / ESign.
+      </span>
+      <span data-lang="zh-Hans">
+        本 App 以 ad-hoc 签名的 IPA 在 App Store 之外分发。把源加进 AltStore / SideStore
+        即可自动收到更新；也可以从最新 Release 下载 IPA，用 Sideloadly / ESign 自行重签。
+      </span>
+    </p>
+    <ol>
+      <li><span data-lang="en">Install AltStore or SideStore on your iPhone.</span><span data-lang="zh-Hans">先在 iPhone 上装好 AltStore 或 SideStore。</span></li>
+      <li><span data-lang="en">Add this source URL in AltStore → Sources.</span><span data-lang="zh-Hans">在 AltStore → Sources 里添加下面的源地址。</span></li>
+      <li><span data-lang="en">Install MangaTranslater, then re-sign it with your own certificate.</span><span data-lang="zh-Hans">安装 MangaTranslater，用你自己的证书重签。</span></li>
+    </ol>
+    <p class="dim"><code>https://github.com/syq911/Manga_Translater/releases/latest/download/source.json</code></p>
+  </section>
+
+  <section>
+    <h2><span data-lang="en">Privacy in one paragraph</span><span data-lang="zh-Hans">隐私，一段话说完</span></h2>
+    <div class="answer">
+      <p>
+        <span data-lang="en">
+          OCR runs on your device; images never leave it, and neither do comic titles or URLs.
+          Only the recognised text is sent for translation, and only to the backend you pick.
+          The hosted service stores an email address, a daily page counter and a subscription
+          expiry — its database has no column that could hold an image, a URL or any text.
+          There is no analytics SDK and no advertising SDK in the app.
+        </span>
+        <span data-lang="zh-Hans">
+          OCR 在设备上完成，图片不出手机，作品名称与地址也不上传；只有识别出的文字会发给
+          你选择的后端。云服务只保存邮箱、每日页数计数与订阅到期时间——它的数据库里
+          没有任何一列能装下图片、地址或原文。App 内不含任何统计或广告 SDK。
+        </span>
+      </p>
+      <p class="dim">
+        <a href="privacy.html"><span data-lang="en">Read the full privacy policy</span><span data-lang="zh-Hans">阅读完整隐私政策</span></a>
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span data-lang="en">FAQ</span><span data-lang="zh-Hans">常见问题</span></h2>
+
+    <h3><span data-lang="en">Does it come with any sources?</span><span data-lang="zh-Hans">它自带源吗？</span></h3>
+    <p>
+      <span data-lang="en">No. It bundles, recommends and hosts none. You decide what to add, and you are responsible for using it lawfully.</span>
+      <span data-lang="zh-Hans">不带。不内置、不推荐、不收录任何源。加什么由你决定，也由你自行确认是否合法使用。</span>
+    </p>
+
+    <h3><span data-lang="en">Is translation free?</span><span data-lang="zh-Hans">翻译收费吗？</span></h3>
+    <p>
+      <span data-lang="en">It can be entirely free: paste your own OpenAI-compatible API key, or use on-device translation. The hosted service has a free daily quota and an optional subscription.</span>
+      <span data-lang="zh-Hans">可以完全免费：自备一个 OpenAI 兼容的 API Key，或使用设备端翻译。官方云服务每天有免费额度，订阅是可选项。</span>
+    </p>
+
+    <h3><span data-lang="en">Where do I pay?</span><span data-lang="zh-Hans">在哪里付款？</span></h3>
+    <p>
+      <span data-lang="en">On this website. There is no checkout inside the app and no payment SDK — the app only ever opens a web page.</span>
+      <span data-lang="zh-Hans">在本网站上。App 内没有收银台、不接任何支付 SDK——它只会打开一个网页。</span>
+    </p>
+
+    <h3><span data-lang="en">Can I delete my account?</span><span data-lang="zh-Hans">可以注销账号吗？</span></h3>
+    <p>
+      <span data-lang="en">Yes, from Settings → Account &amp; Cloud → Delete account. It removes the account, its quota counters and its subscription records within 30 days.</span>
+      <span data-lang="zh-Hans">可以。设置 → 账号与云服务 → 注销账号。账号、额度计数与订阅记录会在 30 天内删除。</span>
+    </p>
+
+    <h3><span data-lang="en">Is this affiliated with any content site?</span><span data-lang="zh-Hans">它和某些内容站有关系吗？</span></h3>
+    <p>
+      <span data-lang="en">No. It is a general-purpose reader, not affiliated with, endorsed by or connected to any content website, and it contains no third-party content.</span>
+      <span data-lang="zh-Hans">没有。它是通用阅读器，与任何内容站点都没有隶属、背书或合作关系，也不包含任何第三方内容。</span>
+    </p>
+  </section>
+</main>
+
+<footer class="footer">
+  <p>
+    <span data-lang="en">MangaTranslater is a general-purpose comic reader. It ships with no online
+    sources and no third-party content.</span>
+    <span data-lang="zh-Hans">MangaTranslater 是通用漫画阅读器，不自带任何在线源，也不包含任何第三方内容。</span>
+  </p>
+  <p class="dim">
+    <a href="privacy.html"><span data-lang="en">Privacy</span><span data-lang="zh-Hans">隐私政策</span></a> ·
+    <a href="terms.html"><span data-lang="en">Terms</span><span data-lang="zh-Hans">使用条款</span></a> ·
+    <a href="licenses.html"><span data-lang="en">Licences</span><span data-lang="zh-Hans">开源许可</span></a> ·
+    <a href="https://github.com/syq911/Manga_Translater">GitHub</a>
+  </p>
+</footer>
+<script src="assets/site.js"></script>
+</body>
+</html>

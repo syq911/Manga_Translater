@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy · MangaTranslater</title>
+<meta name="description" content="MangaTranslater — Privacy policy">
+<script>
+// 语言：优先跟随浏览器，其次英文。写在 head 里、CSS 之前，避免刷新时闪一下双语。
+document.documentElement.dataset.lang =
+  (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh-Hans' : 'en';
+</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="index.html">MangaTranslater</a>
+  <nav>
+        <a href="index.html"><span data-lang="en">Home</span><span data-lang="zh-Hans">首页</span></a>
+        <a href="upgrade.html"><span data-lang="en">Pricing</span><span data-lang="zh-Hans">定价</span></a>
+        <a href="privacy.html" class="active"><span data-lang="en">Privacy</span><span data-lang="zh-Hans">隐私</span></a>
+        <a href="terms.html"><span data-lang="en">Terms</span><span data-lang="zh-Hans">条款</span></a>
+  </nav>
+  <button id="lang-toggle" type="button" aria-label="Switch language">EN / 中文</button>
+</header>
+<main>
+<div class="container narrow">
+<p class="kicker"><span data-lang="en">Privacy policy</span><span data-lang="zh-Hans">隐私政策</span></p>
+<article class="legal" data-lang="en">
+<h1 id="mangatranslater-privacy-policy">MangaTranslater Privacy Policy</h1>
+<p>Last updated: 2026-10-07 · Applies to MangaTranslater for iOS 1.0.0 and later</p>
+<p>MangaTranslater (the "App") is a comic reader for iOS. It **ships with no online</p>
+<p>content**: what you read comes either from local files you import yourself, from</p>
+<p>third-party source repositories you add yourself, or from your own Komga / Kavita</p>
+<p>server.</p>
+<p>This policy states, in plain language, **what stays on your device, what leaves it,</p>
+<p>and for how long we keep anything**.</p>
+<h2 id="1-the-short-version">1. The short version</h2>
+<ul><li>OCR (text recognition) runs <strong>entirely on your device</strong>. Images <strong>never</strong> leave</li></ul>
+<p>your phone.</p>
+<ul><li>Only the <strong>recognized text</strong> is sent for translation — text only: no images, no</li></ul>
+<p>comic titles, no comic URLs, no reading history.</p>
+<ul><li>The hosted service's request body has exactly three fields: <code>lines</code> (the text),</li></ul>
+<p><code>source</code>, and <code>target</code>. This is enforced by the server's database schema, which</p>
+<p>has no column that could hold an image, a URL, or any source text.</p>
+<ul><li>Keys and sign-in tokens live in the system keychain, excluded from iCloud backup.</li><li>We ship no analytics SDK, no advertising SDK, and no crash-reporting SDK.</li></ul>
+<h2 id="2-data-that-stays-on-your-device">2. Data that stays on your device</h2>
+<table>
+<tr><td>Reading settings (direction, font scale, languages)</td><td>Local preferences</td><td>Remember your choices</td><td>Yes (system default)</td></tr>
+<tr><td>Library, categories, reading progress</td><td>Local database</td><td>Your library and "where you left off"</td><td>Yes (system default)</td></tr>
+<tr><td>Imported files and downloaded chapters</td><td>App sandbox</td><td>Offline reading</td><td>No (excluded by the app)</td></tr>
+<tr><td>Translation cache (finished page images)</td><td>App sandbox</td><td>Never translate — or spend quota on — the same chapter twice</td><td>No</td></tr>
+<tr><td>Your own translation API key</td><td>System keychain</td><td>Call your own translation service</td><td>No</td></tr>
+<tr><td>Source sign-in cookies</td><td>App sandbox</td><td>Access sources you have signed in to</td><td>No</td></tr>
+<tr><td>Cloud sign-in token</td><td>System keychain</td><td>Passwordless access to the hosted service</td><td>No</td></tr>
+<tr><td>Diagnostics log</td><td>App sandbox documents</td><td>Troubleshooting; one-tap clear in Settings → About</td><td>Only if you export it via the Files app</td></tr>
+</table>
+<p>The diagnostics log records technical events only (request hostnames, status codes,</p>
+<p>durations, error kinds). **It does not record source text, translations, image data,</p>
+<p>or cookie values**; API keys and tokens are redacted before anything is written.</p>
+<p>You can inspect its size, clear it, or pull it out through the Files app at any time.</p>
+<h2 id="3-data-that-leaves-your-device">3. Data that leaves your device</h2>
+<p>Only three things ever leave the device, and none of them is covert:</p>
+<p><strong>1. Addresses you ask the App to visit.</strong> Third-party source repositories you add,</p>
+<p>the sites their scripts request, and your own Komga / Kavita server all receive</p>
+<p>requests from the App — exactly as if you opened them in a browser. Those requests</p>
+<p>carry your IP address and request content. **What their operators see and do with it</p>
+<p>is up to them and outside our control.**</p>
+<p><strong>2. Text sent for translation.</strong> Once you turn on page translation:</p>
+<table>
+<tr><td>Your own API key</td><td>Recognized text + your API key</td><td>The endpoint you configured (any OpenAI-compatible service)</td></tr>
+<tr><td>Hosted cloud service</td><td>Recognized text</td><td>Our server, which forwards it to an upstream model service</td></tr>
+<tr><td>On-device translation</td><td>Nothing (the system framework runs locally; downloading a language pack the first time may use the network)</td><td>—</td></tr>
+</table>
+<p><strong>3. Hosted-service account data</strong>, and only if you sign in:</p>
+<ul><li>your <strong>email address</strong> (used to send sign-in codes and restore subscriptions);</li><li>an account identifier, a <strong>per-day count of translated pages</strong>, and your</li></ul>
+<p><strong>subscription expiry</strong>;</p>
+<ul><li>a payment reference produced by the payment processor (Lemon Squeezy) —</li></ul>
+<p><strong>we never handle your card number</strong>.</p>
+<p>The server database has <strong>five tables</strong>: accounts, verification codes, quota</p>
+<p>counters, entitlements, and webhook deduplication. **No column in any of them can</p>
+<p>hold source text, translations, images, or comic URLs.** Even a full database dump</p>
+<p>would not reveal what anybody is reading.</p>
+<p>We do not use this data for advertising or profiling, and we do not sell it.</p>
+<h2 id="4-third-party-processors">4. Third-party processors</h2>
+<table>
+<tr><td>The translation service you choose (own-key mode)</td><td>When you translate</td><td>Recognized text and your own account details</td></tr>
+<tr><td>Our upstream model provider (cloud mode)</td><td>When you translate via the cloud</td><td>Recognized text (no images, no comic URLs)</td></tr>
+<tr><td>Email delivery service</td><td>When you request a sign-in code</td><td>Your email address and that one message</td></tr>
+<tr><td>Lemon Squeezy (merchant of record)</td><td>When you buy a subscription on the website</td><td>Your payment details and email (<strong>we never see card numbers</strong>)</td></tr>
+<tr><td>Cloudflare (hosting)</td><td>While the cloud service runs</td><td>Request metadata (time, route, status code)</td></tr>
+<tr><td>Apple (on-device translation, system frameworks)</td><td>When you use on-device translation or system OCR</td><td>Governed by Apple's own privacy policy</td></tr>
+</table>
+<p>The App integrates <strong>no payment SDK</strong> and shows no checkout: all payments happen on</p>
+<p>the website.</p>
+<h2 id="5-retention">5. Retention</h2>
+<table>
+<tr><td>Cloud account and entitlement records</td><td>Until you delete your account (section 6)</td></tr>
+<tr><td>Daily quota counters</td><td>Stored per calendar day; deleted with the account</td></tr>
+<tr><td>Sign-in codes</td><td>10 minutes</td></tr>
+<tr><td>Server request logs</td><td>Kept by the hosting platform, normally no longer than 7 days; no source text or translations</td></tr>
+<tr><td>On-device translation cache</td><td>Until you clear it in Settings, or delete the app</td></tr>
+</table>
+<h2 id="6-your-controls-including-account-deletion">6. Your controls (including account deletion)</h2>
+<ul><li><strong>Delete your account</strong>: Settings → Account &amp; Cloud → Delete account (you will be</li></ul>
+<p>asked to type your email again to confirm). We delete the account along with its</p>
+<p>quota counters and entitlement records <strong>within 30 days</strong>. Transaction records</p>
+<p>related to your purchase are retained by the merchant of record as required by law.</p>
+<ul><li><strong>Sign out</strong>: clears this device only; your account and subscription remain. Sign</li></ul>
+<p>in again with the same email to restore them.</p>
+<ul><li><strong>Clear the translation cache, diagnostics log, or downloads</strong>: one tap each in</li></ul>
+<p>Settings.</p>
+<ul><li><strong>Export the diagnostics log</strong>: via the Files app — read it before you share it.</li></ul>
+<h2 id="7-minors">7. Minors</h2>
+<p>The App is not directed at minors. Adult-content sources are <strong>hidden by default</strong></p>
+<p>and can only be enabled after explicitly confirming "I am 18 or older". The App</p>
+<p>bundles, recommends, and hosts no content site, and will not fetch content for you.</p>
+<h2 id="8-security">8. Security</h2>
+<ul><li>Credentials and tokens prefer the system keychain, falling back to local storage</li></ul>
+<p>when the keychain is unavailable (with a redacted log entry).</p>
+<ul><li>The hosted service is HTTPS-only; expired JWTs make the client fall back to the</li></ul>
+<p>signed-out state.</p>
+<ul><li>Keys and tokens in request payloads are redacted before logging.</li><li>That said, no system is "absolutely secure". This is open-source software</li></ul>
+<p>distributed by sideloading; please judge the trustworthiness of the sources and</p>
+<p>repositories you add.</p>
+<h2 id="9-changes">9. Changes</h2>
+<p>Changes will be recorded in the repository changelog and on the website, and the</p>
+<p>date at the top of this document will be updated. Material changes to data handling</p>
+<p>will also be surfaced inside the App.</p>
+<h2 id="10-contact">10. Contact</h2>
+<p>Privacy questions and data-deletion requests: <strong>privacy@mangatranslater.com</strong>.</p>
+<p>(Replace with your real address before going live — see <code>docs/going-live.md</code>.)</p>
+</article>
+<article class="legal" data-lang="zh-Hans">
+<h1 id="mangatranslater-隐私政策">MangaTranslater 隐私政策</h1>
+<p>最后更新：2026-10-07 ｜ 适用于 MangaTranslater for iOS 1.0.0 及之后版本</p>
+<p>MangaTranslater（下称「本 App」）是一个 iOS 漫画阅读器。它<strong>不自带任何在线内容</strong>：</p>
+<p>你阅读的内容要么来自你自己导入的本地文件，要么来自你自己填写的第三方源仓库，</p>
+<p>要么来自你自己的 Komga / Kavita 服务器。</p>
+<p>这份政策用大白话说明：<strong>什么留在你的设备上、什么会离开你的设备、我们保留多久</strong>。</p>
+<h2 id="1-一份最短的摘要">1. 一份最短的摘要</h2>
+<ul><li>OCR（文字识别）<strong>完全在设备上完成</strong>，图片<strong>不会</strong>离开你的手机。</li><li>只有<strong>识别出来的文字</strong>会发给翻译服务，且只发文字：不含图片，不含作品名称，</li></ul>
+<p>不含作品地址，不含你的阅读记录。</p>
+<ul><li>云翻译服务的请求体只有三个字段：<code>lines</code>（文字）、<code>source</code>（原文语言）、</li></ul>
+<p><code>target</code>（译文语言）。这一点由服务端的数据库结构保证——它没有任何一列</p>
+<p>能装下图片、地址或原文。</p>
+<ul><li>密钥、云服务登录令牌存在系统钥匙串里，不进 iCloud 备份。</li><li>我们不使用任何第三方统计 SDK、广告 SDK 或崩溃上报 SDK。</li></ul>
+<h2 id="2-留在你设备上的数据">2. 留在你设备上的数据</h2>
+<table>
+<tr><td>阅读设置（方向、字号、语言等）</td><td>本机偏好存储</td><td>记住你的选择</td><td>是（系统默认行为）</td></tr>
+<tr><td>书架、分类、阅读进度</td><td>本机数据库</td><td>书架与「读到哪儿」</td><td>是（系统默认行为）</td></tr>
+<tr><td>导入的本地漫画、下载的章节</td><td>App 沙盒目录</td><td>离线阅读</td><td>否（App 主动排除）</td></tr>
+<tr><td>译文缓存（译好的整页图）</td><td>App 沙盒目录</td><td>同一话重看时不重复翻译、不重复扣额度</td><td>否</td></tr>
+<tr><td>自备翻译 API Key</td><td>系统钥匙串</td><td>调用你自己的翻译服务</td><td>否</td></tr>
+<tr><td>源登录凭据（Cookie）</td><td>App 沙盒目录</td><td>访问你已登录的源</td><td>否</td></tr>
+<tr><td>云服务登录令牌</td><td>系统钥匙串</td><td>免密访问云服务</td><td>否</td></tr>
+<tr><td>诊断日志</td><td>App 沙盒文档目录</td><td>排查问题（可在「设置 → 关于」一键清空）</td><td>是（仅当你在「文件」App 中导出时）</td></tr>
+</table>
+<p>诊断日志只记录技术事件（请求地址的主机名、状态码、耗时、错误类型）。</p>
+<p><strong>它不记录原文、译文、图片内容或 Cookie 值</strong>；云服务的密钥与令牌在写入前会被脱敏。</p>
+<p>你可以在「设置 → 关于」里查看体积、随时清空，或通过「文件」App 取出后自行检查。</p>
+<h2 id="3-会离开你设备的数据">3. 会离开你设备的数据</h2>
+<p>只有下面三种情况会有数据离开设备，且都不是「我们偷偷收集」：</p>
+<p><strong>一、你让本 App 去访问的地址。</strong> 你添加的第三方源仓库、源脚本访问的站点、</p>
+<p>你自己的 Komga / Kavita 服务器，都会收到本 App 发出的请求——</p>
+<p>就像你自己用浏览器访问它们一样。这些请求包含你的 IP 地址与请求内容，</p>
+<p><strong>它们的运营者能看到什么、怎么处理，由他们决定，不由我们控制</strong>。</p>
+<p><strong>二、翻译时发送的文字。</strong> 你开启页内翻译后：</p>
+<table>
+<tr><td>自备密钥</td><td>识别出的文字 + 你的 API Key</td><td>你填的那个接口地址（任何 OpenAI 兼容服务）</td></tr>
+<tr><td>云翻译服务</td><td>识别出的文字</td><td>我们的服务端，再由它转发给上游模型服务</td></tr>
+<tr><td>设备端翻译</td><td>无（由系统框架在本机完成；首次使用某语言对时可能联网下载语言包）</td><td>—</td></tr>
+</table>
+<p><strong>三、云翻译服务的账号数据。</strong> 只有当你主动登录时才会有：</p>
+<ul><li>你的<strong>邮箱地址</strong>（用于发送登录验证码、找回订阅）；</li><li>一个账号标识、每天的<strong>已用页数计数</strong>、订阅的<strong>到期时间</strong>；</li><li>支付凭证编号（由收款方 Lemon Squeezy 产生，我们不经手你的卡号）。</li></ul>
+<p>服务端的数据库<strong>只有五张表</strong>：账号、验证码、额度计数、订阅权益、支付回调去重。</p>
+<p>其中<strong>没有任何一列能装下原文、译文、图片或作品地址</strong>。</p>
+<p>换句话说：即使数据库被完整拿到，也无法还原任何人在看什么。</p>
+<p>我们不把上述数据用于广告、画像或再销售；也不与第三方共享，除了下面第 4 条列出的处理方。</p>
+<h2 id="4-我们使用的第三方服务">4. 我们使用的第三方服务</h2>
+<table>
+<tr><td>你选择的翻译服务（自备密钥时）</td><td>你用它翻译时</td><td>识别出的文字与你自己的账号信息</td></tr>
+<tr><td>我们托管的上游模型服务（云服务时）</td><td>你用云翻译时</td><td>识别出的文字（不带图片、不带作品地址）</td></tr>
+<tr><td>邮件发送服务</td><td>你请求登录验证码时</td><td>你的邮箱地址与那封验证码邮件</td></tr>
+<tr><td>Lemon Squeezy（收款方）</td><td>你在官网购买订阅时</td><td>你的支付信息与邮箱（<strong>我们不经手卡号</strong>）</td></tr>
+<tr><td>Cloudflare（服务端托管）</td><td>云服务运行时</td><td>请求元数据（时间、路由、状态码）</td></tr>
+<tr><td>Apple（设备端翻译、系统框架）</td><td>你使用设备端翻译或系统 OCR 时</td><td>由 Apple 的隐私政策约束</td></tr>
+</table>
+<p>App 内<strong>不接入任何支付 SDK</strong>，也没有收银台：付款全部在官网页面上完成。</p>
+<h2 id="5-保留期">5. 保留期</h2>
+<table>
+<tr><td>云服务账号与订阅记录</td><td>直到你注销账号（见第 6 条）</td></tr>
+<tr><td>每日额度计数</td><td>按自然日分行保存；注销账号时一并删除</td></tr>
+<tr><td>登录验证码</td><td>10 分钟（过期即失效）</td></tr>
+<tr><td>服务端请求日志</td><td>由托管平台保留，通常不超过 7 天；不含原文与译文</td></tr>
+<tr><td>设备上的译文缓存</td><td>直到你在设置里清空，或删除 App</td></tr>
+</table>
+<h2 id="6-你的控制权-注销账号">6. 你的控制权（注销账号）</h2>
+<ul><li><strong>注销账号</strong>：在「设置 → 账号与云服务 → 注销账号」按提示操作（需要再次输入你的邮箱确认）。</li></ul>
+<p>我们会在 <strong>30 天内</strong>删除账号及其额度计数、订阅权益记录。与你订阅相关的交易凭证，</p>
+<p>收款方会按其法定要求另行保留。</p>
+<ul><li><strong>退出登录</strong>：只清掉本机的登录状态，账号与订阅保留；用同一个邮箱重新登录即可「恢复订阅」。</li><li><strong>清空译文缓存 / 诊断日志 / 下载内容</strong>：都在「设置」里，一键完成。</li><li><strong>导出诊断日志</strong>：在「文件」App 里自行取出，先看再决定要不要发给维护者。</li></ul>
+<h2 id="7-未成年人">7. 未成年人</h2>
+<p>本 App 不面向未成年人。涉及成人内容的源<strong>默认隐藏</strong>，开启前必须明确确认</p>
+<p>「我已年满 18 周岁」。本 App 不内置、不推荐、不收录任何内容站点，</p>
+<p>也不会替你去获取任何内容。</p>
+<h2 id="8-安全">8. 安全</h2>
+<ul><li>凭据与令牌优先存系统钥匙串，钥匙串不可用时回退到本机存储（并记录一条脱敏日志）。</li><li>服务端只提供 HTTPS 接口；JWT 过期后客户端自动退回未登录状态。</li><li>请求体里的密钥、令牌在写入日志前会被脱敏。</li><li>但请理解：没有任何系统能承诺「绝对安全」。本 App 是侧载分发的开源软件，</li></ul>
+<p>请自行评估你所添加的源与仓库是否可信。</p>
+<h2 id="9-政策变更">9. 政策变更</h2>
+<p>政策变更会写进仓库的更新日志与官网页面，并更新本文顶部日期。</p>
+<p>涉及数据处理的实质性变更，会在 App 内以提示的方式告知。</p>
+<h2 id="10-联系方式">10. 联系方式</h2>
+<p>隐私相关问题与数据删除请求：<strong>privacy@mangatranslater.com</strong>。</p>
+<p>（上线前请替换为你的真实邮箱；见 <code>docs/going-live.md</code>。）</p>
+</article>
+</div>
+</main>
+<footer class="footer">
+  <p>
+    <span data-lang="en">MangaTranslater is a general-purpose comic reader. It ships with no online
+    sources and no third-party content.</span>
+    <span data-lang="zh-Hans">MangaTranslater 是通用漫画阅读器，不自带任何在线源，也不包含任何第三方内容。</span>
+  </p>
+  <p class="dim">
+    <a href="privacy.html"><span data-lang="en">Privacy</span><span data-lang="zh-Hans">隐私政策</span></a> ·
+    <a href="terms.html"><span data-lang="en">Terms</span><span data-lang="zh-Hans">使用条款</span></a> ·
+    <a href="licenses.html"><span data-lang="en">Licences</span><span data-lang="zh-Hans">开源许可</span></a> ·
+    <a href="https://github.com/syq911/Manga_Translater">GitHub</a>
+  </p>
+  <h1 class="visually-hidden">Privacy policy</h1>
+</footer>
+<script src="assets/site.js"></script>
+</body>
+</html>

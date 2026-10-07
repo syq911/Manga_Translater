@@ -9,15 +9,79 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.0.0] - 2026-10-07
 
 ### 计划中 / Planned
 
 - ~~M1 地基：泛化数据模型（Manga / Chapter / Page）、GRDB 书架、本地文件源、阅读器~~ ✅ 已完成
 - ~~M2 源引擎：JavaScriptCore 单文件 JS 源、仓库管理（添加 / 安装 / 更新 / NSFW 开关）~~ ✅ 已完成（契约 v1 冻结）
 - ~~M3 补全：批量下载 + 后台续传 + CBZ 导出、Komga / Kavita、WebView 登录 + Cookie 收割、Cloudflare 兜底~~ ✅ 已完成
-- M4 翻译与云服务：页内翻译接入、BYOK、邮箱验证码账号、额度、Lemon Squeezy 订阅
-- M5 发布：中英双语文案、隐私政策、AltStore 源上线
+- ~~M4 翻译与云服务：页内翻译接入、BYOK、邮箱验证码账号、额度、Lemon Squeezy 订阅~~ ✅ 已完成
+- ~~M5 发布：中英双语文案、隐私政策、官网落地页、AltStore 源上线~~ ✅ 已完成（v1.0.0）
+
+### ✨ 新增 / Added（M5 发布准备）
+
+- **中英双语文案复核（一次系统性收口）**：包层（AppCore / ComicNet /
+  SourceEngine / ComicDownload / AppDatabase）此前把错误文案硬编码成中文，
+  而它们是**用户可见的**（源加载失败、归档损坏、下载失败的原因都直接显示在界面上），
+  于是「英文界面里冒出中文句子」。现在把文案表下沉进包：
+  `Sources/AppCore/Resources/{en,zh-Hans}.lproj/Localizable.strings`
+  + `AppCore.Copy`（`text` / `format`）作为包内唯一出口，
+  `Package.swift` 声明 `resources:`（漏声明即编译错误）。
+  模型层 7 个 `displayName` 移到 App 层 `Localization+Names.swift`，
+  模型不再持有任何文案；`TranslationLanguage.promptName` 保持中文并显式豁免
+  ——它是给模型看的固定词表，必须与设备语言无关。
+- **隐私政策 / 使用条款 / 开源许可**：`docs/legal/*.{en,zh-Hans}.md`。
+  写清「只有文字离开设备、不存图、不上传作品地址」、第三方处理方（含具名收款方）、
+  日志保留期、账号注销、18+ 条款。App 内可直接阅读（`LegalDocumentView`
+  + 极简 Markdown 渲染器），设置页三个入口不再是「即将推出」。
+- **账号注销**：`POST /auth/delete`（服务端逐表删除 + 邮箱二次确认，
+  不一致时什么都不删）、客户端与界面齐全，与「退出登录」分列两处。
+- **官网**：`website/`（首页 / 定价 / 法务三页，中英双语、**零外部依赖**），
+  法务页由 `tools/build_website.py` 从 `docs/legal` 生成（单一来源）；
+  附 GitHub Pages 部署 workflow（手动触发）。
+- **AltStore 源**：清单补齐 `screenshots` / `subtitle` / `tintColor` / `category`，
+  `minOSVersion` 改为**从 ipa 内 Info.plist 读**（写死会漂移）；
+  新增离线校验 `tools/check_altstore_source.py`——用合成发布数据把生成脚本跑一遍，
+  不必等打 tag。截图用 Pillow 合成，是纯中性的界面示意，
+  避免把第三方作品内容截进公开仓库。
+- 版本号进入 `1.0.0`；新增 `docs/going-live.md`（域名 / Cloudflare / Resend /
+  DeepSeek / Lemon Squeezy / tag 发版的**人工步骤**清单）。
+
+### 🧪 测试 / Tests（M5）
+
+- 新增 `LocalizationAndLegalTests`：两张文案表 key 集合一致、包层文案真的解析到内容
+  （资源包确实被打进 App）、法务文本与 `docs/legal` 逐字一致、必写条款覆盖、
+  Markdown 渲染器解析。
+- 云闭环自测 22 条（新增 2 条：注销删干净且不影响他人、订阅权益一并删除）。
+- 云客户端 +3 条（注销请求形状与请求体只含 email、`email_mismatch`、401）；
+  账号模型 +4 条（本地拦截不发请求、邮箱规范化、401 退回未登录、服务端不符不谎报成功）。
+
+### 🛠 工具 / Tooling（M5，预检 9 → 13 项）
+
+- `check_hardcoded_copy.py`：用户可见文案扫描。只认字符串字面量（注释不参与），
+  放行 `diag` / `logSink` 等开发者日志，支持 `// i18n-exempt` 显式豁免并**打印**
+  豁免清单；字符集含**中日韩标点**——`"URL：\(value)"` 这类只有全角冒号、
+  没有汉字的串用纯汉字范围扫不出来（实测漏过一条）。
+- `check_legal_sync.py`：法务文本三份载体（docs / App 内置副本 / 官网）不得分叉；
+  `--emit` 由 Markdown 单向生成 Swift 副本。
+- `build_website.py`：官网生成 + 校验（双语标记齐备、相对链接存在、无外部资源）。
+- `check_altstore_source.py`：AltStore 清单离线校验（字段 / 倒序 / URL 形状 / 资源存在性）。
+- `make_screenshots.py`：合成中性截图。
+- `check_localization.py` 升级为「双表 + 七项」：App 表与包层表分开校验且 key 不得重名、
+  死文案与重复 key 报错、`String(format:)` 实参个数改用**括号配对**计数、
+  先剥注释再扫描（修掉「文档注释里举例写的 `L("…")` 被当成引用」的假报错）。
+- `check_project.py` 新增：包内有 `.lproj` 时 manifest 必须声明 `defaultLocalization`
+  ——CI 实测 SwiftPM 会在**依赖解析阶段**直接拒绝，连编译都走不到，
+  而报错指向包清单、很难联想到「我加了本地化资源」。
+
+### 📖 文档 / Docs（M5）
+
+- 新增 `docs/altstore.md`（字段依据、本地验证方式、上线清单）、
+  `docs/going-live.md`（必须由人完成的外部配置与发版步骤）、
+  `docs/legal/*`（法务正文）。
+- `docs/cloud-api.md` 补 §4.6 `POST /auth/delete`。
+- `docs/development.md` 预检表更新为 13 项，发版流程改为 `1.0.0`。
 
 ### 🔧 修复 / Fixed（M4 期间）
 
@@ -39,9 +103,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased] · M4 翻译与云服务
+### 📦 里程碑 M4 · 翻译与云服务（明细）
 
-### ✨ 新增 / Added
+#### ✨ 新增 / Added
 
 **页内翻译全链（M4 第一批）**
 
@@ -118,7 +182,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   不再受每日限制 → 取消到期回落免费 → 跨自然日重置；外加验证码重放/过期、
   发码限流、坏令牌、webhook 验签失败与重投幂等、上游条数不符（不扣额度）等失败路径。
 
-### 🧪 测试 / Tests
+#### 🧪 测试 / Tests
 
 - `TranslationCoreTests`：竖排判定（含页面纵横比修正）、竖排布局（含退化输入）、
   坐标映射、合并去重（含置信度/长度择优）、译文 JSON 解析（纯 JSON / 代码块 / 夹带散文 /
@@ -141,7 +205,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   退出登录、额度回传按上限钳制、购买链接带账号 ID、
   云端后端的错误映射与分块顺序、网络失败映射。
 
-### 🛠 工具 / Tooling
+#### 🛠 工具 / Tooling
 
 - `tools/make_ocr_fixture.py`：生成金标准 OCR 夹具（**中性内容**的合成页 + 基准文本）。
   真实页图会把第三方作品内容带进公开仓库；合成页同样覆盖「位图 → Vision → 文本行」，

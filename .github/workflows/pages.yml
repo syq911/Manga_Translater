@@ -1,0 +1,55 @@
+name: Deploy website
+
+# 官网（`website/`）部署到 GitHub Pages。
+#
+# **刻意只保留手动触发**：这个 job 需要仓库先在
+# Settings → Pages → Source 里选 "GitHub Actions" 才能跑通；
+# 若挂上 push 触发，没配 Pages 的克隆会在每次推送时飘红，
+# 而红的原因与代码质量无关——那种「狼来了」的红会让人开始忽略 CI。
+# 配好之后如果你想改成 push 自动部署，把下面的 `push:` 段打开即可。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 法务页面由 docs/legal/*.md 生成：不重新生成就部署，
+      # 官网上的隐私政策可能与 App 内置副本不是同一份（这正是要避免的事）。
+      - name: Regenerate legal pages and validate the site
+        run: python3 tools/build_website.py
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

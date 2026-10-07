@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pricing · MangaTranslater</title>
+<meta name="description" content="Page translation pricing: use your own API key for free, or subscribe to the hosted service. Payment happens on this website only.">
+<script>
+// 语言：优先跟随浏览器，其次英文。写在 head 里、CSS 之前，避免刷新时闪一下双语。
+document.documentElement.dataset.lang =
+  (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh-Hans' : 'en';
+</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="index.html">MangaTranslater</a>
+  <nav>
+    <a href="index.html"><span data-lang="en">Home</span><span data-lang="zh-Hans">首页</span></a>
+    <a href="upgrade.html" class="active"><span data-lang="en">Pricing</span><span data-lang="zh-Hans">定价</span></a>
+    <a href="privacy.html"><span data-lang="en">Privacy</span><span data-lang="zh-Hans">隐私</span></a>
+    <a href="terms.html"><span data-lang="en">Terms</span><span data-lang="zh-Hans">条款</span></a>
+  </nav>
+  <button id="lang-toggle" type="button" aria-label="Switch language">EN / 中文</button>
+</header>
+
+<main>
+  <section>
+    <p class="kicker">
+      <span data-lang="en">Hosted translation service</span>
+      <span data-lang="zh-Hans">官方托管翻译服务</span>
+    </p>
+    <h1>
+      <span data-lang="en">Pay only if you want the hosted service.</span>
+      <span data-lang="zh-Hans">只有用官方托管服务才需要付费。</span>
+    </h1>
+    <p class="lead">
+      <span data-lang="en">
+        The app itself is free and open source. Translation can be free too: bring your own
+        API key, or use the on-device engine. The subscription only buys hosted convenience.
+      </span>
+      <span data-lang="zh-Hans">
+        App 本身免费开源。翻译也可以完全免费：自备 API Key，或用设备端引擎。
+        订阅买的只是「官方托管」这一份省事。
+      </span>
+    </p>
+  </section>
+
+  <section>
+    <div class="plans">
+      <div class="plan">
+        <h3><span data-lang="en">Free</span><span data-lang="zh-Hans">免费</span></h3>
+        <p class="price">¥0</p>
+        <p class="dim"><span data-lang="en">No account needed</span><span data-lang="zh-Hans">无需账号</span></p>
+        <ul>
+          <li><span data-lang="en">Full reader: local files, your own server, third-party sources you add</span><span data-lang="zh-Hans">完整阅读器：本地文件、自建服务器、你添加的第三方源</span></li>
+          <li><span data-lang="en">On-device OCR and typesetting</span><span data-lang="zh-Hans">设备端 OCR 与排版</span></li>
+          <li><span data-lang="en">Bring your own API key (unlimited, billed by your provider)</span><span data-lang="zh-Hans">自备 API Key（不限量，费用由你的服务商收）</span></li>
+          <li><span data-lang="en">Hosted service: 10 pages per day with an email sign-in</span><span data-lang="zh-Hans">官方云服务：用邮箱登录，每天 10 页</span></li>
+        </ul>
+      </div>
+
+      <div class="plan featured">
+        <h3><span data-lang="en">Pro subscription</span><span data-lang="zh-Hans">Pro 订阅</span></h3>
+        <p class="price">$1.99 <span class="dim">/ <span data-lang="en">month</span><span data-lang="zh-Hans">月</span></span></p>
+        <p class="dim"><span data-lang="en">Billed by Lemon Squeezy</span><span data-lang="zh-Hans">由 Lemon Squeezy 收款</span></p>
+        <ul>
+          <li><span data-lang="en">Unlimited hosted page translation (fair use)</span><span data-lang="zh-Hans">官方托管翻译不限量（受公平使用约束）</span></li>
+          <li><span data-lang="en">No setup: sign in with an email code, nothing to configure</span><span data-lang="zh-Hans">零配置：邮箱验证码登录即可</span></li>
+          <li><span data-lang="en">Cancel any time; access lasts until the end of the paid period</span><span data-lang="zh-Hans">随时取消；权益保留到当期结束</span></li>
+          <li><span data-lang="en">Restore by signing in with the same email</span><span data-lang="zh-Hans">用同一邮箱登录即自动恢复</span></li>
+        </ul>
+        <p style="margin-top:18px">
+          <a class="button" href="https://mangatranslater.lemonsqueezy.com/checkout/buy/REPLACE-ME">
+            <span data-lang="en">Subscribe</span><span data-lang="zh-Hans">订阅</span>
+          </a>
+        </p>
+        <p class="dim">
+          <span data-lang="en">Payment is handled entirely on this website. The app contains no checkout and no payment SDK.</span>
+          <span data-lang="zh-Hans">付款全程在本网站完成。App 内没有收银台，也不接任何支付 SDK。</span>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span data-lang="en">How billing works</span><span data-lang="zh-Hans">计费说明</span></h2>
+    <table>
+      <tr>
+        <td><span data-lang="en">Merchant of record</span><span data-lang="zh-Hans">收款方</span></td>
+        <td>
+          <span data-lang="en">Lemon Squeezy. Your card details are handled by them — we never see them.</span>
+          <span data-lang="zh-Hans">Lemon Squeezy。卡号由他们处理，我们不经手。</span>
+        </td>
+      </tr>
+      <tr>
+        <td><span data-lang="en">What is metered</span><span data-lang="zh-Hans">计量方式</span></td>
+        <td>
+          <span data-lang="en">Translated pages (one page = one image's worth of text, counted per line actually translated).</span>
+          <span data-lang="zh-Hans">按翻译页数计量（一页 = 一张图的文字，按实际翻译的行数计）。</span>
+        </td>
+      </tr>
+      <tr>
+        <td><span data-lang="en">Free quota reset</span><span data-lang="zh-Hans">免费额度重置</span></td>
+        <td>
+          <span data-lang="en">Every calendar day at 00:00 UTC+8.</span>
+          <span data-lang="zh-Hans">每个自然日（北京时间）零点重置。</span>
+        </td>
+      </tr>
+      <tr>
+        <td><span data-lang="en">Refunds &amp; cancellation</span><span data-lang="zh-Hans">退款与取消</span></td>
+        <td>
+          <span data-lang="en">Handled by Lemon Squeezy per their policy; cancelling keeps access until the period ends.</span>
+          <span data-lang="zh-Hans">按 Lemon Squeezy 的政策处理；取消后权益保留到当期结束。</span>
+        </td>
+      </tr>
+      <tr>
+        <td><span data-lang="en">Already subscribed?</span><span data-lang="zh-Hans">已经订阅过？</span></td>
+        <td>
+          <span data-lang="en">Sign in with the email you used at checkout — that restores it, no separate "restore" flow.</span>
+          <span data-lang="zh-Hans">用购买时那个邮箱登录即可恢复，没有单独的「恢复购买」流程。</span>
+        </td>
+      </tr>
+    </table>
+    <p class="dim">
+      <span data-lang="en">Subscriptions are for personal use. Reselling quota, sharing accounts or automated bulk extraction are prohibited.</span>
+      <span data-lang="zh-Hans">订阅为个人使用授权。禁止转售额度、共享账号或自动化批量刷取。</span>
+    </p>
+  </section>
+</main>
+
+<footer class="footer">
+  <p>
+    <span data-lang="en">MangaTranslater is a general-purpose comic reader. It ships with no online
+    sources and no third-party content.</span>
+    <span data-lang="zh-Hans">MangaTranslater 是通用漫画阅读器，不自带任何在线源，也不包含任何第三方内容。</span>
+  </p>
+  <p class="dim">
+    <a href="privacy.html"><span data-lang="en">Privacy</span><span data-lang="zh-Hans">隐私政策</span></a> ·
+    <a href="terms.html"><span data-lang="en">Terms</span><span data-lang="zh-Hans">使用条款</span></a> ·
+    <a href="licenses.html"><span data-lang="en">Licences</span><span data-lang="zh-Hans">开源许可</span></a> ·
+    <a href="https://github.com/syq911/Manga_Translater">GitHub</a>
+  </p>
+</footer>
+<script src="assets/site.js"></script>
+</body>
+</html>

@@ -19,7 +19,10 @@
 import Foundation
 
 /// 验证页的种类。
-public enum ChallengeKind: String, Equatable, Sendable {
+///
+/// 带 `CaseIterable`：界面要能遍历「所有可能的校验方式」（例如给用户一句
+/// 「可能要求：Cloudflare 校验 / 人机验证」的提示），测试也据此钉死种类数量。
+public enum ChallengeKind: String, CaseIterable, Equatable, Sendable {
     /// Cloudflare 的浏览器校验（Waiting Room / JS Challenge）。
     case cloudflare
     /// 人机验证（reCAPTCHA / hCaptcha / Turnstile）。

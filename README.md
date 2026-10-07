@@ -29,7 +29,12 @@ MangaTranslater **不自带任何在线源**，内容由你自己提供：
 
 ## Status
 
-Early development. See [CHANGELOG.md](CHANGELOG.md) and [docs/](docs/).
+**1.0.0** — the source API contract is frozen (v1.0) and the optional hosted
+translation service is implemented end to end. See [CHANGELOG.md](CHANGELOG.md)
+and [docs/](docs/).
+
+**1.0.0** —— 源 API 契约已冻结（v1.0），可选的云翻译服务也已完整落地。
+详见 [CHANGELOG.md](CHANGELOG.md) 与 [docs/](docs/)。
 
 ## Requirements
 
@@ -43,6 +48,10 @@ with your own certificate:
 
 - AltStore / SideStore source: `https://github.com/syq911/Manga_Translater/releases/latest/download/source.json`
 - Or download the IPA from the latest release and sign it with Sideloadly / ESign.
+
+The source manifest is documented in [docs/altstore.md](docs/altstore.md); what
+still has to be configured by hand before going live is listed in
+[docs/going-live.md](docs/going-live.md).
 
 ## Building
 
@@ -101,6 +110,20 @@ could hold an image, a URL, or any text.
 **只有文字会离开你的设备**：OCR 在设备端完成，图片不出手机，作品地址也不上传；
 云服务的请求体只有 `lines` / `source` / `target` 三个字段
 （契约见 [docs/cloud-api.md](docs/cloud-api.md)）。
+
+## Legal / 法务
+
+- Privacy policy: [docs/legal/privacy.en.md](docs/legal/privacy.en.md) ·
+  [中文](docs/legal/privacy.zh-Hans.md)
+- Terms of use: [docs/legal/terms.en.md](docs/legal/terms.en.md) ·
+  [中文](docs/legal/terms.zh-Hans.md)
+- Third-party notices: [NOTICE](NOTICE) ·
+  [开源许可](docs/legal/licenses.zh-Hans.md)
+
+Both documents are also readable inside the app (Settings → About) and rendered
+on the website. All three copies are generated from `docs/legal/*.md` and verified
+to be identical by `tools/check_legal_sync.py` — legal text that drifts between
+copies is misleading, so the check is mechanical rather than a matter of discipline.
 
 ## License
 

@@ -14,6 +14,12 @@ AltStore 需要看到完整的 versions 数组才能判断「有没有比本机�
 清单托管方式：作为每个 Release 的附件上传，对外统一地址为
   https://github.com/<owner>/<repo>/releases/latest/download/source.json
 （releases/latest 永远指向最新正式发布，因此该地址内容随版本自动更新）。
+
+字段依据：AltStore 源的 JSON schema（`apps[].versions[]` 必填
+`version` / `date` / `downloadURL` / `size`）。
+字段填错的表现是「用户在 AltStore 里加不进源」或「装不上（minOSVersion 不符）」，
+这两种都很难自查，因此 `tools/check_altstore_source.py` 会用**合成发布数据**
+离线跑一遍这个脚本，把字段与排序问题挡在发版之前。
 """
 
 import io
@@ -30,6 +36,28 @@ SOURCE_IDENTIFIER = "com.mangatranslater.source"
 SOURCE_NAME = "MangaTranslater"
 DEVELOPER = "MangaTranslater"
 FALLBACK_MIN_OS = "18.0"
+TINT_COLOR = "4A3FA8"
+CATEGORY = "entertainment"
+
+SUBTITLE = "Comic reader with built-in page translation"
+
+DESCRIPTION = (
+    "A comic reader with built-in page translation. "
+    "Ships with no online sources: import local files (CBZ/ZIP), "
+    "connect your own Komga or Kavita server, or add third-party "
+    "source repository URLs. On-device OCR keeps images on your phone; "
+    "only the recognised text is sent for translation. iOS 18.0 or later."
+)
+
+# 截图取自仓库（合成的中性界面示意，见 tools/make_screenshots.py）。
+# 用 raw 直链而不是 Release 附件：截图不随版本变化，没必要每次发版都传一遍。
+SCREENSHOTS = [
+    f"https://raw.githubusercontent.com/{REPO}/main/website/assets/screenshots/library.png",
+    f"https://raw.githubusercontent.com/{REPO}/main/website/assets/screenshots/reader.png",
+    f"https://raw.githubusercontent.com/{REPO}/main/website/assets/screenshots/translation.png",
+]
+
+ICON_PATH = "MangaTranslater/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
 
 
 def _token():
@@ -81,7 +109,8 @@ def min_os_version(ipa_url):
         return FALLBACK_MIN_OS
 
 
-def build_versions(releases):
+def build_versions(releases, read_min_os=min_os_version):
+    """把 Release 列表转成 AltStore 的 versions 数组（按日期从新到旧）。"""
     versions = []
     for rel in releases:
         if rel.get("draft") or rel.get("prerelease"):
@@ -100,10 +129,38 @@ def build_versions(releases):
                 "localizedDescription": (rel.get("body") or "").strip()[:2000],
                 "downloadURL": ipa["browser_download_url"],
                 "size": ipa["size"],
-                "minOSVersion": min_os_version(ipa["browser_download_url"]),
+                "minOSVersion": read_min_os(ipa["browser_download_url"]),
             }
         )
+    # AltStore 期望「新的在前」，并据此判断可升级版本；GitHub API 虽然也返回
+    # 新在前，但这里显式排序，免得将来换数据源时悄悄变了顺序。
+    versions.sort(key=lambda item: item["date"], reverse=True)
     return versions
+
+
+def build_source(versions):
+    """组装完整的 source.json 结构。"""
+    return {
+        "name": SOURCE_NAME,
+        "identifier": SOURCE_IDENTIFIER,
+        "sourceURL": f"https://github.com/{REPO}/releases/latest/download/source.json",
+        "website": f"https://github.com/{REPO}",
+        "apps": [
+            {
+                "name": SOURCE_NAME,
+                "bundleIdentifier": BUNDLE_ID,
+                "developerName": DEVELOPER,
+                "subtitle": SUBTITLE,
+                "localizedDescription": DESCRIPTION,
+                "iconURL": f"https://raw.githubusercontent.com/{REPO}/main/{ICON_PATH}",
+                "tintColor": TINT_COLOR,
+                "category": CATEGORY,
+                "screenshots": SCREENSHOTS,
+                "versions": versions,
+            }
+        ],
+        "news": [],
+    }
 
 
 def main():
@@ -113,35 +170,7 @@ def main():
         print("没有找到带 .ipa 的正式发布，不生成清单", file=sys.stderr)
         return 1
 
-    source = {
-        "name": SOURCE_NAME,
-        "identifier": SOURCE_IDENTIFIER,
-        "sourceURL": f"https://github.com/{REPO}/releases/latest/download/source.json",
-        "website": f"https://github.com/{REPO}",
-        "apps": [
-            {
-                "name": "MangaTranslater",
-                "bundleIdentifier": BUNDLE_ID,
-                "developerName": DEVELOPER,
-                "subtitle": "Comic reader with built-in page translation",
-                "localizedDescription": (
-                    "A comic reader with built-in page translation. "
-                    "Ships with no online sources: import local files (CBZ/ZIP), "
-                    "connect your own Komga or Kavita server, or add third-party "
-                    "source repository URLs. iOS 18.0 or later."
-                ),
-                "iconURL": (
-                    f"https://raw.githubusercontent.com/{REPO}/main/"
-                    "MangaTranslater/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
-                ),
-                "tintColor": "4A3FA8",
-                "category": "entertainment",
-                "versions": versions,
-            }
-        ],
-        "news": [],
-    }
-
+    source = build_source(versions)
     with open("source.json", "w", encoding="utf-8") as f:
         json.dump(source, f, ensure_ascii=False, indent=2)
         f.write("\n")

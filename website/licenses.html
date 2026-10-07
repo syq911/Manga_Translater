@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Licences · MangaTranslater</title>
+<meta name="description" content="MangaTranslater — Licences">
+<script>
+// 语言：优先跟随浏览器，其次英文。写在 head 里、CSS 之前，避免刷新时闪一下双语。
+document.documentElement.dataset.lang =
+  (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh-Hans' : 'en';
+</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="index.html">MangaTranslater</a>
+  <nav>
+        <a href="index.html"><span data-lang="en">Home</span><span data-lang="zh-Hans">首页</span></a>
+        <a href="upgrade.html"><span data-lang="en">Pricing</span><span data-lang="zh-Hans">定价</span></a>
+        <a href="privacy.html"><span data-lang="en">Privacy</span><span data-lang="zh-Hans">隐私</span></a>
+        <a href="terms.html"><span data-lang="en">Terms</span><span data-lang="zh-Hans">条款</span></a>
+  </nav>
+  <button id="lang-toggle" type="button" aria-label="Switch language">EN / 中文</button>
+</header>
+<main>
+<div class="container narrow">
+<p class="kicker"><span data-lang="en">Licences</span><span data-lang="zh-Hans">开源许可</span></p>
+<article class="legal" data-lang="en">
+<h1 id="open-source-licences-and-third-party-notices">Open-source licences and third-party notices</h1>
+<p>The App's source code is released under the <strong>Apache License 2.0</strong>.</p>
+<h2 id="1-the-app-s-licence">1. The App's licence</h2>
+<pre><code>MangaTranslater
+Copyright 2026 MangaTranslater contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.</code></pre>
+<h2 id="2-derivative-work-apache-2-0-section-4-b">2. Derivative work (Apache 2.0 section 4(b))</h2>
+<p>This product includes work derived from the upstream project below, modified for</p>
+<p>use in this project:</p>
+<pre><code>This product includes software developed at
+EhViewer-Apple (https://github.com/felixchaos/EhViewer-Apple),
+licensed under the Apache License, Version 2.0.</code></pre>
+<p>Files that were ported and modified carry a notice in their header comment. The</p>
+<p>modifications include, among others: generalizing the data model to arbitrary</p>
+<p>sources, changing the translation cache key from a site-specific item ID to</p>
+<p>"source + title URL + page index", and making the translation backend pluggable.</p>
+<h2 id="3-third-party-components-distributed-with-the-app">3. Third-party components distributed with the app</h2>
+<table>
+<tr><td>GRDB.swift</td><td>MIT</td><td>Local database for the library and reading progress</td></tr>
+<tr><td>SwiftSoup</td><td>MIT</td><td>HTML parsing for source scripts (the <code>html</code> bridge)</td></tr>
+</table>
+<p>Each component is governed by its own licence. The full list, with links, is kept in</p>
+<p><code>NOTICE</code> and <code>docs/architecture.md</code>.</p>
+<h2 id="4-system-frameworks">4. System frameworks</h2>
+<p>The App uses Apple system frameworks (Vision, Translation, WebKit, AVFoundation and</p>
+<p>others) supplied by iOS, governed by Apple's licences and privacy policy.</p>
+<h2 id="5-we-do-not-distribute-content">5. We do not distribute content</h2>
+<p>Neither this repository nor the App contains any copyrighted third-party content,</p>
+<p>and no source scripts are included. Source scripts are provided by third-party</p>
+<p>repositories under licences declared by their own authors.</p>
+</article>
+<article class="legal" data-lang="zh-Hans">
+<h1 id="开源许可与第三方声明">开源许可与第三方声明</h1>
+<p>本 App 的源代码以 <strong>Apache License 2.0</strong> 发布。</p>
+<h2 id="1-本-app-的许可">1. 本 App 的许可</h2>
+<pre><code>MangaTranslater
+Copyright 2026 MangaTranslater contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.</code></pre>
+<h2 id="2-派生说明-apache-2-0-第-4-b-条">2. 派生说明（Apache 2.0 第 4(b) 条）</h2>
+<p>本产品包含派生自下述上游项目的工作，并已为适用于本项目而作出修改：</p>
+<pre><code>This product includes software developed at
+EhViewer-Apple (https://github.com/felixchaos/EhViewer-Apple),
+licensed under the Apache License, Version 2.0.</code></pre>
+<p>被搬运并修改的文件在其文件头注明了来源与修改。修改内容包括但不限于：</p>
+<p>面向通用来源的数据模型泛化、缓存键从作品 ID 改为「来源 + 作品地址 + 页号」、</p>
+<p>翻译后端从单一服务改为可插拔等。</p>
+<h2 id="3-随-app-分发的第三方组件">3. 随 App 分发的第三方组件</h2>
+<table>
+<tr><td>GRDB.swift</td><td>MIT</td><td>书架与阅读进度的本地数据库</td></tr>
+<tr><td>SwiftSoup</td><td>MIT</td><td>源脚本的 HTML 解析（<code>html</code> 桥）</td></tr>
+</table>
+<p>各组件分别适用其自身许可。完整清单与其原文链接见仓库 <code>NOTICE</code> 与</p>
+<p><code>docs/architecture.md</code>。</p>
+<h2 id="4-系统框架">4. 系统框架</h2>
+<p>本 App 使用 Apple 系统框架（Vision、Translation、WebKit、AVFoundation 等），</p>
+<p>它们由 iOS 提供，适用 Apple 的许可与隐私政策。</p>
+<h2 id="5-我们不分发内容">5. 我们不分发内容</h2>
+<p>本仓库与本 App 均不包含任何受版权保护的第三方内容，也不包含任何源脚本。</p>
+<p>源脚本由第三方仓库提供，其作者与许可由其自行声明。</p>
+</article>
+</div>
+</main>
+<footer class="footer">
+  <p>
+    <span data-lang="en">MangaTranslater is a general-purpose comic reader. It ships with no online
+    sources and no third-party content.</span>
+    <span data-lang="zh-Hans">MangaTranslater 是通用漫画阅读器，不自带任何在线源，也不包含任何第三方内容。</span>
+  </p>
+  <p class="dim">
+    <a href="privacy.html"><span data-lang="en">Privacy</span><span data-lang="zh-Hans">隐私政策</span></a> ·
+    <a href="terms.html"><span data-lang="en">Terms</span><span data-lang="zh-Hans">使用条款</span></a> ·
+    <a href="licenses.html"><span data-lang="en">Licences</span><span data-lang="zh-Hans">开源许可</span></a> ·
+    <a href="https://github.com/syq911/Manga_Translater">GitHub</a>
+  </p>
+  <h1 class="visually-hidden">Licences</h1>
+</footer>
+<script src="assets/site.js"></script>
+</body>
+</html>

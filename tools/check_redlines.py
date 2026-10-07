@@ -40,6 +40,20 @@ ALLOWLIST = {
     "READMES.md",
 }
 
+# 允许提交 `.js` 的位置：官网自己的前端脚本（语言切换之类），**不是**源脚本。
+#
+# 规则本身仍然是「仓库里不得出现源脚本」；这里只是把「官网的 JS」与
+# 「喂给 JSContext 的源脚本」区分开。为了不让这条豁免变成后门，
+# 放行的文件还会被再检查一次：一旦出现源脚本的元信息块或七方法名，照样报错。
+JS_ALLOWED_PREFIXES = ("website/assets/",)
+SOURCE_SCRIPT_MARKERS = [
+    "const source",
+    "getPopularManga",
+    "getMangaDetail",
+    "getChapterList",
+    "getPageList",
+]
+
 
 def iter_files(root="."):
     for dirpath, dirnames, filenames in os.walk(root):
@@ -60,7 +74,18 @@ def main():
 
         # 规则 2：禁止源脚本
         if relative.endswith(".js"):
-            problems.append(f"提交了 JavaScript 源脚本：{relative}（本项目只提供接口规范）")
+            text = ""
+            try:
+                text = io.open(path, encoding="utf-8").read()
+            except (UnicodeDecodeError, OSError):
+                pass
+            allowed_place = any(relative.startswith(p) for p in JS_ALLOWED_PREFIXES)
+            looks_like_source = any(marker in text for marker in SOURCE_SCRIPT_MARKERS)
+            if not allowed_place or looks_like_source:
+                problems.append(
+                    f"提交了 JavaScript 源脚本：{relative}（本项目只提供接口规范；"
+                    "官网自己的前端脚本请放在 website/assets/ 下）"
+                )
             continue
 
         try:

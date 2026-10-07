@@ -18,7 +18,8 @@ to those components respectively.
 - GRDB.swift — MIT License
   https://github.com/groue/GRDB.swift
 
-- SwiftSoup (planned, HTML parsing for the source engine) — MIT License
-  https://github.com/scinfu/SwiftSoup
+(The source engine's HTML parsing and CSS selector matching are implemented in
+this repository inside `Packages/SourceEngine`; no HTML-parsing library is
+bundled. Remember to add an entry here if one is ever introduced.)
 
 A full, up-to-date list is maintained in docs/architecture.md.

@@ -13,27 +13,27 @@ if ! command -v "$PY" >/dev/null 2>&1; then
   PY=python
 fi
 
-echo "=== 1/11 工程文件完整性 ==="
+echo "=== 1/13 工程文件完整性 ==="
 "$PY" tools/check_project.py
 
 echo
-echo "=== 2/11 导入完整性与跨模块访问权限 ==="
+echo "=== 2/13 导入完整性与跨模块访问权限 ==="
 "$PY" tools/check_imports.py
 
 echo
-echo "=== 3/11 Swift 结构体检 ==="
+echo "=== 3/13 Swift 结构体检 ==="
 "$PY" tools/check_swift_syntax.py
 
 echo
-echo "=== 4/11 文档与测试夹具同步 ==="
+echo "=== 4/13 文档与测试夹具同步 ==="
 "$PY" tools/check_docs_sync.py
 
 echo
-echo "=== 5/11 构造调用与 init 签名一致性 ==="
+echo "=== 5/13 构造调用与 init 签名一致性 ==="
 "$PY" tools/check_api_usage.py
 
 echo
-echo "=== 6/11 Python 脚本语法 ==="
+echo "=== 6/13 Python 脚本语法 ==="
 "$PY" -m py_compile \
   .github/scripts/build_altstore_source.py \
   tools/check_project.py \
@@ -46,28 +46,39 @@ echo "=== 6/11 Python 脚本语法 ==="
   tools/check_redlines.py \
   tools/check_hardcoded_copy.py \
   tools/check_legal_sync.py \
+  tools/check_altstore_source.py \
   tools/make_ocr_fixture.py \
-  tools/make_demo_repo.py
+  tools/make_demo_repo.py \
+  tools/make_screenshots.py \
+  tools/build_website.py
 echo "OK"
 
 echo
-echo "=== 7/11 本地化一致性（App 表 + 包层表）==="
+echo "=== 7/13 本地化一致性（App 表 + 包层表）==="
 "$PY" tools/check_localization.py
 
 echo
-echo "=== 8/11 用户可见文案扫描（不得硬编码中文）==="
+echo "=== 8/13 用户可见文案扫描（不得硬编码中文）==="
 "$PY" tools/check_hardcoded_copy.py
 
 echo
-echo "=== 9/11 法务文案与 App 内置副本同步 ==="
+echo "=== 9/13 法务文案与 App 内置副本同步 ==="
 "$PY" tools/check_legal_sync.py
 
 echo
-echo "=== 10/11 自测仓库语料与夹具一致性 ==="
+echo "=== 10/13 自测仓库语料与夹具一致性 ==="
 "$PY" tools/check_demo_repo.py
 
 echo
-echo "=== 11/11 敏感信息与红线扫描 ==="
+echo "=== 11/13 官网生成与校验 ==="
+"$PY" tools/build_website.py
+
+echo
+echo "=== 12/13 AltStore 源清单（用合成发布数据离线跑一遍）==="
+"$PY" tools/check_altstore_source.py
+
+echo
+echo "=== 13/13 敏感信息与红线扫描 ==="
 "$PY" tools/check_redlines.py
 
 echo
