@@ -41,6 +41,19 @@ public struct HostedDataSourceProvider: MangaDataSourceProviding {
         guard let server = store.server(id: sourceID.rawValue) else {
             throw HostedServerError.unavailable(Copy.format("error.hosted.notConfigured", sourceID.rawValue))
         }
+        return try dataSource(for: server)
+    }
+
+    /// 直接用**给定配置**建连接器（不查存储）。
+    ///
+    /// 「测试连接」必须走这条：它测的是**表单里当前填的内容**，而不是已保存的那份配置。
+    ///
+    /// 原来的实现按 `sourceID` 回存储里找配置，于是有两个必然的错误：
+    /// ① 新增时存储里根本没有这条记录 → 永远报「未配置」（实测踩到，
+    ///    用户填的地址完全正确也测不通）；② 编辑时拿到的是**旧地址 + 旧密钥**，
+    ///    改完地址点测试会得到「旧配置连得上」的假结论。
+    /// 两种情况的根因是同一个——探活的对象搞错了。
+    public func dataSource(for server: HostedServer) throws -> MangaDataSource {
         switch server.kind {
         case .komga:
             return try KomgaDataSource(server: server, client: client)
@@ -66,5 +79,12 @@ public struct CompositeDataSourceProvider: MangaDataSourceProviding {
             return try await hosted.dataSource(for: sourceID)
         }
         return try await scripts.dataSource(for: sourceID)
+    }
+
+    /// 用「还没保存」的表单配置建连接器，用于「测试连接」。
+    ///
+    /// 转发给 `hosted`：探活不查存储（见 `HostedDataSourceProvider.dataSource(for:)`）。
+    public func hostedDataSource(for server: HostedServer) throws -> MangaDataSource {
+        try hosted.dataSource(for: server)
     }
 }

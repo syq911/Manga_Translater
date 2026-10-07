@@ -413,3 +413,14 @@
 "cloud.delete.footer" = "Deleting the account removes it, its quota counters and its subscription records from the server within 30 days. This cannot be undone — to come back later, sign in again with the same email to create a fresh account.";
 "cloud.error.emailMismatch" = "The email you typed does not match this account.";
 "cloud.section.delete" = "Delete account";
+
+/* 交互修复（点击语义审查，M5 追加） */
+
+"library.confirm.remove.message" = "“%@” will be removed from your library together with its reading progress and its category. Downloaded chapters are kept — manage them in the Downloads tab.";
+"library.confirm.remove.title" = "Remove from library?";
+"repo.list.footer" = "Removing a repository only stops pulling its source catalog from there. Sources you already installed stay installed — uninstall them from the Browse tab.";
+"server.saveAnyway.confirm" = "Save anyway";
+"server.saveAnyway.title" = "Could not connect. Save anyway?";
+"settings.about.clearsFooter" = "Clearing the cover cache is harmless — covers are regenerated on demand. Clearing the diagnostics log cannot be undone, and that log is usually the only clue when something goes wrong.";
+"translation.settings.clearCacheConfirm.message" = "Cached translated pages are deleted and will have to be translated again. Cloud translation is billed per page, so clearing the cache costs quota.";
+"translation.settings.clearCacheConfirm.title" = "Clear the translation cache?";

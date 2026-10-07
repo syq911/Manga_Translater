@@ -6,13 +6,16 @@
 //
 //  几个取舍：
 //  - **先自检再保存**：地址填错最常见（少了端口、少了子路径、写成网页版地址），
-//    如果保存后才发现，用户已经在浏览页点了一圈。所以「保存」时会先做一次
-//    `probe()`，成功才落盘；失败也能「仍然保存」（有些服务器只在内网可达，
-//    或者用户想先存着）。
+//    如果保存后才发现，用户已经在浏览页点了一圈。所以「保存」先做一次
+//    `probe()`，连不上就问一句「仍然保存？」——而不是直接拒绝：
+//    内网服务器、临时维护中的服务器都必须允许先存下来。
+//    （探活用的是**表单里当前填的配置**，不是存储里那份旧的；见
+//    `HostedDataSourceProvider.dataSource(for:)`。）
 //  - **标识由名字派生**，不让用户填：`SourceID` 有一堆字符限制，
 //    让用户去理解「只能小写字母数字」纯粹是给用户添堵。
 //  - **凭据不回显**：编辑时只显示「已设置」，要改就重新输入。
 //    把密码原样回显在界面上，等于把「截屏分享」变成一次泄漏。
+//    由此带来一条必须写明的语义：**凭据留空 = 不改**（见 `ServerFormDraft`）。
 //
 
 import SwiftUI
@@ -67,14 +70,27 @@ struct ServerManagerView: View {
         .navigationTitle(L("server.title"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isAdding) {
-            ServerEditView(server: nil) { newServer in
-                try environment.serverStore.add(newServer)
+            ServerEditView(server: nil) { draft in
+                // 走 `AppEnvironment.addHostedServer` 而不是直接 `serverStore.add`：
+                // 名字校验、标识派生、诊断打点都在那里——**用户走的路径必须就是
+                // 单测覆盖的那条**，否则「测过了」和「真在跑」不是一回事。
+                _ = try environment.addHostedServer(
+                    kind: draft.kind,
+                    name: draft.name,
+                    baseURL: draft.baseURL,
+                    apiKey: draft.normalizedAPIKey,
+                    username: draft.normalizedUsername,
+                    password: draft.normalizedPassword
+                )
                 message = L("server.saved")
             }
         }
         .sheet(item: $editing) { server in
-            ServerEditView(server: server) { updated in
-                try environment.updateHostedServer(updated)
+            ServerEditView(server: server) { draft in
+                // 合并（含「空 = 不改」的凭据语义）在可测的 `ServerFormDraft` 里
+                try environment.updateHostedServer(
+                    draft.merged(into: server, assigningID: server.id)
+                )
                 message = L("server.saved")
             }
         }
@@ -142,22 +158,26 @@ struct ServerEditView: View {
 
     /// nil 表示新增。
     let server: HostedServer?
-    /// 保存动作（抛错表示保存失败，界面显示原因）。
-    let onSave: (HostedServer) throws -> Void
+    /// 保存动作。收到的是**原始表单**（`ServerFormDraft`），
+    /// 「空凭据 = 不改」之类的合并语义由它自己负责——这样那条规则可以单测。
+    /// 抛错表示保存失败，界面显示原因。
+    let onSave: (ServerFormDraft) throws -> Void
 
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
 
-    @State private var kind: HostedServerKind = .komga
-    @State private var name = ""
-    @State private var baseURL = ""
-    @State private var apiKey = ""
-    @State private var username = ""
-    @State private var password = ""
+    /// 表单内容。凭据是**局部状态**而不是直接绑到 `HostedServer` 上：
+    /// 编辑时它们留空表示「不改」，这个语义需要一个独立的容器来表达。
+    @State private var draft = ServerFormDraft()
 
     @State private var isTesting = false
     @State private var testResult: String?
     @State private var errorMessage: String?
+    /// 保存前的探活失败原因（配合下面那句「仍然保存？」）。
+    @State private var saveFailure: String?
+    /// 待「仍然保存」的表单快照（非 nil 即弹确认）。
+    @State private var pendingSave: ServerFormDraft?
+    @State private var isSaving = false
 
     private var isEditing: Bool { server != nil }
 
@@ -165,13 +185,13 @@ struct ServerEditView: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker(L("server.kind"), selection: $kind) {
+                    Picker(L("server.kind"), selection: $draft.kind) {
                         ForEach(HostedServerKind.allCases, id: \.self) { kind in
                             Text(kind.brandName).tag(kind)
                         }
                     }
-                    TextField(L("server.name"), text: $name)
-                    TextField(L("server.baseURLPlaceholder"), text: $baseURL)
+                    TextField(L("server.name"), text: $draft.name)
+                    TextField(L("server.baseURLPlaceholder"), text: $draft.baseURL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
@@ -180,13 +200,13 @@ struct ServerEditView: View {
                 }
 
                 Section {
-                    SecureField(L("server.apiKey"), text: $apiKey)
+                    SecureField(L("server.apiKey"), text: $draft.apiKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    TextField(L("server.username"), text: $username)
+                    TextField(L("server.username"), text: $draft.username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    SecureField(L("server.password"), text: $password)
+                    SecureField(L("server.password"), text: $draft.password)
                 } header: {
                     Text(L("server.section.credentials"))
                 } footer: {
@@ -225,8 +245,15 @@ struct ServerEditView: View {
                     Button(L("common.cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(L("server.save")) { save() }
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || baseURL.isEmpty)
+                    if isSaving {
+                        // 保存会先探活，所以要给转圈——否则用户会以为按钮没反应
+                        ProgressView()
+                    } else {
+                        Button(L("server.save")) {
+                            Task { await save() }
+                        }
+                        .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
                 }
             }
             .alert(L("common.notice"), isPresented: Binding(
@@ -237,6 +264,26 @@ struct ServerEditView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+            .confirmationDialog(
+                L("server.saveAnyway.title"),
+                isPresented: Binding(
+                    get: { pendingSave != nil },
+                    set: { if !$0 { pendingSave = nil; saveFailure = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button(L("server.saveAnyway.confirm")) {
+                    if let form = pendingSave { commit(form) }
+                    pendingSave = nil
+                    saveFailure = nil
+                }
+                Button(L("common.cancel"), role: .cancel) {
+                    pendingSave = nil
+                    saveFailure = nil
+                }
+            } message: {
+                Text(saveFailure ?? "")
+            }
             .task { load() }
         }
     }
@@ -245,48 +292,32 @@ struct ServerEditView: View {
 
     private func load() {
         guard let server else { return }
-        kind = server.kind
-        name = server.name
-        baseURL = server.normalizedBaseURL
-        // 凭据不回显：只留空让用户重新输入
-        apiKey = ""
-        username = server.username ?? ""
-        password = ""
+        // 凭据不回显：只留空让用户重新输入（留空 = 不改）
+        draft = .editing(server)
     }
 
-    /// 用当前表单内容拼出一台服务器（不落盘）。
-    private func draft() -> HostedServer {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        var result = server ?? HostedServer(
-            id: HostedServer.makeID(
-                kind: kind,
-                name: trimmedName,
-                existing: Set(environment.hostedServers.map(\.id))
-            ),
-            kind: kind,
-            name: trimmedName,
-            baseURL: baseURL
+    /// 把表单合并成一台服务器（**不落盘**）。
+    ///
+    /// 新增时的标识按「种类 + 名字」派生；编辑时**沿用原标识**——
+    /// 改类型不该改标识，否则服务器上已有的下载与书架记录会认不出来。
+    private func resolved(_ form: ServerFormDraft) -> HostedServer {
+        let identifier = server?.id ?? HostedServer.makeID(
+            kind: form.kind,
+            name: form.name,
+            existing: Set(environment.hostedServers.map(\.id))
         )
-        result.kind = kind
-        result.name = trimmedName
-        result.baseURL = baseURL
-        // 空输入表示「不改」，沿用原值——否则用户编辑地址时会不小心把密钥清掉
-        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedKey.isEmpty { result.apiKey = trimmedKey }
-        let trimmedUser = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        result.username = trimmedUser.isEmpty ? nil : trimmedUser
-        if !password.isEmpty { result.password = password }
-        return result
+        return form.merged(into: server, assigningID: identifier)
     }
 
     private func runTest() async {
-        let target = draft()
+        let target = resolved(draft)
         guard HostedServer.isValidBaseURL(target.baseURL) else {
             errorMessage = L("server.invalidAddress")
             return
         }
         isTesting = true
         testResult = nil
+        // 探活的对象是**当前填的内容**（未保存也能测）
         let outcome = await environment.probeHostedServer(target)
         isTesting = false
         switch outcome {
@@ -295,14 +326,32 @@ struct ServerEditView: View {
         }
     }
 
-    private func save() {
-        let target = draft()
-        guard HostedServer.isValidBaseURL(target.baseURL) else {
-            errorMessage = L("server.invalidAddress")
+    /// 保存：先探活，连不上就问一句「仍然保存？」。
+    ///
+    /// 先探活是为了把「地址少了端口 / 少了子路径」这类最常见的错误挡在保存之前——
+    /// 保存后才发现的话，用户已经在浏览页点了一圈、看到一堆失败。
+    /// 但**不强制**：内网服务器、临时维护中的服务器都得允许先存下来。
+    private func save() async {
+        let target = resolved(draft)
+        guard ServerFormValidator.canSave(name: target.name, baseURL: target.baseURL) else {
+            errorMessage = target.name.isEmpty ? L("server.error.missingName") : L("server.invalidAddress")
             return
         }
+        isSaving = true
+        let outcome = await environment.probeHostedServer(target)
+        isSaving = false
+        switch outcome {
+        case .success:
+            commit(draft)
+        case let .failure(error):
+            saveFailure = error.message
+            pendingSave = draft
+        }
+    }
+
+    private func commit(_ form: ServerFormDraft) {
         do {
-            try onSave(target)
+            try onSave(form)
             dismiss()
         } catch {
             errorMessage = AppError.normalize(error).localizedDescription

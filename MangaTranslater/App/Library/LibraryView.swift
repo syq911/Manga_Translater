@@ -21,9 +21,28 @@ struct LibraryView: View {
     @State private var categories: [LibraryCategory] = []
     /// nil = 显示全部作品。
     @State private var selectedCategoryID: String?
-    @State private var sortOrder: LibrarySortOrder = .lastRead
+    /// 排序偏好**持久化**：用 `@State` 的话切走再回来、或重启就回到默认，
+    /// 用户会以为排序坏了（解析规则见 `LibraryPreferences`）。
+    @AppStorage(LibraryPreferences.sortOrderKey)
+    private var sortOrderRaw = LibraryPreferences.defaultSortOrder.rawValue
     @State private var showsImporter = false
     @State private var message: String?
+    /// 待确认的「移出书架」。
+    @State private var pendingRemoval: LibraryEntry?
+
+    private var sortOrder: LibrarySortOrder {
+        LibraryPreferences.sortOrder(from: sortOrderRaw)
+    }
+
+    private var sortOrderBinding: Binding<LibrarySortOrder> {
+        Binding(
+            get: { LibraryPreferences.sortOrder(from: sortOrderRaw) },
+            set: { newValue in
+                sortOrderRaw = newValue.rawValue
+                reload()
+            }
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -50,6 +69,27 @@ struct LibraryView: View {
                 Button(L("common.ok"), role: .cancel) { message = nil }
             } message: {
                 Text(message ?? "")
+            }
+            .confirmationDialog(
+                L("library.confirm.remove.title"),
+                isPresented: Binding(
+                    get: { pendingRemoval != nil },
+                    set: { if !$0 { pendingRemoval = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button(L("library.menu.remove"), role: .destructive) {
+                    if let entry = pendingRemoval { performRemoval(entry) }
+                    pendingRemoval = nil
+                }
+                Button(L("common.cancel"), role: .cancel) { pendingRemoval = nil }
+            } message: {
+                // 这句是必须的：移出书架会**一并丢掉阅读进度与分类归属**，
+                // 用户以为只是「收藏没了」的话，下次进来会发现自己从头开始。
+                Text(String(
+                    format: L("library.confirm.remove.message"),
+                    pendingRemoval?.manga.title ?? ""
+                ))
             }
         }
     }
@@ -86,8 +126,17 @@ struct LibraryView: View {
                     row(for: entry)
                 }
                 .contextMenu { rowMenu(for: entry) }
+                // 刻意不用 `.onDelete`：它会**立刻**删掉，而「移出书架」按策略
+                // 必须先确认（`DestructiveActionPolicy.requiresConfirmation(.removeFromLibrary)`）。
+                // 换成 swipeActions 之后，手势与长按菜单走的是同一条确认路径。
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        requestRemoval(entry)
+                    } label: {
+                        Label(L("library.menu.remove"), systemImage: "trash")
+                    }
+                }
             }
-            .onDelete(perform: delete)
         }
     }
 
@@ -121,7 +170,7 @@ struct LibraryView: View {
         }
 
         Button(role: .destructive) {
-            remove(entry)
+            requestRemoval(entry)
         } label: {
             Label(L("library.menu.remove"), systemImage: "trash")
         }
@@ -153,23 +202,25 @@ struct LibraryView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             Menu {
-                Button {
-                    selectedCategoryID = nil
-                    reload()
-                } label: {
-                    Label(L("library.filter.all"), systemImage: selectedCategoryID == nil ? "checkmark" : "books.vertical")
-                }
-                if !categories.isEmpty {
-                    Divider()
-                    ForEach(categories) { category in
+                // 菜单的**形状**（有哪些项、顺序、哪一项被选中）来自可单测的
+                // `LibraryFilterMenu`；这里只把中性枚举映射成文案与图标。
+                ForEach(Array(LibraryFilterMenu.targets(categories: categories).enumerated()), id: \.offset) { _, target in
+                    switch target {
+                    case .all:
                         Button {
-                            selectedCategoryID = category.id
-                            reload()
+                            selectCategory(nil)
                         } label: {
                             Label(
-                                category.name,
-                                systemImage: selectedCategoryID == category.id ? "checkmark" : "folder"
+                                L("library.filter.all"),
+                                systemImage: selectedCategoryID == nil ? "checkmark" : "books.vertical"
                             )
+                        }
+                        if !categories.isEmpty { Divider() }
+                    case let .category(id, name):
+                        Button {
+                            selectCategory(id)
+                        } label: {
+                            Label(name, systemImage: selectedCategoryID == id ? "checkmark" : "folder")
                         }
                     }
                 }
@@ -186,7 +237,7 @@ struct LibraryView: View {
 
         ToolbarItem(placement: .topBarLeading) {
             Menu {
-                Picker(L("library.sort.label"), selection: $sortOrder) {
+                Picker(L("library.sort.label"), selection: sortOrderBinding) {
                     ForEach(LibrarySortOrder.allCases, id: \.self) { order in
                         Text(order.localizedName).tag(order)
                     }
@@ -194,7 +245,6 @@ struct LibraryView: View {
             } label: {
                 Label(L("library.sort.label"), systemImage: "arrow.up.arrow.down")
             }
-            .onChange(of: sortOrder) { _, _ in reload() }
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -234,12 +284,15 @@ struct LibraryView: View {
 
     private func reload() {
         categories = (try? environment.libraryStore.categories()) ?? []
-        // 分类可能已被删除（在管理页或别处），此时回退到「全部作品」，
-        // 否则会停在一个空列表上让用户以为书架坏了。
-        if let selectedCategoryID, !categories.contains(where: { $0.id == selectedCategoryID }) {
-            self.selectedCategoryID = nil
-        }
+        // 分类可能已在分类管理页被删掉，此时回退到「全部作品」，
+        // 否则会停在一个空列表上让用户以为书架坏了（判定在 `LibraryFilterMenu`，可单测）。
+        selectedCategoryID = LibraryFilterMenu.validSelection(selectedCategoryID, categories: categories)
         entries = (try? environment.libraryStore.entries(sortedBy: sortOrder, categoryID: selectedCategoryID)) ?? []
+    }
+
+    private func selectCategory(_ id: String?) {
+        selectedCategoryID = id
+        reload()
     }
 
     private func move(_ entry: LibraryEntry, to categoryID: String?) {
@@ -260,16 +313,24 @@ struct LibraryView: View {
         }
     }
 
-    private func remove(_ entry: LibraryEntry) {
-        _ = try? environment.libraryStore.remove(mangaID: entry.manga.id)
-        reload()
+    /// 请求移出书架：按策略决定「先确认」还是「直接移」。
+    ///
+    /// 用策略层裁决（而不是在这里写死一个 `true`）是为了让「要不要确认」
+    /// 只有一个出口：策略改了，所有入口一起改。
+    private func requestRemoval(_ entry: LibraryEntry) {
+        if DestructiveActionPolicy.requiresConfirmation(.removeFromLibrary) {
+            pendingRemoval = entry
+        } else {
+            performRemoval(entry)
+        }
     }
 
-    private func delete(at offsets: IndexSet) {
-        for index in offsets where entries.indices.contains(index) {
-            let entry = entries[index]
-            _ = try? environment.libraryStore.remove(mangaID: entry.manga.id)
-        }
+    /// 真正移出书架。
+    ///
+    /// **不会**删除已下载的文件（那是下载页的职责），但条目本身带着阅读进度
+    /// 与分类归属，所以这一步是「半可逆」的——确认文案里必须说清。
+    private func performRemoval(_ entry: LibraryEntry) {
+        _ = try? environment.libraryStore.remove(mangaID: entry.manga.id)
         reload()
     }
 

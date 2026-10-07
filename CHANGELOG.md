@@ -9,6 +9,69 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### ✨ 新增 / Added（交互审查：把「点了会怎样」变成可测的）
+
+- **`docs/interaction-map.md`：全量交互清单**。逐个列出 12 个跳转面、167 条可交互元素
+  （类型 / 动作去向 / 守卫 / 副作用），并把「缺失的入口」也编号
+  （阅读器的下载与设置入口、本地导入文件的删除入口等）——不编号就会被忘掉。
+  第 11 节把 16 个破坏性操作的是否确认并排放在一张表里，
+  第 12 节 25 条问题观察（O-1…O-25），第 13 节说明「哪些已可测、哪些要先抽层、哪些本地测不了」。
+- **`AppCore.InteractionRules`：点击语义层**。把散在视图 `body` 里的判定搬进可测的层：
+  `ReaderNavigation`（点击带方向 / 横滑阈值与「放大不翻页」/ 点击带宽度）、
+  `ChapterDownloadState` + `ChapterActionMenu`（7 种状态 → 左滑按钮）、
+  `DestructiveAction` + `DestructiveActionPolicy`（16 个破坏性操作要不要确认）、
+  `LibraryFilterMenu`（筛选菜单项与「分类被删后的回退」）。
+- **`SourceEngine.ServerFormValidator` / `ServerFormDraft`：表单校验与合并**。
+  把「空 = 不改」（API Key / 密码）与「空 = 清空」（用户名）这两条**相反**的规则
+  写在一处并写明；原先它们散在视图的赋值语句里。
+- **`LibraryPreferences`（App 层）**：书架排序偏好的解析与回退。
+- **`InteractionRulesTests`：模拟点击的穷举测试**（新增 60+ 断言）。刻意是穷举不是抽样：
+  「模式 × 侧」四种组合、横滑 5 个边界值（含「恰好 45° 不翻页」）、
+  7 种下载状态 × 期望矩阵、16 个破坏性操作 × 期望矩阵（附计数断言）、
+  服务器表单 4×5 全组合。另含 `ReaderSimulator` 做**多步序列**断言
+  （连点右侧 6 次跨章到末页、第二章第一页往回翻落在上一章末页）。
+
+### 🔧 修复 / Fixed（本轮由交互清单暴露）
+
+- **「测试连接」测的是存储里的旧配置**（O-22）：`probeHostedServer` 按 `sourceID`
+  回 `ServerStore` 查，于是**新增时必然失败**（存储里没这条）、
+  **编辑时测的是旧地址 + 旧密钥**。改为按传入配置建连接器
+  （`HostedDataSourceProvider.dataSource(for server:)`）。
+- **删除下载的确认不一致**（O-1）：下载页要确认、作品详情页不要。
+  统一走 `DestructiveActionPolicy`，详情页的「删除下载」「删除全部下载」都补上确认。
+- **移出书架静默丢掉阅读进度与分类归属**（O-24）：原先是系统 `.onDelete`，
+  左滑即删且零提示。改为确认弹窗，文案写明会丢进度。
+- **清空译文缓存无确认**（O-2）：它是唯一会浪费钱的清理动作（云翻译按页扣额度），
+  现在有确认且文案写明后果。
+- **书架排序不持久化**（O-23）：`@State` → `@AppStorage` + `LibraryPreferences`。
+- **服务器表单「保存不探活」与头注释不符**（O-3）：按注释本意实现——
+  保存先探活，失败时问一句「仍然保存？」（内网 / 维护中的服务器仍可存下来）。
+- **新增服务器没走 `addHostedServer`**（O-4）：界面直接 `serverStore.add`，
+  于是「单测覆盖的路径」与「用户走的路径」不是同一条。现已统一。
+- 阅读器点击带写死 60pt → 按容器宽度比例并夹在 44…120 pt 之间（O-18 / O-19）。
+- 登录页收割 0 条时「好」会关掉整页 → 只关提示、留着网页（O-20）。
+- 删除未使用的 `NSFaceIDUsageDescription`（应用锁尚未实现，O-21）。
+- 两处与实现不符的文件头注释（LocalBooksView O-5、ServerEditView O-3）。
+- 仓库删除与诊断日志清理补上 footer 说明（O-13）。
+
+### 🛠 工具 / Tooling
+
+- `check_swift_syntax.py` 新增规则：`Section("标题") { … } header:/footer:`
+  —— SwiftUI 便捷初始化器不能再接标签，这是**只在编译期暴露**的错误
+  （本轮实测踩到）。按「改坏 → 确认拦下 → 改回」双向验证。
+- `check_imports.py` 登记本轮新增的 11 个跨模块公开类型。
+- 预检仍为 13 项（本条是既有第 3 项的子规则）。
+
+### 📖 文档 / Docs
+
+- 新增 `docs/interaction-map.md`（见上）。
+- `docs/architecture.md` 补 3.34–3.36：点击语义必须有归属、
+  探活的对象不能是「存储里的那条」、破坏性操作的判据是「误触的代价」。
+
+---
+
 ## [1.0.0] - 2026-10-07
 
 ### 计划中 / Planned

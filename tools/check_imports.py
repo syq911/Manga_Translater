@@ -21,6 +21,9 @@ PKG_TYPES = {
         "DiagnosticsLog", "TranslationBackend", "ReaderMode", "TranslationLanguage",
         "SettingsSnapshot", "ModelValidation", "PageDataProviding", "ReaderSession",
         "ReaderAdvanceResult", "ReaderTheme", "ZoomState", "LibraryCategory",
+        "ReaderNavigation", "ChapterDownloadState", "ChapterDownloadAction",
+        "ChapterActionMenu", "DestructiveAction", "DestructiveActionPolicy",
+        "LibraryFilterTarget", "LibraryFilterMenu",
     ],
     "ComicNet": [
         "HTTPClient", "HTTPResponse", "HTTPTransporting", "CookieJar", "StoredCookie",
@@ -35,6 +38,7 @@ PKG_TYPES = {
         "LocalSourceError",
         "SourceTransporting", "DefaultSourceTransport", "SourceHTTPRequest", "SourceHTTPResult",
         "SourceTransportError", "JSSourceRuntime", "SourcePreferencesStoring",
+        "ServerFormIssue", "ServerFormValidator", "ServerFormDraft",
         "UserDefaultsSourcePreferences", "InMemorySourcePreferences",
         "HTMLDocument", "HTMLElement", "HTMLNode", "HTMLParser", "HTMLText", "HTMLURL",
         "HTMLHandleStore", "CSSSelector", "CSSSelectorEngine", "CSSSelectorParser",

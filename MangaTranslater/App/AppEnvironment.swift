@@ -389,9 +389,12 @@ final class AppEnvironment {
     }
 
     /// 连接自检：给用户一句「连得上吗」的答复。
+    ///
+    /// **用的是传入的配置**，而不是存储里那条：新增时还没落盘，编辑时用户改了地址
+    /// 也还没保存——按 ID 回存储里查会得到「未配置」或旧配置的结论。
     func probeHostedServer(_ server: HostedServer) async -> Result<String, HostedServerError> {
         do {
-            let source = try await dataSourceProvider.dataSource(for: server.sourceID)
+            let source = try dataSourceProvider.hostedDataSource(for: server)
             guard let probing = source as? MangaDataSourceProbing else {
                 return .success(L("server.probe.connected"))
             }

@@ -104,7 +104,7 @@ struct RepositoryManagerView: View {
     // MARK: 仓库列表
 
     private var repositoriesSection: some View {
-        Section(L("repo.section.list")) {
+        Section {
             if environment.repositories.isEmpty {
                 Text(L("repo.empty"))
                     .foregroundStyle(.secondary)
@@ -132,6 +132,12 @@ struct RepositoryManagerView: View {
                     }
                 }
             }
+        } header: {
+            Text(L("repo.section.list"))
+        } footer: {
+            // 这句不是可有可无的说明：删除仓库**不会**卸载已安装的源，
+            // 而用户多半以为「删了仓库源就没了」——不说清就会来问「为什么源还在这儿」。
+            Text(L("repo.list.footer"))
         }
     }
 

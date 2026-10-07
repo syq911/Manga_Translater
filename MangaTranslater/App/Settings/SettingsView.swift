@@ -172,7 +172,7 @@ struct SettingsView: View {
     }
 
     private var aboutSection: some View {
-        Section(L("settings.section.about")) {
+        Section {
             HStack {
                 Text(L("settings.about.version"))
                 Spacer()
@@ -208,6 +208,12 @@ struct SettingsView: View {
                     Text(kind.title)
                 }
             }
+        } header: {
+            Text(L("settings.section.about"))
+        } footer: {
+            // 这两个清理都没加确认（都不丢用户数据），但**各自的性质必须写出来**：
+            // 封面缓存会自动重建；日志清了就没了——排查问题时它往往是唯一的线索。
+            Text(L("settings.about.clearsFooter"))
         }
     }
 

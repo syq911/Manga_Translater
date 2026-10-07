@@ -31,6 +31,8 @@ struct TranslationSettingsView: View {
     @State private var fontScale: Double
     @State private var statusMessage: String?
     @State private var cacheSize: String
+    /// 「清空译文缓存」的二次确认（它是唯一会浪费钱的清理动作）。
+    @State private var showsClearCacheConfirmation = false
 
     init(settings: AppSettings) {
         _backend = State(initialValue: settings.translationBackend)
@@ -76,6 +78,16 @@ struct TranslationSettingsView: View {
             Button(L("common.ok"), role: .cancel) { statusMessage = nil }
         } message: {
             Text(statusMessage ?? "")
+        }
+        .confirmationDialog(
+            L("translation.settings.clearCacheConfirm.title"),
+            isPresented: $showsClearCacheConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(L("translation.settings.clearCache"), role: .destructive) { clearCache() }
+            Button(L("common.cancel"), role: .cancel) {}
+        } message: {
+            Text(L("translation.settings.clearCacheConfirm.message"))
         }
     }
 
@@ -266,15 +278,25 @@ struct TranslationSettingsView: View {
             }
 
             Button(L("translation.settings.clearCache"), role: .destructive) {
-                let removed = environment.translationStore.removeAll()
-                refreshCacheSize()
-                statusMessage = String(format: L("translation.settings.clearCacheDone"), removed)
+                // 这是唯一一个**会浪费钱**的清理动作：云翻译按页扣额度，
+                // 缓存清了就得重翻。所以按策略必须先确认，并在弹窗里说明后果。
+                if DestructiveActionPolicy.requiresConfirmation(.clearTranslationCache) {
+                    showsClearCacheConfirmation = true
+                } else {
+                    clearCache()
+                }
             }
         } header: {
             Text(L("translation.settings.cache"))
         } footer: {
             Text(L("translation.settings.cacheFooter"))
         }
+    }
+
+    private func clearCache() {
+        let removed = environment.translationStore.removeAll()
+        refreshCacheSize()
+        statusMessage = String(format: L("translation.settings.clearCacheDone"), removed)
     }
 
     private func refreshCacheSize() {

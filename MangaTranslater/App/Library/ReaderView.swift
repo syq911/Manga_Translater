@@ -259,15 +259,19 @@ struct ReaderView: View {
         openURL(url)
     }
 
-    /// 单击区：左右两条窄带。方向语义随阅读方向变化。
+    /// 单击区：左右两条窄带。方向语义与宽度**都取自 `ReaderNavigation`**——
+    /// 这里不再自己算，否则「右到左的方向」「窄带该多宽」这类判断就只能靠人工点。
     private func tapZone(isLeading: Bool) -> some View {
         Color.clear
-            .frame(width: 60)
+            .frame(width: CGFloat(
+                ReaderNavigation.tapZoneWidth(containerWidth: Double(containerSize.width))
+            ))
             .contentShape(Rectangle())
             .onTapGesture {
-                // 左到右：左侧=上一页；右到左：左侧=下一页
-                let forward = isRightToLeft ? isLeading : !isLeading
-                advance(forward: forward)
+                advance(forward: ReaderNavigation.advancesForward(
+                    tappingLeadingEdge: isLeading,
+                    isRightToLeft: isRightToLeft
+                ))
             }
     }
 
@@ -346,14 +350,13 @@ struct ReaderView: View {
             }
             .onEnded { value in
                 defer { dragStartOffset = nil }
-                guard !zoom.isZoomed else { return }   // 放大状态只平移，不翻页
-
-                let dx = value.translation.width
-                let dy = value.translation.height
-                guard abs(dx) > abs(dy), abs(dx) > 40 else { return }
-                let swipedLeft = dx < 0
-                // 左滑在「左到右」模式是下一页；在「右到左」模式是上一页
-                let forward = isRightToLeft ? !swipedLeft : swipedLeft
+                // 放大状态、位移不够、竖滑为主 → 都不翻页（规则在 `ReaderNavigation`）
+                guard let forward = ReaderNavigation.forward(
+                    forDragTranslation: Double(value.translation.width),
+                    dy: Double(value.translation.height),
+                    isZoomed: zoom.isZoomed,
+                    isRightToLeft: isRightToLeft
+                ) else { return }
                 advance(forward: forward)
             }
     }

@@ -36,7 +36,7 @@ bash tools/preflight.sh
 |---|---|---|
 | 1 | `tools/check_project.py` | pbxproj 引用完整性（曾因结构非法导致包解析器崩溃）、例外集与磁盘测试文件一致性、包登记、配置文件语法、旧项目名残留、**包内有 `.lproj` 时 manifest 必须声明 `defaultLocalization`** |
 | 2 | `tools/check_imports.py` | ①「用了某包类型却没 import」；②「跨模块调用了 non-public 成员」——纯编译器错误，本地提前挡掉；几何类型（CG*）必须有 `import CoreGraphics` |
-| 3 | `tools/check_swift_syntax.py` | 括号配平、`#if/#endif` 配对、悬空 `else`、**多行字符串缩进规则**、**JSON 编解码类型必须 Codable**、`UPDATE` 条目表必须同时写 payload、静态成员限定、主 actor 静态成员、路径片段安全化、日期写法、throwing 调用（本机无 Swift 工具链时的词法体检） |
+| 3 | `tools/check_swift_syntax.py` | 括号配平、`#if/#endif` 配对、悬空 `else`、**多行字符串缩进规则**、**JSON 编解码类型必须 Codable**、`UPDATE` 条目表必须同时写 payload、静态成员限定、主 actor 静态成员、路径片段安全化、日期写法、throwing 调用、**SwiftUI `Section(标题) { } header:/footer:` 误用**（本机无 Swift 工具链时的词法体检） |
 | 4 | `tools/check_docs_sync.py` | `docs/source-api.md` 的契约示例与测试夹具必须逐字一致；`docs/*.md` 小节编号不得重复或回退 |
 | 5 | `tools/check_api_usage.py` | **构造调用与 init 声明一致性**：改签名忘改调用方（实测踩过） |
 | 6 | Python 脚本语法 | CI 里 `release` / `pages` job 会执行的脚本 |
@@ -161,7 +161,23 @@ CI 里对应的验证是 `MangaTranslaterTests/DemoRepositoryTests.swift`：
 它用同一批页面跑「拉索引 → 安装 → 浏览 → 详情 → 章节 → 页列表 → 取图」，
 是 M2 的验收用例。
 
-## 10. 官网与 AltStore 源
+## 10. 交互清单与点击语义层
+
+| 产物 | 位置 | 用途 |
+|---|---|---|
+| 交互清单 | `docs/interaction-map.md` | 逐个列出可点元素（含缺失的入口）、破坏性操作确认矩阵、问题观察（O-1…）、以及「哪些已可测 / 哪些要先抽层 / 哪些本地测不了」 |
+| 点击语义层 | `Packages/AppCore/Sources/AppCore/InteractionRules.swift`、`Packages/SourceEngine/Sources/SourceEngine/ServerFormValidator.swift` | 视图里**不允许**再写「点了会怎样」的判定；判定住在这里，视图只留一行调用 |
+| 模拟点击测试 | `MangaTranslater/MangaTranslaterTests/InteractionRulesTests.swift` | 穷举状态组合 + 多步序列（`ReaderSimulator`） |
+
+改交互时的固定动作：
+
+1. 先在 `docs/interaction-map.md` 对应屏补/改那一行（行号不写，按「屏 + 元素名」定位）；
+2. 破坏性操作加进 `DestructiveAction`；章节行状态加进 `ChapterDownloadState`；
+3. 跑 `InteractionRulesTests`——`DestructiveActionPolicyTests` 的**计数断言**会提醒你
+   更新期望矩阵（即「这个新操作要不要确认」这个决定不能漏）；
+4. 判定能抽成纯函数就抽（判据：**它能不能被 `#expect` 断言**）。
+
+## 11. 官网与 AltStore 源
 
 | 产物 | 生成方式 | 校验 |
 |---|---|---|

@@ -413,3 +413,14 @@
 "cloud.delete.footer" = "注销会把账号、额度计数与订阅记录从服务端删除（30 天内完成），且不可撤销。以后想回来，用同一个邮箱重新登录即可注册一个新账号。";
 "cloud.error.emailMismatch" = "输入的邮箱与当前账号不一致。";
 "cloud.section.delete" = "注销账号";
+
+/* 交互修复（点击语义审查，M5 追加） */
+
+"library.confirm.remove.message" = "「%@」会被移出书架，同时丢掉阅读进度与所在分类。已下载的章节不会被删除，可在「下载」页单独管理。";
+"library.confirm.remove.title" = "移出书架？";
+"repo.list.footer" = "删除仓库只是不再从它这里拉取源目录；已经安装的源不会被卸载，要卸载请到「浏览」页对应来源里操作。";
+"server.saveAnyway.confirm" = "仍然保存";
+"server.saveAnyway.title" = "连接失败，仍然保存？";
+"settings.about.clearsFooter" = "清空封面缓存是无害的——需要时会自动重新生成；清空诊断日志则不可恢复，而那份日志往往是出问题时唯一的线索。";
+"translation.settings.clearCacheConfirm.message" = "已缓存的译文页会被删除，下次阅读需要重新翻译。云翻译按页扣额度，所以清空缓存会消耗额度。";
+"translation.settings.clearCacheConfirm.title" = "清空译文缓存？";

@@ -779,6 +779,97 @@ def check_main_actor_static_usage(files):
     return problems
 
 
+def check_swiftui_section_initializer(files):
+    """`Section("标题") { … } header:/footer:` —— SwiftUI 里这会**编译不过**。
+
+    起因：给「关于」分区补 footer 时写成了
+
+        Section(L("settings.section.about")) {
+            …
+        } footer: {
+            Text(…)
+        }
+
+    报错是 `extra argument 'footer' in call`（或者更绕的泛型推断失败），
+    而这类错误只在 SwiftUI 的便捷初始化器上出现：
+    `Section(_ title:)` 只有 `content` 一个尾随闭包，**不能再接 `footer:`**。
+
+    要 header / footer 就必须换成完整形式：
+
+        Section {
+            …
+        } header: {
+            Text(L(…))
+        } footer: {
+            Text(…)
+        }
+
+    判定方式：找到 `Section(` 的参数列表（做括号配对，`L("…")` 这种嵌套括号不算结束），
+    参数列表之后紧跟一个花括号块，块结束后若紧接 `header:` / `footer:`
+    就报错——因为那种写法只可能出自「带标题的便捷初始化器」。
+    `Section { … } header: { … }` 没有参数列表，天然不命中。
+
+    同类风险：`Picker(selection:) { } label: { }` 是**合法**的（先有标签参数、
+    再有尾随闭包），所以本规则刻意只针对「参数只有一个、后面又跟标签」的形状。
+    """
+    pattern = re.compile(r"\bSection\(")
+    problems = []
+    for path in files:
+        text = io.open(path, encoding="utf-8").read()
+        for match in pattern.finditer(text):
+            # 1) 参数列表的结尾（括号配对，跳过字符串）
+            depth, index, in_string, escaped = 0, match.end() - 1, False, False
+            while index < len(text):
+                character = text[index]
+                if in_string:
+                    if escaped:
+                        escaped = False
+                    elif character == "\\":
+                        escaped = True
+                    elif character == '"':
+                        in_string = False
+                elif character == '"':
+                    in_string = True
+                elif character == "(":
+                    depth += 1
+                elif character == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                index += 1
+            if depth != 0:
+                continue
+
+            # 2) 参数列表之后必须是花括号块
+            rest = text[index + 1 :]
+            leading = len(rest) - len(rest.lstrip())
+            if not rest.lstrip().startswith("{"):
+                continue
+
+            # 3) 块结束之后是否紧跟 header: / footer:
+            cursor, block_depth = index + 1 + leading, 0
+            while cursor < len(text):
+                if text[cursor] == "{":
+                    block_depth += 1
+                elif text[cursor] == "}":
+                    block_depth -= 1
+                    if block_depth == 0:
+                        break
+                cursor += 1
+            tail = text[cursor + 1 : cursor + 60].strip()
+            if tail.startswith(("header:", "footer:")):
+                line = text[: match.start()].count("\n") + 1
+                problems.append(
+                    (
+                        os.path.relpath(path).replace("\\", "/"),
+                        f"第 {line} 行写成了 `Section(…) {{ … }} {tail.splitlines()[0].split(':')[0]}: {{}}`；"
+                        f"`Section(_ title:)` 是便捷初始化器，**不能再接 header/footer**。"
+                        f"请改成 `Section {{ … }} header: {{ … }} footer: {{ … }}`",
+                    )
+                )
+    return problems
+
+
 def main():
     files = swift_files("MangaTranslater") + swift_files("Packages")
     all_problems = []
@@ -802,6 +893,8 @@ def main():
         all_problems.append(problem)
     for problem in check_main_actor_static_usage(files):
         all_problems.append(problem)
+    for problem in check_swiftui_section_initializer(files):
+        all_problems.append(problem)
 
     print(f"体检 Swift 文件：{len(files)} 个")
     if all_problems:
@@ -810,7 +903,8 @@ def main():
             print(f"  {path}: {problem}")
         return 1
     print("✅ 括号配平、条件编译配对、多行字符串缩进、JSON 编解码类型、"\
-          "静态成员限定、主 actor 静态成员、路径片段安全化、日期写法、throwing 调用均正常")
+          "静态成员限定、主 actor 静态成员、路径片段安全化、日期写法、throwing 调用、"\
+          "SwiftUI `Section` 初始化器均正常")
     return 0
 
 

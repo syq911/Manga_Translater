@@ -152,6 +152,8 @@ struct SourceLoginView: View {
     @State private var model: WebLoginModel?
     @State private var message: String?
     @State private var isHarvesting = false
+    /// 本次收割是否真的存到了东西。「好」按钮据此决定要不要关掉整页。
+    @State private var harvestSucceeded = false
 
     var body: some View {
         NavigationStack {
@@ -191,7 +193,12 @@ struct SourceLoginView: View {
                 get: { message != nil },
                 set: { if !$0 { message = nil } }
             )) {
-                Button(L("common.ok")) { dismiss() }
+                Button(L("common.ok")) {
+                    // 收割成功 → 任务完成，关掉整页；
+                    // 一条都没收到 → 只关掉提示，**留着网页**：用户此刻最可能的
+                    // 下一步是「那我再试一次」，把他踢出去就得从头点回来。
+                    if harvestSucceeded { dismiss() }
+                }
             } message: {
                 Text(message ?? "")
             }
@@ -233,6 +240,7 @@ struct SourceLoginView: View {
     private func finish() async {
         guard let model else { dismiss(); return }
         isHarvesting = true
+        harvestSucceeded = false
         defer { isHarvesting = false }
 
         let cookies = await model.harvestCookies()
@@ -251,6 +259,7 @@ struct SourceLoginView: View {
             // 明确告知「没有收割到」，而不是让用户以为成功了
             message = L("login.noCookies")
         } else {
+            harvestSucceeded = true
             message = String(format: L("login.saved"), written)
         }
     }

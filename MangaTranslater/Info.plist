@@ -25,9 +25,9 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
-	<!-- 用于「应用锁」功能 -->
-	<key>NSFaceIDUsageDescription</key>
-	<string>使用 Face ID 解锁应用</string>
+	<!-- 刻意**没有** NSFaceIDUsageDescription：应用锁尚未实现。
+	     声明一条用不到的权限说明，在审核与用户信任上都是负担；
+	     将来真做应用锁时再连同实现一起加回来（见 RootView.swift 的注释）。 -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

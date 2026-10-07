@@ -36,6 +36,24 @@ struct SourceMangaDetailView: View {
     @State private var message: String?
     /// 已下载章节标识（来自协调器的归档快照）。
     @State private var downloadedChapterIDs: Set<String> = []
+    /// 待二次确认的破坏性操作。
+    ///
+    /// 「要不要确认」不在这里判断——由 `DestructiveActionPolicy` 说了算，
+    /// 这样作品详情页与下载页对同一件事（删一个归档）**必然是同一个行为**。
+    @State private var confirmation: Confirmation?
+
+    /// 作用在本页的破坏性操作。
+    private enum Confirmation: Identifiable {
+        case deleteChapter(chapterID: String, name: String)
+        case deleteAllArchives
+
+        var id: String {
+            switch self {
+            case let .deleteChapter(chapterID, _): return "delete-\(chapterID)"
+            case .deleteAllArchives: return "deleteAll"
+            }
+        }
+    }
 
     enum Phase: Equatable {
         case loading
@@ -86,6 +104,62 @@ struct SourceMangaDetailView: View {
         } message: {
             Text(message ?? "")
         }
+        .confirmationDialog(
+            confirmationTitle,
+            isPresented: Binding(
+                get: { confirmation != nil },
+                set: { if !$0 { confirmation = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            confirmationButtons
+        } message: {
+            Text(confirmationMessage)
+        }
+    }
+
+    // MARK: 二次确认
+
+    private var confirmationTitle: String {
+        switch confirmation {
+        case .deleteChapter, .deleteAllArchives:
+            return L("downloads.confirm.delete.title")
+        case nil:
+            return ""
+        }
+    }
+
+    private var confirmationMessage: String {
+        switch confirmation {
+        case let .deleteChapter(_, name):
+            return String(format: L("downloads.confirm.delete.message"), name)
+        case .deleteAllArchives:
+            return String(format: L("downloads.confirm.delete.message"), displayed.title)
+        case nil:
+            return ""
+        }
+    }
+
+    @ViewBuilder
+    private var confirmationButtons: some View {
+        switch confirmation {
+        case let .deleteChapter(chapterID, _):
+            Button(L("downloads.action.delete"), role: .destructive) {
+                confirmation = nil
+                Task { await deleteArchive(chapterID: chapterID) }
+            }
+        case .deleteAllArchives:
+            Button(L("downloads.action.deleteAll"), role: .destructive) {
+                confirmation = nil
+                Task {
+                    await environment.downloads.deleteArchives(mangaID: displayed.id)
+                    await refreshDownloadState()
+                }
+            }
+        case nil:
+            EmptyView()
+        }
+        Button(L("common.cancel"), role: .cancel) { confirmation = nil }
     }
 
     // MARK: 分区
@@ -185,19 +259,22 @@ struct SourceMangaDetailView: View {
         }
     }
 
+    /// 章节行左滑出现的那个按钮。
+    ///
+    /// 「什么状态出什么按钮」的映射住在 `ChapterActionMenu`（可单测穷举），
+    /// 这里只负责把动作接到协调器上。这样作品详情页与下载页对同一状态
+    /// **不会出现两种行为**——两处共用同一份映射。
     @ViewBuilder
     private func chapterDownloadActions(_ chapter: Chapter) -> some View {
-        switch downloadState(for: chapter) {
-        case .downloaded:
+        switch ChapterActionMenu.action(for: downloadState(for: chapter)) {
+        case .deleteArchive:
+            // 删归档要二次确认（与下载页一致）；策略由 `DestructiveActionPolicy` 裁决
             Button(role: .destructive) {
-                Task {
-                    await environment.downloads.deleteArchive(mangaID: displayed.id, chapterID: chapter.id)
-                    await refreshDownloadState()
-                }
+                requestDeleteArchive(chapter)
             } label: {
                 Label(L("source.detail.removeDownload"), systemImage: "trash")
             }
-        case .active, .paused:
+        case .cancel:
             Button(role: .destructive) {
                 Task {
                     await environment.downloads.cancel(chapterID: chapter.id)
@@ -206,9 +283,8 @@ struct SourceMangaDetailView: View {
             } label: {
                 Label(L("downloads.action.cancel"), systemImage: "xmark")
             }
-        // `.queued`（已排队但还没跑）也要给「取消」的动作，否则用户点了下载
-        // 发现行上写着「已加入下载队列」却收不回来。
-        case .none, .failed, .cancelled, .queued:
+        case .download:
+            // `.queued`（已排队但还没跑）也走这里，否则用户点了下载收不回来
             Button {
                 Task { await download(chapter) }
             } label: {
@@ -216,6 +292,20 @@ struct SourceMangaDetailView: View {
             }
             .tint(.blue)
         }
+    }
+
+    /// 请求删除某章的归档：按策略决定「先确认」还是「直接删」。
+    private func requestDeleteArchive(_ chapter: Chapter) {
+        if DestructiveActionPolicy.requiresConfirmation(.deleteChapterArchive) {
+            confirmation = .deleteChapter(chapterID: chapter.id, name: chapter.name)
+        } else {
+            Task { await deleteArchive(chapterID: chapter.id) }
+        }
+    }
+
+    private func deleteArchive(chapterID: String) async {
+        await environment.downloads.deleteArchive(mangaID: displayed.id, chapterID: chapterID)
+        await refreshDownloadState()
     }
 
     private func chapterRow(_ chapter: Chapter) -> some View {
@@ -261,25 +351,10 @@ struct SourceMangaDetailView: View {
 
     // MARK: 下载状态
 
-    /// 章节在下载上的状态（界面用）。
-    private enum ChapterDownloadState: Equatable {
-        case none
-        case queued
-        case active(completed: Int, total: Int)
-        case paused
-        case failed
-        case cancelled
-        case downloaded
-    }
-
-    /// 章节列表或下载队列变化时重新拉状态。
+    /// 章节在下载上的状态。
     ///
-    /// `downloadedChapterIDs` 在 tasks 里被赋值，所以这里不需要读它的值——
-    /// 只用来给 `.task(id:)` 一个「章节变了」的信号。
-    private var chapterSyncToken: Int {
-        chapters.count + downloadedChapterIDs.count
-    }
-
+    /// 类型本身住在 `AppCore.ChapterDownloadState`——它同时也是「左滑该出哪个按钮」
+    /// （`ChapterActionMenu`）的输入，因此必须能被单测穷举，而不能是视图里的私有枚举。
     private func downloadState(for chapter: Chapter) -> ChapterDownloadState {
         // 归档优先：一个章节既在队列里又被归档是不可能的（协调器会跳过已下载的），
         // 所以先看归档再看队列，顺序不会产生矛盾结果。
@@ -293,6 +368,14 @@ struct SourceMangaDetailView: View {
         case .cancelled: return .cancelled
         case .completed: return .downloaded
         }
+    }
+
+    /// 章节列表或下载队列变化时重新拉状态。
+    ///
+    /// `downloadedChapterIDs` 在 tasks 里被赋值，所以这里不需要读它的值——
+    /// 只用来给 `.task(id:)` 一个「章节变了」的信号。
+    private var chapterSyncToken: Int {
+        chapters.count + downloadedChapterIDs.count
     }
 
     private func refreshDownloadState() async {
@@ -314,9 +397,14 @@ struct SourceMangaDetailView: View {
                 }
                 if !downloadedChapterIDs.isEmpty {
                     Button(role: .destructive) {
-                        Task {
-                            await environment.downloads.deleteArchives(mangaID: displayed.id)
-                            await refreshDownloadState()
+                        // 删掉某作品的全部下载同样要确认（与下载页一致）
+                        if DestructiveActionPolicy.requiresConfirmation(.deleteMangaArchives) {
+                            confirmation = .deleteAllArchives
+                        } else {
+                            Task {
+                                await environment.downloads.deleteArchives(mangaID: displayed.id)
+                                await refreshDownloadState()
+                            }
                         }
                     } label: {
                         Label(L("source.detail.removeAllDownloads"), systemImage: "trash")
