@@ -45,15 +45,18 @@ public enum LocalSourceError: Error, Equatable {
 
     public var message: String {
         switch self {
-        case let .unsupportedExtension(ext): return "不支持的文件类型：.\(ext)（只接受 cbz / zip）"
-        case let .sourceFileMissing(name): return "文件不存在：\(name)"
-        case let .notAZipArchive(name): return "不是有效的 cbz/zip 归档：\(name)"
-        case let .noImages(name): return "归档里没有图片：\(name)"
-        case let .importFailed(reason): return "导入失败：\(reason)"
-        case let .invalidRelativePath(path): return "作品地址不合法：\(path)"
-        case let .bookNotFound(id): return "找不到本地作品：\(id)"
-        case let .pageNotFound(name): return "归档里找不到页：\(name)"
-        case let .pageOutOfRange(index, count): return "页码越界：\(index) / 共 \(count) 页"
+        case let .unsupportedExtension(ext):
+            return Copy.format("error.local.unsupportedExtension", ext)
+        case let .sourceFileMissing(name): return Copy.format("error.local.fileMissing", name)
+        case let .notAZipArchive(name): return Copy.format("error.local.notAZip", name)
+        case let .noImages(name): return Copy.format("error.local.noImages", name)
+        case let .importFailed(reason): return Copy.format("error.local.importFailed", reason)
+        case let .invalidRelativePath(path):
+            return Copy.format("error.local.invalidRelativePath", path)
+        case let .bookNotFound(id): return Copy.format("error.local.bookNotFound", id)
+        case let .pageNotFound(name): return Copy.format("error.local.pageNotFound", name)
+        case let .pageOutOfRange(index, count):
+            return Copy.format("error.local.pageOutOfRange", index, count)
         }
     }
 
@@ -347,7 +350,9 @@ public final class LocalSource: @unchecked Sendable {
             descriptor = index.chapters.first { $0.path == chapterPath }
         }
         guard let descriptor else {
-            throw LocalSourceError.bookNotFound("\(manga.id) 的章节 \(chapterPath)")
+            throw LocalSourceError.bookNotFound(
+                Copy.format("error.local.payloadMangaChapter", manga.id, chapterPath)
+            )
         }
         return descriptor.pageEntries.enumerated().map { offset, entry in
             ComicPage(index: offset, imageURL: entry)
@@ -368,7 +373,9 @@ public final class LocalSource: @unchecked Sendable {
             case let .entryNotFound(name):
                 throw LocalSourceError.pageNotFound(name)
             default:
-                throw LocalSourceError.notAZipArchive("\(url.lastPathComponent)：\(error.message)")
+                throw LocalSourceError.notAZipArchive(
+                    Copy.format("error.local.payloadFileReason", url.lastPathComponent, error.message)
+                )
             }
         }
     }

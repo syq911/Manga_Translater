@@ -22,6 +22,7 @@
 //
 
 import Foundation
+import AppCore
 
 // MARK: - 模型
 
@@ -135,10 +136,10 @@ public enum CSSSelectorError: Error, Equatable {
 
     public var message: String {
         switch self {
-        case .empty: return "选择器为空"
-        case .danglingCombinator: return "组合子后缺少选择器"
-        case let .invalidSimpleSelector(text): return "无法解析的选择器片段：\(text)"
-        case let .invalidAttribute(text): return "无法解析的属性选择器：\(text)"
+        case .empty: return Copy.text("error.selector.empty")
+        case .danglingCombinator: return Copy.text("error.selector.danglingCombinator")
+        case let .invalidSimpleSelector(text): return Copy.format("error.selector.invalidSimple", text)
+        case let .invalidAttribute(text): return Copy.format("error.selector.invalidAttribute", text)
         }
     }
 }

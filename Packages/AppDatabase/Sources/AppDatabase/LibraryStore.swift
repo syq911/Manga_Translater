@@ -20,13 +20,8 @@ public enum LibrarySortOrder: String, Sendable, CaseIterable {
     /// 最近加入优先。
     case recentlyAdded
 
-    public var displayName: String {
-        switch self {
-        case .lastRead: return "最近阅读"
-        case .title: return "标题"
-        case .recentlyAdded: return "最近加入"
-        }
-    }
+    // 展示名不在这里：本包拿不到 App 目标的 `L()`。
+    // 界面上的排序名称见 App 层 `Localization+Names.swift`（`localizedName`）。
 }
 
 /// 阅读历史条目。
@@ -80,25 +75,25 @@ public enum LibraryStoreError: Error, Equatable {
 
     public var message: String {
         switch self {
-        case let .entryNotFound(id): return "书架里没有这个条目：\(id)"
-        case let .invalidPageIndex(index): return "页码不合法：\(index)"
-        case let .invalidLimit(limit): return "数量参数不合法：\(limit)"
-        case let .corruptRow(reason): return "数据损坏：\(reason)"
-        case let .categoryNotFound(id): return "分类不存在：\(id)"
-        case let .duplicateCategoryName(name): return "已有同名分类：\(name)"
-        case let .invalidCategoryName(name): return "分类名不合法：\(name)"
+        case let .entryNotFound(id): return Copy.format("error.library.entryNotFound", id)
+        case let .invalidPageIndex(index): return Copy.format("error.library.invalidPageIndex", index)
+        case let .invalidLimit(limit): return Copy.format("error.library.invalidLimit", limit)
+        case let .corruptRow(reason): return Copy.format("error.library.corruptRow", reason)
+        case let .categoryNotFound(id): return Copy.format("error.library.categoryNotFound", id)
+        case let .duplicateCategoryName(name): return Copy.format("error.library.duplicateCategoryName", name)
+        case let .invalidCategoryName(name): return Copy.format("error.library.invalidCategoryName", name)
         }
     }
 
     public var toAppError: AppError {
         switch self {
-        case let .entryNotFound(id): return .notFound("书架条目 \(id)")
-        case let .invalidPageIndex(index): return .invalidInput("页码 \(index)")
-        case let .invalidLimit(limit): return .invalidInput("数量 \(limit)")
-        case let .corruptRow(reason): return .unknown("数据库行损坏：\(reason)")
-        case let .categoryNotFound(id): return .notFound("分类 \(id)")
-        case let .duplicateCategoryName(name): return .invalidInput("分类名重复：\(name)")
-        case let .invalidCategoryName(name): return .invalidInput("分类名不合法：\(name)")
+        case let .entryNotFound(id): return .notFound(Copy.format("error.library.payloadEntry", id))
+        case let .invalidPageIndex(index): return .invalidInput(Copy.format("error.library.payloadPageIndex", index))
+        case let .invalidLimit(limit): return .invalidInput(Copy.format("error.library.payloadLimit", limit))
+        case let .corruptRow(reason): return .unknown(Copy.format("error.library.payloadCorruptRow", reason))
+        case let .categoryNotFound(id): return .notFound(Copy.format("error.library.payloadCategory", id))
+        case let .duplicateCategoryName(name): return .invalidInput(Copy.format("error.library.payloadDuplicateName", name))
+        case let .invalidCategoryName(name): return .invalidInput(Copy.format("error.library.payloadInvalidName", name))
         }
     }
 }

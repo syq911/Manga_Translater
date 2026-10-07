@@ -43,11 +43,11 @@ struct LibraryView: View {
                 onCompletion: handleImport
             )
             .onAppear(perform: reload)
-            .alert("提示", isPresented: Binding(
+            .alert(L("common.notice"), isPresented: Binding(
                 get: { message != nil },
                 set: { if !$0 { message = nil } }
             )) {
-                Button("好", role: .cancel) { message = nil }
+                Button(L("common.ok"), role: .cancel) { message = nil }
             } message: {
                 Text(message ?? "")
             }
@@ -62,7 +62,7 @@ struct LibraryView: View {
         } description: {
             Text(L("library.empty.body"))
         } actions: {
-            Button("导入本地文件") { showsImporter = true }
+            Button(L("library.importFiles")) { showsImporter = true }
                 .buttonStyle(.borderedProminent)
         }
     }
@@ -71,7 +71,7 @@ struct LibraryView: View {
         List {
             if !environment.isLibraryPersistent {
                 Section {
-                    Label("书架当前无法持久化（数据库不可用），本次会话结束后会清空。", systemImage: "exclamationmark.triangle")
+                    Label(L("library.notPersistent"), systemImage: "exclamationmark.triangle")
                         .font(.footnote)
                 }
             }
@@ -98,7 +98,7 @@ struct LibraryView: View {
             Button {
                 move(entry, to: nil)
             } label: {
-                Label("移出分类", systemImage: entry.categoryID == nil ? "checkmark" : "folder.badge.minus")
+                Label(L("library.menu.removeFromCategory"), systemImage: entry.categoryID == nil ? "checkmark" : "folder.badge.minus")
             }
             ForEach(categories) { category in
                 Button {
@@ -111,19 +111,19 @@ struct LibraryView: View {
                 }
             }
         } label: {
-            Label("移动到分类", systemImage: "folder")
+            Label(L("library.menu.moveToCategory"), systemImage: "folder")
         }
 
         Button {
             togglePin(entry)
         } label: {
-            Label(entry.isPinned ? "取消置顶" : "置顶", systemImage: entry.isPinned ? "pin.slash" : "pin")
+            Label(entry.isPinned ? L("library.menu.unpin") : L("library.menu.pin"), systemImage: entry.isPinned ? "pin.slash" : "pin")
         }
 
         Button(role: .destructive) {
             remove(entry)
         } label: {
-            Label("移出书架", systemImage: "trash")
+            Label(L("library.menu.remove"), systemImage: "trash")
         }
     }
 
@@ -157,7 +157,7 @@ struct LibraryView: View {
                     selectedCategoryID = nil
                     reload()
                 } label: {
-                    Label("全部作品", systemImage: selectedCategoryID == nil ? "checkmark" : "books.vertical")
+                    Label(L("library.filter.all"), systemImage: selectedCategoryID == nil ? "checkmark" : "books.vertical")
                 }
                 if !categories.isEmpty {
                     Divider()
@@ -177,7 +177,7 @@ struct LibraryView: View {
                 NavigationLink {
                     CategoryManagerView()
                 } label: {
-                    Label("管理分类…", systemImage: "folder.badge.gearshape")
+                    Label(L("library.filter.manageCategories"), systemImage: "folder.badge.gearshape")
                 }
             } label: {
                 Label(categoryFilterLabel, systemImage: "line.3.horizontal.decrease.circle")
@@ -186,13 +186,13 @@ struct LibraryView: View {
 
         ToolbarItem(placement: .topBarLeading) {
             Menu {
-                Picker("排序", selection: $sortOrder) {
+                Picker(L("library.sort.label"), selection: $sortOrder) {
                     ForEach(LibrarySortOrder.allCases, id: \.self) { order in
-                        Text(order.displayName).tag(order)
+                        Text(order.localizedName).tag(order)
                     }
                 }
             } label: {
-                Label("排序", systemImage: "arrow.up.arrow.down")
+                Label(L("library.sort.label"), systemImage: "arrow.up.arrow.down")
             }
             .onChange(of: sortOrder) { _, _ in reload() }
         }
@@ -201,25 +201,29 @@ struct LibraryView: View {
             Button {
                 showsImporter = true
             } label: {
-                Label("导入", systemImage: "plus")
+                Label(L("library.action.import"), systemImage: "plus")
             }
         }
     }
 
     private var categoryFilterLabel: String {
-        guard let selectedCategoryID else { return "全部作品" }
-        return categories.first { $0.id == selectedCategoryID }?.name ?? "全部作品"
+        guard let selectedCategoryID else { return L("library.filter.all") }
+        return categories.first { $0.id == selectedCategoryID }?.name ?? L("library.filter.all")
     }
 
     // MARK: 行为
 
     private func progressText(for entry: LibraryEntry) -> String {
-        guard entry.lastReadChapterID != nil else { return "尚未开始阅读" }
+        guard entry.lastReadChapterID != nil else { return L("library.progress.notStarted") }
         let page = (entry.lastReadPageIndex ?? 0) + 1
         if let readAt = entry.lastReadAt {
-            return "读到第 \(page) 页 · \(Self.relativeFormatter.localizedString(for: readAt, relativeTo: Date()))"
+            return String(
+                format: L("library.progress.pageWithDate"),
+                page,
+                Self.relativeFormatter.localizedString(for: readAt, relativeTo: Date())
+            )
         }
-        return "读到第 \(page) 页"
+        return String(format: L("library.progress.page"), page)
     }
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
@@ -284,17 +288,22 @@ struct LibraryView: View {
                     succeeded += 1
                 } catch {
                     let reason = (error as? LocalSourceError)?.message ?? error.localizedDescription
-                    failures.append("\(url.lastPathComponent)：\(reason)")
+                    failures.append(String(format: L("library.import.failureLine"), url.lastPathComponent, reason))
                 }
             }
 
             reload()
             message = failures.isEmpty
-                ? "已导入 \(succeeded) 个文件。"
-                : "成功 \(succeeded) 个，失败 \(failures.count) 个：\n" + failures.joined(separator: "\n")
+                ? String(format: L("library.import.done"), succeeded)
+                : String(
+                    format: L("library.import.partial"),
+                    succeeded,
+                    failures.count,
+                    failures.joined(separator: "\n")
+                )
 
         case let .failure(error):
-            message = "选择文件失败：\(error.localizedDescription)"
+            message = String(format: L("library.import.pickFailed"), error.localizedDescription)
         }
     }
 }

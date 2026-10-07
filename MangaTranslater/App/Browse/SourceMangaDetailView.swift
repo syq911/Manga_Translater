@@ -98,12 +98,12 @@ struct SourceMangaDetailView: View {
                     Text(displayed.title)
                         .font(.headline)
                     if let author = displayed.author, !author.isEmpty {
-                        Text("\(L("source.detail.author"))：\(author)")
+                        Text(String(format: L("source.detail.field"), L("source.detail.author"), author))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     if let artist = displayed.artist, !artist.isEmpty {
-                        Text("\(L("source.detail.artist"))：\(artist)")
+                        Text(String(format: L("source.detail.field"), L("source.detail.artist"), artist))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

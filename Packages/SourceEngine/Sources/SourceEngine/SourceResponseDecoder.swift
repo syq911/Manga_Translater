@@ -85,7 +85,7 @@ public struct SourceResponseDecoder: Sendable {
             items = object["mangas"] as? [Any] ?? []
             hasNextPage = Self.boolValue(object["hasNextPage"]) ?? false
         } else {
-            throw SourceRunnerError.invalidResponse("作品列表不是对象或数组")
+            throw SourceRunnerError.invalidResponse(Copy.text("error.decoder.mangaListShape"))
         }
 
         var mangas: [Manga] = []
@@ -113,12 +113,12 @@ public struct SourceResponseDecoder: Sendable {
     public func mangaDetails(from json: String, fallbackURL: String) throws -> Manga {
         let root = try parseJSON(json)
         guard let object = root as? [String: Any] else {
-            throw SourceRunnerError.invalidResponse("作品详情不是对象")
+            throw SourceRunnerError.invalidResponse(Copy.text("error.decoder.mangaDetailShape"))
         }
         let resolvedURL = urlValue(object["url"], bases: [baseURL], allowRawIdentifier: true)
             ?? Self.rawIdentifier(fallbackURL)
         guard !resolvedURL.isEmpty else {
-            throw SourceRunnerError.invalidResponse("作品详情缺少可用的 url")
+            throw SourceRunnerError.invalidResponse(Copy.text("error.decoder.mangaDetailMissingURL"))
         }
         let title = Self.textValue(object["title"]) ?? Self.titleFromURL(resolvedURL)
         return Manga(
@@ -146,7 +146,7 @@ public struct SourceResponseDecoder: Sendable {
             return SourceDecodeOutcome(value: [])
         }
         guard let items = root as? [Any] else {
-            throw SourceRunnerError.invalidResponse("章节列表不是数组")
+            throw SourceRunnerError.invalidResponse(Copy.text("error.decoder.chapterListShape"))
         }
 
         let bases = [mangaURL, baseURL]
@@ -193,7 +193,7 @@ public struct SourceResponseDecoder: Sendable {
             return SourceDecodeOutcome(value: [])
         }
         guard let items = root as? [Any] else {
-            throw SourceRunnerError.invalidResponse("页面列表不是数组")
+            throw SourceRunnerError.invalidResponse(Copy.text("error.decoder.pageListShape"))
         }
 
         let bases = [chapterURL, baseURL]
@@ -224,7 +224,7 @@ public struct SourceResponseDecoder: Sendable {
             return SourceDecodeOutcome(value: [])
         }
         guard let items = root as? [Any] else {
-            throw SourceRunnerError.invalidResponse("筛选项不是数组")
+            throw SourceRunnerError.invalidResponse(Copy.text("error.decoder.filterListShape"))
         }
 
         var filters: [SourceFilter] = []
@@ -277,16 +277,16 @@ public struct SourceResponseDecoder: Sendable {
     func parseJSON(_ json: String) throws -> Any {
         let trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            throw SourceRunnerError.invalidResponse("源返回了空字符串")
+            throw SourceRunnerError.invalidResponse(Copy.text("error.decoder.emptyString"))
         }
         guard let data = trimmed.data(using: .utf8) else {
-            throw SourceRunnerError.invalidResponse("源返回值不是 UTF-8 文本")
+            throw SourceRunnerError.invalidResponse(Copy.text("error.decoder.notUTF8"))
         }
         do {
             return try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
         } catch {
             let preview = trimmed.count > 80 ? String(trimmed.prefix(80)) + "…" : trimmed
-            throw SourceRunnerError.invalidResponse("返回值不是合法 JSON：\(preview)")
+            throw SourceRunnerError.invalidResponse(Copy.format("error.decoder.notJSON", preview))
         }
     }
 
@@ -559,6 +559,6 @@ extension SourceResponseDecoder {
         let last = candidate.split(separator: "/").last.map(String.init) ?? ""
         let decoded = last.removingPercentEncoding ?? last
         let sanitized = ModelValidation.sanitizeTitle(decoded, maxLength: 120)
-        return sanitized.isEmpty ? "未命名" : sanitized
+        return sanitized.isEmpty ? Copy.text("text.decoder.untitled") : sanitized
     }
 }

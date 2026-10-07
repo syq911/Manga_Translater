@@ -185,13 +185,13 @@ public actor DownloadQueue {
     @discardableResult
     public func enqueue(_ job: DownloadJob) throws -> DownloadJob {
         guard !job.pageURLs.isEmpty else {
-            throw AppError.invalidInput("章节没有可下载的页")
+            throw AppError.invalidInput(Copy.text("error.download.chapterHasNoPages"))
         }
         guard !job.chapterID.isEmpty else {
-            throw AppError.invalidInput("章节标识为空")
+            throw AppError.invalidInput(Copy.text("error.download.emptyChapterID"))
         }
         guard jobs[job.id] == nil else {
-            throw AppError.invalidInput("任务已存在：\(job.id)")
+            throw AppError.invalidInput(Copy.format("error.download.jobExists", job.id))
         }
         var created = job
         created.state = .pending
@@ -368,7 +368,7 @@ public actor DownloadQueue {
             let url = job.pageURLs[index]
             var attempt = 0
             var succeeded = false
-            var lastMessage = "未知错误"
+            var lastMessage = Copy.text("error.download.unknown")
 
             while true {
                 do {
@@ -380,7 +380,7 @@ public actor DownloadQueue {
                     )
                     guard data.count <= configuration.maxPageBytes else {
                         throw AppError.invalidInput(
-                            "单页数据过大（\(data.count) 字节，上限 \(configuration.maxPageBytes)）"
+                            Copy.format("error.download.pageTooLarge", data.count, configuration.maxPageBytes)
                         )
                     }
                     try store.store(data: data, jobID: jobID, index: index)

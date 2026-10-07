@@ -357,9 +357,9 @@ final class AppEnvironment {
         password: String? = nil
     ) throws -> HostedServer {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { throw AppError.invalidInput("请填一个名字") }
+        guard !trimmedName.isEmpty else { throw AppError.invalidInput(L("server.error.missingName")) }
         guard HostedServer.isValidBaseURL(baseURL) else {
-            throw AppError.invalidInput("服务器地址要以 http:// 或 https:// 开头")
+            throw AppError.invalidInput(L("server.error.badAddress"))
         }
         let existing = Set(serverStore.all().map(\.id))
         let identifier = HostedServer.makeID(kind: kind, name: trimmedName, existing: existing)
@@ -373,7 +373,7 @@ final class AppEnvironment {
             password: password
         )
         try serverStore.add(server)
-        diag("AppEnvironment: 已添加 \(kind.displayName) 服务器 \(identifier)")
+        diag("AppEnvironment: 已添加 \(kind.brandName) 服务器 \(identifier)")
         return server
     }
 
@@ -393,7 +393,7 @@ final class AppEnvironment {
         do {
             let source = try await dataSourceProvider.dataSource(for: server.sourceID)
             guard let probing = source as? MangaDataSourceProbing else {
-                return .success("已连接")
+                return .success(L("server.probe.connected"))
             }
             return .success(try await probing.probe())
         } catch let error as HostedServerError {
@@ -601,5 +601,11 @@ final class AppEnvironment {
     /// 所有收款都在官网网页完成（《开发手册》7.4 的资金流切割）。
     var cloudUpgradeURL: URL? {
         cloud.purchaseURL ?? URL(string: settings.cloudUpgradeURL)
+    }
+
+    /// 官网根地址。法务文本页右上角那个「在官网查看」按钮用它拼出对应页面：
+    /// 设备端副本随 App 版本冻结，官网始终是最新的那一份。
+    var legalSiteURL: URL? {
+        URL(string: AppSettings.defaultWebsiteURL)
     }
 }

@@ -144,7 +144,7 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         }
         guard validated.id == meta.id else {
             throw SourceRunnerError.scriptRejected(
-                "脚本声明的来源 id（\(validated.id.rawValue)）与预期不符（\(meta.id.rawValue)）"
+                Copy.format("error.runtime.idMismatch", validated.id.rawValue, meta.id.rawValue)
             )
         }
 
@@ -157,7 +157,7 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
 
         let machine = JSVirtualMachine()
         guard let ctx = JSContext(virtualMachine: machine) else {
-            throw SourceRunnerError.executionFailed("无法创建 JavaScript 虚拟机")
+            throw SourceRunnerError.executionFailed(Copy.text("error.runtime.vmCreationFailed"))
         }
 
         // 异常处理器的回调是同步的（在 JS 线程），因此用一个线程安全的盒子
@@ -165,7 +165,7 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         // exceptionHandler 之后它的行为不够可预期。
         let exceptions = exceptionBox
         ctx.exceptionHandler = { _, exception in
-            exceptions.record(exception?.toString() ?? "未知 JavaScript 异常")
+            exceptions.record(exception?.toString() ?? Copy.text("error.runtime.unknownJSException"))
         }
 
         self.virtualMachine = machine
@@ -181,7 +181,7 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         if let text = exceptionBox.consume() {
             logJSException(text)
             teardown()
-            throw SourceRunnerError.executionFailed("桥接初始化失败：\(text)")
+            throw SourceRunnerError.executionFailed(Copy.format("error.runtime.bridgeInitFailed", text))
         }
 
         // 顶层求值：脚本此时只应做声明，不应真正发请求
@@ -190,7 +190,7 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         if let text = exceptionBox.consume() {
             logJSException(text)
             teardown()
-            throw SourceRunnerError.scriptRejected("脚本执行出错：\(text)")
+            throw SourceRunnerError.scriptRejected(Copy.format("error.runtime.scriptExecutionFailed", text))
         }
 
         // 能力补齐（§7 的 `source.getPreference`）。失败不致命，只记日志。
@@ -216,7 +216,9 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         for argument in arguments {
             guard let data = argument.data(using: .utf8),
                   (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil else {
-                throw SourceRunnerError.invalidResponse("参数不是合法 JSON：\(argument.prefix(60))")
+                throw SourceRunnerError.invalidResponse(
+                Copy.format("error.runtime.invalidArgumentJSON", String(argument.prefix(60)))
+            )
             }
         }
 
@@ -283,7 +285,9 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         let source = """
         (async function () {
             if (typeof \(method.rawValue) !== 'function') {
-                throw new Error('源未实现方法：\(method.rawValue)');
+                // i18n-exempt：这条消息抛给**源脚本作者**（源 API 契约的一部分），
+        // 面向国际作者一律用英文，且不得随界面语言变化。
+        throw new Error('source did not implement method: \(method.rawValue)');
             }
             const __args = JSON.parse(__argsJSON);
             const __value = await \(method.rawValue).apply(null, __args);
@@ -293,13 +297,13 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
 
         exceptionBox.reset()
         guard let promise = context.evaluateScript(source) else {
-            throw SourceRunnerError.executionFailed("无法构造调用包装器")
+            throw SourceRunnerError.executionFailed(Copy.text("error.runtime.wrapperCreationFailed"))
         }
         if let text = exceptionBox.consume() {
             throw SourceRunnerError.executionFailed(text)
         }
         guard promise.isObject else {
-            throw SourceRunnerError.executionFailed("源返回的不是可等待对象")
+            throw SourceRunnerError.executionFailed(Copy.text("error.runtime.notThenable"))
         }
 
         let box = JSAsyncResultBox()
@@ -307,7 +311,7 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
             box.succeed(value?.toString() ?? "null")
         }
         let onRejected: @convention(block) (JSValue?) -> Void = { error in
-            box.fail(message: error?.toString() ?? "未知错误")
+            box.fail(message: error?.toString() ?? Copy.text("error.runtime.unknownError"))
         }
         // `then` 返回新的 Promise（这里不需要链式），显式丢弃以避免未使用告警
         _ = promise.invokeMethod("then", withArguments: [onFulfilled as Any, onRejected as Any])
@@ -523,7 +527,7 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
             if (parsed === null || parsed === undefined) { return []; }
             if (parsed.error) {
                 // 选择器写错不该让整次调用崩溃，但要留下线索便于排查
-                bridge.logInfo('html 查询失败：' + parsed.error + '（选择器：' + selector + '）');
+                bridge.logInfo('html query failed: ' + parsed.error + ' (selector: ' + selector + ')');
                 return [];
             }
             return parsed.elements || [];
@@ -690,7 +694,8 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         fromNodeID: Int
     ) -> String {
         guard let document = store.document(for: handle) else {
-            return jsonObject(["error": "文档句柄已失效（可能已被替换或释放）"])
+            // i18n-exempt：桥协议里的机器可读错误文本，只有源作者会看到。
+        return jsonObject(["error": "document handle is no longer valid"])
         }
         let root: HTMLElement
         if fromNodeID < 0 {
@@ -698,7 +703,7 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
         } else if let element = document.root.element(withID: fromNodeID) {
             root = element
         } else {
-            return jsonObject(["error": "节点已失效"])
+            return jsonObject(["error": "node is no longer valid"])   // i18n-exempt
         }
 
         do {
@@ -723,7 +728,7 @@ public actor JSSourceRuntime: SourceRuntimeExecuting {
     static func jsonObject(_ payload: [String: Any]) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else {
-            return #"{"error":"序列化失败"}"#
+            return #"{"error":"serialization failed"}"#            // i18n-exempt
         }
         return text
     }

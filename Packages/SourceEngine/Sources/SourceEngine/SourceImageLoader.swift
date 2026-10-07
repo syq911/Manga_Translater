@@ -33,13 +33,14 @@ public enum SourceImageError: Error, Equatable {
 
     public var message: String {
         switch self {
-        case let .invalidURL(url): return "图片地址不合法：\(url)"
-        case let .blockedScheme(scheme): return "不支持的图片协议：\(scheme)"
-        case let .tooLarge(limit): return "图片过大（上限 \(limit) 字节）"
-        case let .notAnImage(contentType): return "返回的不是图片（\(contentType)）"
-        case .emptyResponse: return "图片内容为空"
-        case let .unavailable(reason): return "图片获取失败：\(reason)"
-        case .cancelled: return "图片获取已取消"
+        case let .invalidURL(url): return Copy.format("error.image.invalidURL", url)
+        case let .blockedScheme(scheme): return Copy.format("error.image.blockedScheme", scheme)
+        case let .tooLarge(limit): return Copy.format("error.image.tooLarge", limit)
+        case let .notAnImage(contentType):
+            return Copy.format("error.image.notAnImage", contentType)
+        case .emptyResponse: return Copy.text("error.image.emptyResponse")
+        case let .unavailable(reason): return Copy.format("error.image.unavailable", reason)
+        case .cancelled: return Copy.text("error.image.cancelled")
         }
     }
 }
@@ -178,9 +179,9 @@ public struct SourceImageLoader: Sendable {
         case let .httpStatus(code, _):
             return .unavailable("HTTP \(code)")
         case let .timeout(seconds):
-            return .unavailable("超时（\(seconds) 秒）")
+            return .unavailable(Copy.format("error.image.timeout", seconds))
         case .offline:
-            return .unavailable("网络不可用")
+            return .unavailable(Copy.text("error.image.offline"))
         case .cancelled:
             return .cancelled
         case let .transport(reason):
@@ -188,7 +189,9 @@ public struct SourceImageLoader: Sendable {
         case let .decoding(reason):
             return .unavailable(reason)
         @unknown default:
-            return .unavailable("\(url)：\(error.localizedDescription)")
+            return .unavailable(
+                Copy.format("error.image.payloadURLReason", url, error.localizedDescription)
+            )
         }
     }
 }

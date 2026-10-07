@@ -132,7 +132,7 @@ public final class DiagnosticsLog: @unchecked Sendable {
             FileManager.default.createFile(atPath: fileURL.path, contents: nil)
         }
         guard let created = try? FileHandle(forWritingTo: fileURL) else {
-            throw AppError.fileSystem("无法打开诊断日志：\(fileURL.lastPathComponent)")
+            throw AppError.fileSystem(Copy.format("error.app.logOpenFailed", fileURL.lastPathComponent))
         }
         handle = created
         return created

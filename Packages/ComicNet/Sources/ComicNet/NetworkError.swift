@@ -31,24 +31,24 @@ extension NetworkError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .invalidURL(value):
-            return "地址不合法：\(value)"
+            return Copy.format("error.net.invalidURL", value)
         case let .timeout(seconds):
-            return "请求超时（\(seconds) 秒）"
+            return Copy.format("error.net.timeout", seconds)
         case .offline:
-            return "网络不可用"
+            return Copy.text("error.net.offline")
         case let .httpStatus(code, retryAfter):
             if let retryAfter {
-                return "服务器返回 \(code)，建议 \(retryAfter) 秒后重试"
+                return Copy.format("error.net.httpStatusRetry", code, retryAfter)
             }
-            return "服务器返回 \(code)"
+            return Copy.format("error.net.httpStatus", code)
         case let .responseTooLarge(limit):
-            return "响应过大（上限 \(limit) 字节）"
+            return Copy.format("error.net.responseTooLarge", limit)
         case let .decoding(reason):
-            return "解析失败：\(reason)"
+            return Copy.format("error.net.decoding", reason)
         case let .transport(reason):
-            return "网络传输失败：\(reason)"
+            return Copy.format("error.net.transport", reason)
         case .cancelled:
-            return "请求已取消"
+            return Copy.text("error.net.cancelled")
         }
     }
 }
@@ -74,11 +74,11 @@ extension NetworkError {
 
     public var toAppError: AppError {
         switch self {
-        case let .invalidURL(value): return .invalidInput("URL：\(value)")
+        case let .invalidURL(value): return .invalidInput(Copy.format("error.net.payloadURL", value))
         case let .timeout(seconds): return .network("timeout(\(seconds)s)")
         case .offline: return .network("offline")
         case let .httpStatus(code, _): return .network("http \(code)")
-        case let .responseTooLarge(limit): return .invalidInput("响应超过 \(limit) 字节")
+        case let .responseTooLarge(limit): return .invalidInput(Copy.format("error.net.payloadTooLarge", limit))
         case let .decoding(reason): return .unknown("decode: \(reason)")
         case let .transport(reason): return .network(reason)
         case .cancelled: return .cancelled

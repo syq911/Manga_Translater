@@ -332,7 +332,12 @@ struct HTTPClientTests {
     func errorMapping() {
         #expect(NetworkError.timeout(seconds: 1).toAppError == .network("timeout(1s)"))
         #expect(NetworkError.cancelled.toAppError == .cancelled)
-        #expect(NetworkError.invalidURL("x").toAppError == .invalidInput("URL：x"))
+        // payload 是本地化文案（随设备语言变化），因此只断言「地址被带进去了」。
+        if case let .invalidInput(payload) = NetworkError.invalidURL("x").toAppError {
+            #expect(payload.contains("x"))
+        } else {
+            Issue.record("invalidURL 应映射为 AppError.invalidInput")
+        }
         #expect(NetworkError.httpStatus(code: 429, retryAfterSeconds: 2).isRateLimited)
     }
 }

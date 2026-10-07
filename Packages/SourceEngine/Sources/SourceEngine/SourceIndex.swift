@@ -46,13 +46,15 @@ public enum SourceIndexError: Error, Equatable {
 
     public var message: String {
         switch self {
-        case let .invalidJSON(reason): return "index.json 不是合法 JSON：\(reason)"
-        case .emptyIndex: return "仓库里没有任何源"
-        case let .tooManyEntries(count): return "仓库条目过多（\(count)）"
-        case let .invalidEntry(index, reason): return "第 \(index) 条不合法：\(reason)"
-        case let .duplicateKey(key): return "来源 key 重复：\(key)"
-        case let .unsafeFileName(name): return "文件名不安全：\(name)"
-        case let .tooLarge(bytes, limit): return "索引过大（\(bytes) 字节，上限 \(limit)）"
+        case let .invalidJSON(reason): return Copy.format("error.index.invalidJSON", reason)
+        case .emptyIndex: return Copy.text("error.index.empty")
+        case let .tooManyEntries(count): return Copy.format("error.index.tooManyEntries", count)
+        case let .invalidEntry(index, reason):
+            return Copy.format("error.index.invalidEntry", index, reason)
+        case let .duplicateKey(key): return Copy.format("error.index.duplicateKey", key)
+        case let .unsafeFileName(name): return Copy.format("error.index.unsafeFileName", name)
+        case let .tooLarge(bytes, limit):
+            return Copy.format("error.index.tooLarge", bytes, limit)
         }
     }
 }
@@ -86,7 +88,7 @@ public enum SourceIndexParser {
         }
 
         guard let array = raw as? [[String: Any]] else {
-            throw SourceIndexError.invalidJSON("根节点必须是数组")
+            throw SourceIndexError.invalidJSON(Copy.text("error.index.payloadRootMustBeArray"))
         }
         guard !array.isEmpty else {
             throw SourceIndexError.emptyIndex
@@ -105,13 +107,22 @@ public enum SourceIndexParser {
             let fileName = try requiredString(item["fileName"], field: "fileName", index: index)
 
             guard ModelValidation.isValidSourceID(key) else {
-                throw SourceIndexError.invalidEntry(index: index, reason: "key 不符合命名规则（\(key)）")
+                throw SourceIndexError.invalidEntry(
+                index: index,
+                reason: Copy.format("error.index.payloadBadKey", key)
+            )
             }
             guard ModelValidation.isValidVersionString(version) else {
-                throw SourceIndexError.invalidEntry(index: index, reason: "version 不是合法版本号（\(version)）")
+                throw SourceIndexError.invalidEntry(
+                index: index,
+                reason: Copy.format("error.index.payloadBadVersion", version)
+            )
             }
             guard name.count <= SourceScriptValidator.maxFieldLength else {
-                throw SourceIndexError.invalidEntry(index: index, reason: "name 过长")
+                throw SourceIndexError.invalidEntry(
+                index: index,
+                reason: Copy.text("error.index.payloadNameTooLong")
+            )
             }
             guard isSafeFileName(fileName) else {
                 throw SourceIndexError.unsafeFileName(fileName)
@@ -198,11 +209,17 @@ public enum SourceIndexParser {
 
     private static func requiredString(_ value: Any?, field: String, index: Int) throws -> String {
         guard let text = value as? String else {
-            throw SourceIndexError.invalidEntry(index: index, reason: "\(field) 缺失或类型错误")
+            throw SourceIndexError.invalidEntry(
+                index: index,
+                reason: Copy.format("error.index.payloadMissingField", field)
+            )
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            throw SourceIndexError.invalidEntry(index: index, reason: "\(field) 为空")
+            throw SourceIndexError.invalidEntry(
+                index: index,
+                reason: Copy.format("error.index.payloadEmptyField", field)
+            )
         }
         return trimmed
     }

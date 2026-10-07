@@ -157,7 +157,7 @@ struct ReaderView: View {
     @ViewBuilder
     private var content: some View {
         if isLoading {
-            ProgressView("载入中…")
+            ProgressView(L("reader.loading"))
         } else if let image = currentDisplayImage {
             GeometryReader { proxy in
                 Image(uiImage: image)
@@ -172,9 +172,9 @@ struct ReaderView: View {
             .padding(pagePadding)
         } else {
             ContentUnavailableView {
-                Label("这一页打不开", systemImage: "photo")
+                Label(L("reader.pageUnavailable.title"), systemImage: "photo")
             } description: {
-                Text("可能归档损坏或该页不是有效图片。")
+                Text(L("reader.pageUnavailable.body"))
             }
         }
     }
@@ -277,7 +277,7 @@ struct ReaderView: View {
                 Button {
                     advance(forward: false)
                 } label: {
-                    Label("上一页", systemImage: "chevron.left")
+                    Label(L("reader.previousPage"), systemImage: "chevron.left")
                 }
                 .disabled(session == nil)
 
@@ -297,7 +297,7 @@ struct ReaderView: View {
                 Button {
                     advance(forward: true)
                 } label: {
-                    Label("下一页", systemImage: "chevron.right")
+                    Label(L("reader.nextPage"), systemImage: "chevron.right")
                 }
                 .disabled(session == nil)
             }

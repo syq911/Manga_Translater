@@ -28,7 +28,7 @@ struct LocalBooksView: View {
         List {
             Section {
                 if books.isEmpty {
-                    Text("还没有导入任何本地文件。支持 CBZ / ZIP。")
+                    Text(L("local.empty"))
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(books, id: \.id) { book in
@@ -43,18 +43,18 @@ struct LocalBooksView: View {
                     }
                 }
             } header: {
-                Text("本地文件")
+                Text(L("browse.section.local"))
             } footer: {
-                Text("导入后会复制到 App 内部目录，原文件移动或删除都不影响阅读。")
+                Text(L("local.footer"))
             }
         }
-        .navigationTitle("本地文件")
+        .navigationTitle(L("browse.section.local"))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     showsImporter = true
                 } label: {
-                    Label("导入", systemImage: "plus")
+                    Label(L("library.action.import"), systemImage: "plus")
                 }
                 .disabled(isImporting)
             }
@@ -66,11 +66,11 @@ struct LocalBooksView: View {
             onCompletion: handleImport
         )
         .task { await reload() }
-        .alert("导入结果", isPresented: Binding(
+        .alert(L("local.importResult"), isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
         )) {
-            Button("好", role: .cancel) { message = nil }
+            Button(L("common.ok"), role: .cancel) { message = nil }
         } message: {
             Text(message ?? "")
         }
@@ -82,7 +82,7 @@ struct LocalBooksView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(book.title)
                 if let count = chapterCounts[book.id] {
-                    Text("\(count) 章")
+                    Text(String(format: L("local.chapterCount"), count))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -132,20 +132,31 @@ struct LocalBooksView: View {
                     environment.addToLibrary(imported.manga)
                     succeeded += 1
                 } catch {
-                    failures.append("\(url.lastPathComponent)：\((error as? LocalSourceError)?.message ?? error.localizedDescription)")
+                    failures.append(
+                        String(
+                            format: L("library.import.failureLine"),
+                            url.lastPathComponent,
+                            (error as? LocalSourceError)?.message ?? error.localizedDescription
+                        )
+                    )
                 }
             }
 
             Task { await reload() }
             isImporting = false
             if failures.isEmpty {
-                message = "已导入 \(succeeded) 个文件。"
+                message = String(format: L("library.import.done"), succeeded)
             } else {
-                message = "成功 \(succeeded) 个，失败 \(failures.count) 个：\n" + failures.joined(separator: "\n")
+                message = String(
+                    format: L("library.import.partial"),
+                    succeeded,
+                    failures.count,
+                    failures.joined(separator: "\n")
+                )
             }
 
         case let .failure(error):
-            message = "选择文件失败：\(error.localizedDescription)"
+            message = String(format: L("library.import.pickFailed"), error.localizedDescription)
         }
     }
 }

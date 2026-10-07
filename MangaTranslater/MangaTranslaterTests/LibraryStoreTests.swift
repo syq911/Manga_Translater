@@ -555,13 +555,30 @@ struct LibraryStoreTests {
     @Test("corruptRow 的错误码与 AppError 映射")
     func corruptRowMapsToAppError() {
         let error = LibraryStoreError.corruptRow(reason: "坏")
-        #expect(error.message.contains("数据损坏"))
+        // 文案本身走 `Copy`（随语言变化），因此断言「原因被带进去了」而不是某句话。
+        #expect(error.message.contains("坏"))
         if case .unknown = error.toAppError { } else {
             Issue.record("应映射为 AppError.unknown")
         }
-        #expect(LibraryStoreError.entryNotFound("x").toAppError == .notFound("书架条目 x"))
-        #expect(LibraryStoreError.invalidLimit(0).toAppError == .invalidInput("数量 0"))
-        #expect(LibraryStoreError.invalidPageIndex(-1).toAppError == .invalidInput("页码 -1"))
+        assertPayload(LibraryStoreError.entryNotFound("x"), contains: "x", mapperCode: "not_found")
+        assertPayload(LibraryStoreError.invalidLimit(0), contains: "0", mapperCode: "invalid_input")
+        assertPayload(LibraryStoreError.invalidPageIndex(-1), contains: "-1", mapperCode: "invalid_input")
+    }
+
+    /// `toAppError` 的 payload 也是**本地化文案**（随设备语言变化），
+    /// 所以这里断言两件与语言无关的事：稳定错误码，以及「关键信息被带进去了」。
+    private func assertPayload(_ error: LibraryStoreError, contains key: String, mapperCode: String) {
+        let appError = error.toAppError
+        let payload: String
+        switch appError {
+        case let .notFound(value), let .invalidInput(value):
+            payload = value
+        default:
+            Issue.record("映射种类不符：\(appError)")
+            return
+        }
+        #expect(appError.code == mapperCode)
+        #expect(payload.contains(key))
     }
 }
 

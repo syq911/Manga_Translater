@@ -2,17 +2,38 @@
 """
 本地化一致性检查（本地预检工具）。
 
-动机：`L("key")` 取不到字符串时**不会编译报错**，只在运行期把 key 原样显示出来
-（或回退到开发语言），而这类问题通常要等界面上线被人看到才发现。纯文本即可判定：
+动机：`L("key")` / `Copy.text("key")` 取不到字符串时**不会编译报错**，
+只在运行期把 key 原样显示出来（或回退到开发语言），
+而这类问题通常要等界面上线被人看到才发现。纯文本即可判定。
 
-1. 所有语言的 `Localizable.strings` **key 集合必须一致**——否则某个语言会缺文案；
-2. 代码里出现的每个 `L("…")` 都必须在字符串表里存在——否则界面会显示原始 key；
-3. 同一个 key 的**占位符数量与类型必须一致**——否则译文会串位或崩在
-   `String(format:)` 上（实测踩过：`%d` 配 Swift 的 64 位 `Int`、以及
-   `%@` 与 `%1$@` 混用导致同一个参数被吃两次）。
+## 两张表，两个命名空间
 
-字符串表用轻量正则解析：本项目的 `.strings` 只用到 `"key" = "value";` 这一种形式
-（含注释行与转义引号），引入 plist 解析器属于过度设计。
+本项目的文案分布在两个互相独立的地方，**必须分开校验**：
+
+| 表 | 位置 | 谁在用 | 访问方式 |
+|---|---|---|---|
+| App 表 | `MangaTranslater/Resources/<lang>.lproj/Localizable.strings` | App 目标（界面） | `L("…")` |
+| 包层表 | `Packages/AppCore/Sources/AppCore/Resources/<lang>.lproj/Localizable.strings` | 五个本地包（错误与状态文案） | `Copy.text("…")` |
+
+分成两表的原因：包是纯 Foundation 模块，**不能反向依赖 App 目标**，
+因此拿不到 App 的 `L()`。两表的 key 不得互串——「取错表」的表现是
+界面上冒出一个 key 字符串，而这里能在推送前就拦住。
+
+## 检查项
+
+1. 同一张表内，各语言的 **key 集合必须一致**（以并集为基准）；
+2. 代码里用到的 key 必须在对应表里存在；
+3. 同一个 key 的**占位符数量与类型必须一致**（否则译文串位或崩在 `String(format:)`）；
+4. `String(format: L("key"), …)` 的实参个数必须与占位符数量吻合；
+5. **死文案**：表里定义了但代码从未引用的 key（少一条文案没人发现，
+   多一条没人用的文案也没人发现——都一样是腐化）；
+6. **重复 key**：同一文件里同一个 key 出现两次，后一条静默生效；
+7. 两张表的 key 不得重名。
+
+注释会被先剥掉再扫描：文档注释里写 `L("…")` 是举例，不是引用
+（早先的实现没剥注释，于是要求表里必须有一个叫 `…` 的 key）。
+
+字符串表用轻量正则解析：本项目的 `.strings` 只用到 `"key" = "value";` 这一种形式。
 """
 
 import io
@@ -21,133 +42,309 @@ import re
 import sys
 
 SKIP_DIRS = {".git", ".build", "DerivedData", "build", ".swiftpm", "__pycache__"}
-RESOURCES_DIR = os.path.join("MangaTranslater", "Resources")
-SWIFT_ROOTS = ("MangaTranslater", "Packages")
+
+APP_TABLE_DIR = os.path.join("MangaTranslater", "Resources")
+PACKAGE_TABLE_DIR = os.path.join("Packages", "AppCore", "Sources", "AppCore", "Resources")
 
 ENTRY = re.compile(r'^\s*"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)"\s*;', re.M)
-USAGE = re.compile(r'\bL\(\s*"((?:[^"\\]|\\.)*)"\s*\)')
+APP_USAGE = re.compile(r'\bL\(\s*"((?:[^"\\]|\\.)*)"\s*\)')
+PACKAGE_USAGE = re.compile(r'\bCopy\.(?:text|format)\(\s*"((?:[^"\\]|\\.)*)"')
 
-# 常见占位符：%@ %d %ld %s %f，以及带位置的 %1$@ 形式
+# App 表里的 `String(format: L("key"), a, b)` —— 校验实参个数
+FORMAT_CALL_PREFIX = r'String\(format:\s*L\(\s*"%s"\s*\)'
+
+
+def skip_string(code, index):
+    """`code[index]` 是开引号；返回闭引号之后的下标。"""
+    i = index + 1
+    while i < len(code):
+        if code[i] == "\\":
+            i += 2
+            continue
+        if code[i] == '"':
+            return i + 1
+        i += 1
+    return len(code)
+
+
+def format_call_arguments(code, key):
+    """
+    找出 `String(format: L("key"), …)` 的实参个数，返回 [(行号, 个数)]。
+
+    必须做括号配对：实参里常有嵌套调用（`L("a"), author`），
+    用 `[^)]*` 这种正则会在内层 `)` 处提前截断，把 2 个参数数成 1 个
+    （实测踩过，报出「需要 2 个参数，实际传入 1 个」的假错误）。
+    """
+    results = []
+    pattern = re.compile(FORMAT_CALL_PREFIX % re.escape(key))
+    for match in pattern.finditer(code):
+        open_index = code.index("(", match.start() + len("String"))
+        depth = 0
+        i = open_index
+        while i < len(code):
+            ch = code[i]
+            if ch == '"':
+                i = skip_string(code, i)
+                continue
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        arguments = code[match.end():i]
+        # 顶层逗号数 == 实参个数（`L("key"` 后面直接跟 `)` 时为 0 个）
+        count = 0
+        depth = 0
+        j = 0
+        while j < len(arguments):
+            ch = arguments[j]
+            if ch == '"':
+                j = skip_string(arguments, j)
+                continue
+            if ch in "([":
+                depth += 1
+            elif ch in ")]":
+                depth -= 1
+            elif ch == "," and depth == 0:
+                count += 1
+            j += 1
+        results.append((code[: match.start()].count("\n") + 1, count))
+    return results
+
 PLACEHOLDER = re.compile(r"%(?:(\d+)\$)?[-+ #0]*[0-9]*(?:\.[0-9]+)?(?:hh|h|ll|l|z|t|j)?([@difsuxXeEgGc])")
 
 
-def swift_files():
+def swift_files(roots):
     found = []
-    for root in SWIFT_ROOTS:
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
         for dirpath, dirnames, files in os.walk(root):
             dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
-            for name in files:
+            for name in sorted(files):
                 if name.endswith(".swift"):
                     found.append(os.path.join(dirpath, name))
-    return sorted(found)
+    return found
+
+
+def strip_comments(text):
+    """
+    去掉 `//…` 与 `/*…*/`，保留字符串字面量。
+
+    Swift 的 `"\\(expr)"` 插值里可能嵌套字符串，因此这里用与
+    `check_swift_syntax` 同构的状态机（代码 / 字符串 / 多行字符串）。
+    返回等长文本（注释位置替换为空格），便于按行号定位。
+    """
+    out = []
+    i = 0
+    n = len(text)
+    mode = "code"
+    while i < n:
+        ch = text[i]
+        nxt = text[i + 1] if i + 1 < n else ""
+        if mode == "code":
+            if ch == "/" and nxt == "/":
+                while i < n and text[i] != "\n":
+                    out.append(" ")
+                    i += 1
+                continue
+            if ch == "/" and nxt == "*":
+                out.append("  ")
+                i += 2
+                while i < n and not (text[i] == "*" and i + 1 < n and text[i + 1] == "/"):
+                    out.append("\n" if text[i] == "\n" else " ")
+                    i += 1
+                out.append("  ")
+                i += 2
+                continue
+            if text.startswith('"""', i):
+                out.append('"""')
+                i += 3
+                mode = "multiline"
+                continue
+            if ch == '"':
+                out.append(ch)
+                i += 1
+                mode = "string"
+                continue
+            out.append(ch)
+            i += 1
+            continue
+        if mode == "string":
+            if ch == "\\":
+                if nxt == "(":
+                    depth = 0
+                    out.append("(")
+                    i += 1
+                    while i < n and text[i] != ")":
+                        if text[i] == "(":
+                            depth += 1
+                        out.append(text[i])
+                        i += 1
+                    out.append(")")
+                    i += 1
+                    continue
+                out.append("  ")
+                i += 2
+                continue
+            out.append(ch)
+            if ch == '"':
+                mode = "code"
+            i += 1
+            continue
+        # multiline
+        if text.startswith('"""', i):
+            out.append('"""')
+            i += 3
+            mode = "code"
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def parse_strings(path):
-    text = io.open(path, encoding="utf-8").read()
+    """
+    解析 `"key" = "value";`。
+
+    同时检查重复 key：`.strings` 里同一个 key 出现两次时**后一条静默生效**，
+    而在文件末尾追加新文案正是本项目最常见的用法——一旦手滑重名，
+    表现是「改了文案却不生效」，查起来非常费神。
+    """
+    counts = {}
     entries = {}
-    for match in ENTRY.finditer(text):
-        entries[match.group(1)] = match.group(2)
-    return entries
+    for match in ENTRY.finditer(io.open(path, encoding="utf-8").read()):
+        key = match.group(1)
+        counts[key] = counts.get(key, 0) + 1
+        entries[key] = match.group(2)
+    duplicates = sorted(key for key, count in counts.items() if count > 1)
+    return entries, duplicates
+
+
+def load_tables(base_dir, problems):
+    tables = {}
+    if not os.path.isdir(base_dir):
+        return tables
+    for name in sorted(os.listdir(base_dir)):
+        if not name.endswith(".lproj"):
+            continue
+        path = os.path.join(base_dir, name, "Localizable.strings")
+        if os.path.isfile(path):
+            entries, duplicates = parse_strings(path)
+            if duplicates:
+                problems.append(
+                    f"{os.path.join(base_dir, name)}: 重复定义的 key（后一条静默生效）："
+                    f"{', '.join(duplicates[:5])}"
+                )
+            tables[name] = entries
+    return tables
 
 
 def placeholders(value):
-    """取出占位符描述序列：[(位置或 None, 类型)]。"""
-    return [(match.group(1), match.group(2)) for match in PLACEHOLDER.finditer(value)]
+    return [(m.group(1), m.group(2)) for m in PLACEHOLDER.finditer(value)]
 
 
-def main():
-    if not os.path.isdir(RESOURCES_DIR):
-        print(f"❌ 找不到资源目录：{RESOURCES_DIR}")
-        return 1
+def collect_usage(roots, pattern):
+    used = {}
+    for path in swift_files(roots):
+        code = strip_comments(io.open(path, encoding="utf-8").read())
+        for match in pattern.finditer(code):
+            used.setdefault(match.group(1), set()).add(
+                os.path.relpath(path).replace("\\", "/")
+            )
+    return used
 
-    language_files = {}
-    for name in sorted(os.listdir(RESOURCES_DIR)):
-        if not name.endswith(".lproj"):
-            continue
-        strings_path = os.path.join(RESOURCES_DIR, name, "Localizable.strings")
-        if os.path.isfile(strings_path):
-            language_files[name] = parse_strings(strings_path)
 
-    if not language_files:
-        print("❌ 没有找到任何 Localizable.strings")
-        return 1
+def check_table(label, tables, used, problems, check_format_arguments=False):
+    if not tables:
+        problems.append(f"{label}：没有找到任何 Localizable.strings")
+        return set()
 
-    problems = []
-
-    # 1. 各语言的 key 集合以**并集**为基准。
-    #    不要拿「第一个文件」当基准：那样一旦是它少了 key，报出来的方向会反过来
-    #    （变成「别的语言多了一个 key」），读的人得先在脑子里倒一次。
     union = set()
-    for entries in language_files.values():
+    for entries in tables.values():
         union |= set(entries)
 
-    for name, entries in sorted(language_files.items()):
+    for name, entries in sorted(tables.items()):
         missing = sorted(union - set(entries))
         if missing:
-            problems.append(f"{name}: 缺少 {len(missing)} 个 key（如 {', '.join(missing[:5])}）")
+            problems.append(
+                f"{label}/{name}: 缺少 {len(missing)} 个 key（如 {', '.join(missing[:5])}）"
+            )
 
-    # 2. 同一个 key 的占位符必须一致（各语言两两比较，等价于「签名集合大小 == 1」）
+    # 占位符一致性
     signatures = {}
-    for name, entries in sorted(language_files.items()):
+    for name, entries in sorted(tables.items()):
         for key, value in entries.items():
-            signature = tuple((position, kind) for position, kind in placeholders(value))
+            signature = tuple(placeholders(value))
             signatures.setdefault(key, []).append((name, signature))
-
     for key, samples in sorted(signatures.items()):
         if len(samples) < 2:
             continue
-        distinct = {signature for _, signature in samples}
-        if len(distinct) > 1:
+        if len({signature for _, signature in samples}) > 1:
             detail = "，".join(
-                f"{name}：{'无占位符' if not signature else '…'.join(kind for _, kind in signature)}"
-                for name, signature in samples
+                f"{name}：{'无占位符' if not sig else '…'.join(kind for _, kind in sig)}"
+                for name, sig in samples
             )
-            problems.append(f"`{key}` 各语言占位符不一致（{detail}）")
-
-    # 3. 代码里用到的 key 必须存在
-    used = {}
-    for path in swift_files():
-        text = io.open(path, encoding="utf-8").read()
-        for match in USAGE.finditer(text):
-            key = match.group(1)
-            used.setdefault(key, set()).add(os.path.relpath(path).replace("\\", "/"))
+            problems.append(f"{label}：`{key}` 各语言占位符不一致（{detail}）")
 
     for key, files in sorted(used.items()):
-        if key in union:
-            continue
-        problems.append(f"代码使用了未定义的 key `{key}`（{', '.join(sorted(files))}）")
+        if key not in union:
+            problems.append(f"{label}：代码使用了未定义的 key `{key}`（{', '.join(sorted(files))}）")
 
-    # 4. `String(format:)` 的参数个数要与占位符数量吻合
-    reference = language_files[sorted(language_files)[0]]
-    for key, files in sorted(used.items()):
-        value = reference.get(key)
-        if value is None:
-            continue
-        count = len(placeholders(value))
-        if count == 0:
-            continue
-        for path in sorted(files):
-            text = io.open(path, encoding="utf-8").read()
-            pattern = re.compile(
-                r'String\(format:\s*L\(\s*"' + re.escape(key) + r'"\s*\)\s*(,[^)]*)?\)'
-            )
-            for match in pattern.finditer(text):
-                arguments = match.group(1) or ""
-                actual = len([part for part in arguments.split(",") if part.strip()])
-                if actual != count:
-                    line = text[: match.start()].count("\n") + 1
-                    problems.append(
-                        f"{path}:{line} `{key}` 需要 {count} 个参数，实际传入 {actual} 个"
-                    )
+    for key in sorted(union - set(used)):
+        problems.append(f"{label}：定义了但代码从未引用的 key `{key}`（死文案）")
 
-    total = sum(len(entries) for entries in language_files.values())
-    print(f"本地化检查：{len(language_files)} 种语言，共 {total} 条文案，代码引用 {len(used)} 个 key")
+    if check_format_arguments:
+        reference = tables[sorted(tables)[0]]
+        for key, files in sorted(used.items()):
+            value = reference.get(key)
+            if value is None:
+                continue
+            count = len(placeholders(value))
+            if count == 0:
+                continue
+            for path in sorted(files):
+                code = strip_comments(io.open(path, encoding="utf-8").read())
+                for line, actual in format_call_arguments(code, key):
+                    if actual != count:
+                        problems.append(
+                            f"{path}:{line} `{key}` 需要 {count} 个参数，实际传入 {actual} 个"
+                        )
+    return union
+
+
+def main():
+    problems = []
+    app_tables = load_tables(APP_TABLE_DIR, problems)
+    package_tables = load_tables(PACKAGE_TABLE_DIR, problems)
+
+    app_used = collect_usage(["MangaTranslater"], APP_USAGE)
+    package_used = collect_usage(["Packages"], PACKAGE_USAGE)
+
+    app_keys = check_table("App 表", app_tables, app_used, problems, check_format_arguments=True)
+    package_keys = check_table("包层表", package_tables, package_used, problems)
+
+    for key in sorted(app_keys & package_keys):
+        problems.append(f"`{key}` 同时存在于 App 表与包层表（两张表不得重名）")
+
+    total = sum(len(entries) for entries in app_tables.values()) + sum(
+        len(entries) for entries in package_tables.values()
+    )
+    print(
+        f"本地化检查：App 表 {len(app_tables)} 种语言 / 引用 {len(app_used)} 个 key；"
+        f"包层表 {len(package_tables)} 种语言 / 引用 {len(package_used)} 个 key；共 {total} 条文案"
+    )
     if problems:
         print("\n❌ 发现问题：")
         for problem in problems:
             print(f"  {problem}")
         return 1
-    print("✅ 多语言 key 集合一致、代码引用的 key 均已定义、占位符类型与数量匹配")
+    print(
+        "✅ 两张表各自 key 集合一致、代码引用的 key 均已定义、占位符类型与数量匹配、"
+        "无死文案、两表无重名"
+    )
     return 0
 
 

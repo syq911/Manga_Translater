@@ -259,7 +259,7 @@ struct SourceLoginView: View {
 #Preview {
     SourceLoginView(
         sourceID: SourceID("demo"),
-        sourceName: "示例源",
+        sourceName: "示例源",   // i18n-exempt：预览用的中性示例数据
         url: URL(string: "https://example.com")!,
         purpose: .login
     )

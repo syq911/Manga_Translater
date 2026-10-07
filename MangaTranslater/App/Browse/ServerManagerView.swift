@@ -113,7 +113,7 @@ struct ServerManagerView: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Text(server.name)
-                Text(server.kind.displayName)
+                Text(server.kind.brandName)
                     .font(.caption2)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -167,7 +167,7 @@ struct ServerEditView: View {
                 Section {
                     Picker(L("server.kind"), selection: $kind) {
                         ForEach(HostedServerKind.allCases, id: \.self) { kind in
-                            Text(kind.displayName).tag(kind)
+                            Text(kind.brandName).tag(kind)
                         }
                     }
                     TextField(L("server.name"), text: $name)

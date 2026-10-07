@@ -85,19 +85,19 @@ public enum SourceRunnerError: Error, Equatable {
     public var message: String {
         switch self {
         case let .notInstalled(key):
-            return "源未安装：\(key)"
+            return Copy.format("error.runner.notInstalled", key)
         case let .incompleteContract(missing):
-            return "源未实现必需方法：\(missing.joined(separator: ", "))"
+            return Copy.format("error.runner.incompleteContract", missing.joined(separator: ", "))
         case let .scriptRejected(reason):
-            return "源脚本被拒绝：\(reason)"
+            return Copy.format("error.runner.scriptRejected", reason)
         case let .executionTimeout(seconds):
-            return "源执行超时（\(seconds) 秒）"
+            return Copy.format("error.runner.timeout", seconds)
         case let .executionFailed(reason):
-            return "源执行失败：\(reason)"
+            return Copy.format("error.runner.executionFailed", reason)
         case let .invalidResponse(reason):
-            return "源返回数据不合法：\(reason)"
+            return Copy.format("error.runner.invalidResponse", reason)
         case .cancelled:
-            return "源调用已取消"
+            return Copy.text("error.runner.cancelled")
         }
     }
 }
@@ -303,9 +303,10 @@ public actor SourceRunner {
 
     private func reportSkipped(_ count: Int, method: SourceAPIMethod) {
         guard count > 0 else { return }
+        // 诊断日志：读者是维护者，固定中文便于搜索（i18n-exempt）。
         logSink(
             "warn",
-            "[源 \(sourceID.rawValue)] \(method.rawValue) 返回的 \(count) 条数据不完整，已跳过"
+            "[源 \(sourceID.rawValue)] \(method.rawValue) 返回的 \(count) 条数据不完整，已跳过"   // i18n-exempt
         )
     }
 

@@ -46,6 +46,6 @@ public struct SourcePageFetcher: JobAwarePageFetching {
     public func fetchPage(url: String, headers: [String: String]) async throws -> Data {
         _ = url
         _ = headers
-        throw AppError.invalidInput("在线来源的下载必须带上任务上下文（来源 / Referer）")
+        throw AppError.invalidInput(Copy.text("error.fetcher.missingContext"))
     }
 }

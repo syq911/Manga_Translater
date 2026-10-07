@@ -51,9 +51,6 @@
 
 "common.ok" = "好";
 "common.cancel" = "取消";
-"common.done" = "完成";
-"common.continue" = "继续";
-"common.notAvailableYet" = "即将推出";
 
 /* 源仓库管理（M2 第六批） */
 
@@ -98,6 +95,7 @@
 "source.detail.loading" = "正在载入作品信息…";
 "source.detail.author" = "作者";
 "source.detail.artist" = "画师";
+"source.detail.field" = "%@：%@";
 "source.detail.chapters" = "章节";
 "source.detail.chaptersFailed" = "章节列表加载失败";
 "source.detail.noChapters" = "这个源没有返回任何章节。";
@@ -324,3 +322,82 @@
 "cloud.error.transport" = "连不上云服务：%@";
 "cloud.error.missingBaseURL" = "云服务地址没有配置或格式不对。";
 
+/* 文案复核（M5）：界面补全 + 包层枚举的展示名 */
+
+"category.count" = "%ld 部";
+"category.create" = "新建分类";
+"category.create.action" = "创建";
+"category.create.message" = "可以创建暂时没有作品的分类。";
+"category.empty" = "还没有分类。点右上角「+」新建一个。";
+"category.footer" = "删除分类只会把作品移出该分类，不会删除作品本身。";
+"category.name" = "分类名称";
+"category.rename" = "重命名分类";
+"category.rename.message" = "作品仍留在该分类里，只是名称变了。";
+"category.title" = "分类管理";
+"common.save" = "保存";
+"downloads.error.noPages" = "章节没有可下载的页";
+"legal.openInBrowser" = "在官网查看";
+"library.action.import" = "导入";
+"library.filter.all" = "全部作品";
+"library.filter.manageCategories" = "管理分类…";
+"library.import.done" = "已导入 %ld 个文件。";
+"library.import.failureLine" = "%@：%@";
+"library.import.partial" = "成功 %ld 个，失败 %ld 个：
+%@";
+"library.import.pickFailed" = "选择文件失败：%@";
+"library.importFiles" = "导入本地文件";
+"library.menu.moveToCategory" = "移动到分类";
+"library.menu.pin" = "置顶";
+"library.menu.remove" = "移出书架";
+"library.menu.removeFromCategory" = "移出分类";
+"library.menu.unpin" = "取消置顶";
+"library.notPersistent" = "书架当前无法持久化（数据库不可用），本次会话结束后会清空。";
+"library.progress.notStarted" = "尚未开始阅读";
+"library.progress.page" = "读到第 %ld 页";
+"library.progress.pageWithDate" = "读到第 %ld 页 · %@";
+"library.sort.byLastRead" = "最近阅读";
+"library.sort.byRecentlyAdded" = "最近加入";
+"library.sort.byTitle" = "标题";
+"library.sort.label" = "排序";
+"local.chapterCount" = "%ld 章";
+"local.empty" = "还没有导入任何本地文件。支持 CBZ / ZIP。";
+"local.footer" = "导入后会复制到 App 内部目录，原文件移动或删除都不影响阅读。";
+"local.importResult" = "导入结果";
+"reader.loading" = "载入中…";
+"reader.mode.continuousVertical" = "条漫连续滚动";
+"reader.mode.doublePage" = "双页";
+"reader.mode.pagedLeftToRight" = "左到右翻页";
+"reader.mode.pagedRightToLeft" = "右到左翻页";
+"reader.nextPage" = "下一页";
+"reader.pageUnavailable.body" = "可能归档损坏或该页不是有效图片。";
+"reader.pageUnavailable.title" = "这一页打不开";
+"reader.previousPage" = "上一页";
+"reader.theme.black" = "纯黑";
+"reader.theme.dark" = "深色";
+"reader.theme.light" = "浅色";
+"reader.theme.sepia" = "米黄";
+"reader.theme.system" = "跟随系统";
+"server.error.badAddress" = "服务器地址要以 http:// 或 https:// 开头";
+"server.error.missingName" = "请填一个名字";
+"server.probe.connected" = "已连接";
+"settings.cache.clearCover" = "清空封面缓存";
+"settings.cache.coverCleared" = "已清理 %ld 项封面缓存。";
+"settings.cache.coverEmpty" = "封面缓存本来就是空的。";
+"settings.reader.concurrency" = "下载并发：%ld";
+"settings.reader.keepAwake" = "阅读时保持屏幕常亮";
+"settings.reader.mode" = "阅读模式";
+"settings.reader.pageSpacing" = "页面留白：%ld pt";
+"settings.reader.preload" = "预加载页数：%ld";
+"settings.reader.theme" = "阅读背景";
+"translation.backend.appleOnDevice" = "设备端翻译";
+"translation.backend.bringYourOwnKey" = "自备密钥";
+"translation.backend.cloudService" = "云服务";
+"translation.language.auto" = "自动检测";
+"translation.language.english" = "英语";
+"translation.language.japanese" = "日语";
+"translation.language.korean" = "韩语";
+"translation.language.simplifiedChinese" = "简体中文";
+"translation.language.traditionalChinese" = "繁体中文";
+"verify.kind.captcha" = "人机验证";
+"verify.kind.cloudflare" = "Cloudflare 校验";
+"verify.kind.generic" = "人工验证";

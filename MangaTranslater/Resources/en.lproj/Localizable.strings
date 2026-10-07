@@ -51,9 +51,6 @@
 
 "common.ok" = "OK";
 "common.cancel" = "Cancel";
-"common.done" = "Done";
-"common.continue" = "Continue";
-"common.notAvailableYet" = "Coming soon";
 
 /* Source repositories (M2 batch 6) */
 
@@ -98,6 +95,7 @@
 "source.detail.loading" = "Loading title details…";
 "source.detail.author" = "Author";
 "source.detail.artist" = "Artist";
+"source.detail.field" = "%@: %@";
 "source.detail.chapters" = "Chapters";
 "source.detail.chaptersFailed" = "Failed to load chapter list";
 "source.detail.noChapters" = "This source returned no chapters.";
@@ -324,3 +322,82 @@
 "cloud.error.transport" = "Cannot reach the cloud service: %@";
 "cloud.error.missingBaseURL" = "The cloud service address is missing or malformed.";
 
+/* Copy review (M5): UI gaps filled, package enums' display names */
+
+"category.count" = "%ld title(s)";
+"category.create" = "New category";
+"category.create.action" = "Create";
+"category.create.message" = "You can create a category that has no titles yet.";
+"category.empty" = "No categories yet. Tap + to create one.";
+"category.footer" = "Deleting a category only removes titles from it; the titles themselves are kept.";
+"category.name" = "Category name";
+"category.rename" = "Rename category";
+"category.rename.message" = "Titles stay in the category; only the name changes.";
+"category.title" = "Categories";
+"common.save" = "Save";
+"downloads.error.noPages" = "This chapter has no downloadable pages";
+"legal.openInBrowser" = "View on the website";
+"library.action.import" = "Import";
+"library.filter.all" = "All titles";
+"library.filter.manageCategories" = "Manage categories…";
+"library.import.done" = "Imported %ld file(s).";
+"library.import.failureLine" = "%@: %@";
+"library.import.partial" = "Imported %ld, failed %ld:
+%@";
+"library.import.pickFailed" = "Could not pick files: %@";
+"library.importFiles" = "Import local files";
+"library.menu.moveToCategory" = "Move to category";
+"library.menu.pin" = "Pin";
+"library.menu.remove" = "Remove from library";
+"library.menu.removeFromCategory" = "Remove from category";
+"library.menu.unpin" = "Unpin";
+"library.notPersistent" = "The library cannot be saved right now (database unavailable); it will be cleared when this session ends.";
+"library.progress.notStarted" = "Not started";
+"library.progress.page" = "Page %ld";
+"library.progress.pageWithDate" = "Page %ld · %@";
+"library.sort.byLastRead" = "Recently read";
+"library.sort.byRecentlyAdded" = "Recently added";
+"library.sort.byTitle" = "Title";
+"library.sort.label" = "Sort";
+"local.chapterCount" = "%ld chapter(s)";
+"local.empty" = "No local files imported yet. CBZ / ZIP are supported.";
+"local.footer" = "Imported files are copied into the app's own storage, so moving or deleting the originals will not affect reading.";
+"local.importResult" = "Import result";
+"reader.loading" = "Loading…";
+"reader.mode.continuousVertical" = "Continuous vertical";
+"reader.mode.doublePage" = "Double page";
+"reader.mode.pagedLeftToRight" = "Left to right";
+"reader.mode.pagedRightToLeft" = "Right to left";
+"reader.nextPage" = "Next page";
+"reader.pageUnavailable.body" = "The archive may be damaged, or this page is not a valid image.";
+"reader.pageUnavailable.title" = "This page cannot be opened";
+"reader.previousPage" = "Previous page";
+"reader.theme.black" = "Black";
+"reader.theme.dark" = "Dark";
+"reader.theme.light" = "Light";
+"reader.theme.sepia" = "Sepia";
+"reader.theme.system" = "System";
+"server.error.badAddress" = "The server address must start with http:// or https://";
+"server.error.missingName" = "Please enter a name";
+"server.probe.connected" = "Connected";
+"settings.cache.clearCover" = "Clear cover cache";
+"settings.cache.coverCleared" = "Cleared %ld cached cover(s).";
+"settings.cache.coverEmpty" = "The cover cache is already empty.";
+"settings.reader.concurrency" = "Download concurrency: %ld";
+"settings.reader.keepAwake" = "Keep the screen awake while reading";
+"settings.reader.mode" = "Reading mode";
+"settings.reader.pageSpacing" = "Page margin: %ld pt";
+"settings.reader.preload" = "Preload pages: %ld";
+"settings.reader.theme" = "Reading background";
+"translation.backend.appleOnDevice" = "On-device";
+"translation.backend.bringYourOwnKey" = "Own API key";
+"translation.backend.cloudService" = "Cloud service";
+"translation.language.auto" = "Auto-detect";
+"translation.language.english" = "English";
+"translation.language.japanese" = "Japanese";
+"translation.language.korean" = "Korean";
+"translation.language.simplifiedChinese" = "Simplified Chinese";
+"translation.language.traditionalChinese" = "Traditional Chinese";
+"verify.kind.captcha" = "Captcha";
+"verify.kind.cloudflare" = "Cloudflare check";
+"verify.kind.generic" = "Manual verification";

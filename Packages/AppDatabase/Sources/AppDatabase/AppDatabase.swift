@@ -48,7 +48,7 @@ public struct AppDatabase: Sendable {
                     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 }
             } catch {
-                throw AppError.fileSystem("无法创建数据库目录：\(error.localizedDescription)")
+                throw AppError.fileSystem(Copy.format("error.db.createDirectoryFailed", error.localizedDescription))
             }
             do {
                 var configuration = Configuration()
@@ -56,7 +56,7 @@ public struct AppDatabase: Sendable {
                 configuration.foreignKeysEnabled = true
                 queue = try DatabaseQueue(path: url.path, configuration: configuration)
             } catch {
-                throw AppError.fileSystem("无法打开数据库：\(error.localizedDescription)")
+                throw AppError.fileSystem(Copy.format("error.db.openFailed", error.localizedDescription))
             }
         }
 
@@ -65,7 +65,7 @@ public struct AppDatabase: Sendable {
         do {
             try migrator.migrate(queue)
         } catch {
-            throw AppError.unknown("数据库迁移失败：\(error.localizedDescription)")
+            throw AppError.unknown(Copy.format("error.db.migrationFailed", error.localizedDescription))
         }
 
         diag("AppDatabase: 已打开数据库（\(location.description)），迁移 \(Migrations.all.count) 项")

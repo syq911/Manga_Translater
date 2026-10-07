@@ -66,11 +66,13 @@ public enum SourceTransportError: Error, Equatable {
 
     public var message: String {
         switch self {
-        case let .unsupportedMethod(method): return "不支持的请求方法：\(method)"
-        case let .blockedScheme(scheme): return "不支持的协议：\(scheme)"
-        case let .blockedHost(host): return "该地址不被允许：\(host)"
-        case let .bodyTooLarge(bytes, limit): return "响应过大（\(bytes) 字节，上限 \(limit)）"
-        case let .notFound(url): return "请求失败：\(url)"
+        case let .unsupportedMethod(method):
+            return Copy.format("error.transport.unsupportedMethod", method)
+        case let .blockedScheme(scheme): return Copy.format("error.transport.blockedScheme", scheme)
+        case let .blockedHost(host): return Copy.format("error.transport.blockedHost", host)
+        case let .bodyTooLarge(bytes, limit):
+            return Copy.format("error.transport.bodyTooLarge", bytes, limit)
+        case let .notFound(url): return Copy.format("error.transport.notFound", url)
         }
     }
 }
@@ -198,7 +200,7 @@ public final class DefaultSourceTransport: SourceTransporting, @unchecked Sendab
         if scheme == "http" {
             let host = url.host?.lowercased() ?? ""
             guard host == "localhost" || host == "127.0.0.1" || host == "::1" else {
-                throw SourceTransportError.blockedScheme("http（非本机）")
+                throw SourceTransportError.blockedScheme(Copy.text("error.transport.payloadHTTP"))
             }
         }
     }

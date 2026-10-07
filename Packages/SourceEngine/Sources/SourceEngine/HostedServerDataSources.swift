@@ -115,13 +115,13 @@ struct HostedServerHTTP: Sendable {
             throw HostedServerError.httpStatus(response.statusCode, target)
         }
         guard !response.data.isEmpty else {
-            throw HostedServerError.malformedResponse("空响应：\(target)")
+            throw HostedServerError.malformedResponse(Copy.format("error.hosted.emptyResponse", target))
         }
         do {
             return try JSONSerialization.jsonObject(with: response.data)
         } catch {
             throw HostedServerError.malformedResponse(
-                "不是合法 JSON：\(target)（\(error.localizedDescription)）"
+                Copy.format("error.hosted.notJSON", target, error.localizedDescription)
             )
         }
     }
@@ -139,17 +139,20 @@ public enum HostedServerError: Error, Equatable {
 
     public var message: String {
         switch self {
-        case let .invalidBaseURL(url): return "服务器地址不合法：\(url)"
-        case .noCredentials: return "还没有填写服务器凭据"
+        case let .invalidBaseURL(url): return Copy.format("error.hosted.invalidBaseURL", url)
+        case .noCredentials: return Copy.text("error.hosted.noCredentials")
         case let .httpStatus(code, target):
-            if code == 401 || code == 403 { return "服务器拒绝访问（HTTP \(code)），请检查凭据" }
+            if code == 401 || code == 403 {
+                return Copy.format("error.hosted.accessDenied", code)
+            }
             // 地址里可能带着 Kavita 的 `apiKey=` 查询参数，错误文案会进诊断日志，
             // 所以统一先脱敏再拼进文案。
-            return "服务器返回 HTTP \(code)：\(LogRedaction.redact(target))"
+            return Copy.format("error.hosted.httpStatus", code, LogRedaction.redact(target))
         case let .malformedResponse(reason):
-            return "服务器响应无法解析：\(LogRedaction.redact(reason))"
-        case let .authenticationFailed(reason): return "登录服务器失败：\(reason)"
-        case .cancelled: return "已取消"
+            return Copy.format("error.hosted.unparsable", LogRedaction.redact(reason))
+        case let .authenticationFailed(reason):
+            return Copy.format("error.hosted.authenticationFailed", reason)
+        case .cancelled: return Copy.text("error.hosted.cancelled")
         case let .unavailable(reason): return reason
         }
     }
@@ -165,11 +168,13 @@ public enum HostedServerError: Error, Equatable {
             case let .httpStatus(code, _): return .httpStatus(code, target ?? "")
             case .cancelled: return .cancelled
             case let .invalidURL(value): return .invalidBaseURL(value)
-            case let .timeout(seconds): return .unavailable("服务器超时（\(seconds) 秒）")
-            case .offline: return .unavailable("网络不可用")
+            case let .timeout(seconds):
+            return .unavailable(Copy.format("error.hosted.timeout", seconds))
+            case .offline: return .unavailable(Copy.text("error.hosted.offline"))
             case let .transport(reason): return .unavailable(reason)
             case let .decoding(reason): return .malformedResponse(reason)
-            case let .responseTooLarge(limit): return .unavailable("响应过大（\(limit) 字节）")
+            case let .responseTooLarge(limit):
+            return .unavailable(Copy.format("error.hosted.responseTooLarge", limit))
             }
         }
         return .unavailable(AppError.normalize(error).localizedDescription)
@@ -395,17 +400,17 @@ public struct KomgaDataSource: MangaDataSource, MangaDataSourceProbing {
 
     public func mangaDetails(url: String) async throws -> Manga {
         let identifier = KomgaMapping.seriesID(fromURL: url)
-        guard let identifier else { throw HostedServerError.malformedResponse("无法识别的作品地址：\(url)") }
+        guard let identifier else { throw HostedServerError.malformedResponse(Copy.format("error.hosted.unrecognizedMangaURL", url)) }
         let value = try await http.getJSON("/api/v1/series/\(identifier)")
         guard let manga = KomgaMapping.manga(from: value, sourceID: sourceID, base: http.base) else {
-            throw HostedServerError.malformedResponse("作品 \(identifier) 的字段不完整")
+            throw HostedServerError.malformedResponse(Copy.format("error.hosted.incompleteManga", identifier))
         }
         return manga
     }
 
     public func chapterList(mangaURL: String, mangaID: String?) async throws -> [Chapter] {
         let identifier = KomgaMapping.seriesID(fromURL: mangaURL)
-        guard let identifier else { throw HostedServerError.malformedResponse("无法识别的作品地址：\(mangaURL)") }
+        guard let identifier else { throw HostedServerError.malformedResponse(Copy.format("error.hosted.unrecognizedMangaURL", mangaURL)) }
         let owner = mangaID ?? Manga.makeID(sourceID: sourceID, url: mangaURL)
         let value = try await http.getJSON(
             "/api/v1/series/\(identifier)/books",
@@ -420,7 +425,7 @@ public struct KomgaDataSource: MangaDataSource, MangaDataSourceProbing {
 
     public func pageList(chapterURL: String) async throws -> [ComicPage] {
         let identifier = KomgaMapping.bookID(fromURL: chapterURL)
-        guard let identifier else { throw HostedServerError.malformedResponse("无法识别的章节地址：\(chapterURL)") }
+        guard let identifier else { throw HostedServerError.malformedResponse(Copy.format("error.hosted.unrecognizedChapterURL", chapterURL)) }
         let value = try await http.getJSON("/api/v1/books/\(identifier)/pages")
         // 页地址与鉴权头一起给出去：Komga 的图片接口同样要鉴权，
         // 而 `SourceImageLoader` 只认页上的请求头，不认识「来源」。
@@ -437,9 +442,9 @@ public struct KomgaDataSource: MangaDataSource, MangaDataSourceProbing {
         let value = try await http.getJSON("/api/v1/libraries")
         let names = Mapping.array(value).compactMap { Mapping.string($0["name"]) }
         guard !names.isEmpty else {
-            return "连接成功，但服务器上没有书库"
+            return Copy.text("text.hosted.probeNoLibraries")
         }
-        return "连接成功，共 \(names.count) 个书库"
+        return Copy.format("text.hosted.probeLibraries", names.count)
     }
 
     /// Komga 的 `page` 从 0 开始，而本项目的 `page` 从 1 开始。

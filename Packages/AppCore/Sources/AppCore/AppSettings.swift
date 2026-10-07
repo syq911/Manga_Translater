@@ -21,13 +21,9 @@ public enum TranslationBackend: String, Codable, Sendable, CaseIterable {
     /// 系统端上翻译（设备能力受限）。
     case appleOnDevice
 
-    public var displayName: String {
-        switch self {
-        case .bringYourOwnKey: return "自备密钥 / Own API key"
-        case .cloudService: return "云服务 / Cloud service"
-        case .appleOnDevice: return "设备端翻译 / On-device"
-        }
-    }
+    // 界面文案刻意**不在这里**：本包拿不到 App 目标的 `L()`，
+    // 留一个中文 `displayName` 就等于把「英文界面显示中文」固化下来。
+    // 展示名见 App 层 `Localization+Names.swift`（`localizedName`）。
 }
 
 /// 阅读模式。
@@ -36,15 +32,6 @@ public enum ReaderMode: String, Codable, Sendable, CaseIterable {
     case pagedRightToLeft
     case continuousVertical
     case doublePage
-
-    public var displayName: String {
-        switch self {
-        case .pagedLeftToRight: return "左到右翻页"
-        case .pagedRightToLeft: return "右到左翻页"
-        case .continuousVertical: return "条漫连续滚动"
-        case .doublePage: return "双页"
-        }
-    }
 }
 
 /// 阅读器外观主题（阅读区背景）。
@@ -56,16 +43,6 @@ public enum ReaderTheme: String, Codable, Sendable, CaseIterable {
     case sepia
     case dark
     case black
-
-    public var displayName: String {
-        switch self {
-        case .system: return "跟随系统 / System"
-        case .light: return "浅色 / Light"
-        case .sepia: return "米黄 / Sepia"
-        case .dark: return "深色 / Dark"
-        case .black: return "纯黑 / Black"
-        }
-    }
 }
 
 /// 翻译语言。`visionLanguages` 用于 OCR 语言提示，`isSource` 决定能否作为原文语言。
@@ -89,26 +66,20 @@ public enum TranslationLanguage: String, Codable, Sendable, CaseIterable {
         }
     }
 
-    public var displayName: String {
-        switch self {
-        case .auto: return "自动检测"
-        case .japanese: return "日语"
-        case .english: return "英语"
-        case .simplifiedChinese: return "简体中文"
-        case .traditionalChinese: return "繁体中文"
-        case .korean: return "韩语"
-        }
-    }
-
     /// 写进翻译提示词的语言名。`auto` 留空，交给模型自行判断源语言。
+    ///
+    /// 这**不是**界面文案，而是「给模型看的、与设备语言无关的固定词表」：
+    /// 它必须稳定——同一页在两台语言不同的设备上要产生同样的请求，
+    /// 否则「同一话翻译结果不一样」这类问题根本无从复现。
+    /// 正因为如此，这里的字面量不应改走本地化（`// i18n-exempt`）。
     public var promptName: String {
         switch self {
         case .auto: return ""
-        case .japanese: return "日文"
-        case .english: return "英文"
-        case .simplifiedChinese: return "简体中文"
-        case .traditionalChinese: return "繁体中文"
-        case .korean: return "韩文"
+        case .japanese: return "日文"      // i18n-exempt：模型侧固定词表，不随界面语言变化
+        case .english: return "英文"       // i18n-exempt
+        case .simplifiedChinese: return "简体中文"  // i18n-exempt
+        case .traditionalChinese: return "繁体中文" // i18n-exempt
+        case .korean: return "韩文"        // i18n-exempt
         }
     }
 
@@ -272,8 +243,12 @@ public final class AppSettings: @unchecked Sendable {
     /// 这只是**默认值**：自建部署的用户可以在设置里改到自己的地址。
     /// 客户端与服务端的契约见 `docs/cloud-api.md`。
     public static let defaultCloudServiceBaseURL = "https://api.mangatranslater.com"
+    /// 官网根地址。App 里的法务文本（隐私政策 / 使用条款 / 开源许可）
+    /// 会带一个「在官网查看」的入口指向它的对应页面；
+    /// 官网页面由 `tools/build_website.py` 从 `docs/legal/*.md` 生成。
+    public static let defaultWebsiteURL = "https://mangatranslater.com"
     /// 默认的「升级 Pro」落地页（官网购买页，在浏览器里打开）。
-    public static let defaultCloudUpgradeURL = "https://mangatranslater.com/upgrade"
+    public static let defaultCloudUpgradeURL = defaultWebsiteURL + "/upgrade"
     /// 翻译预取窗口默认值（当前页前后各 N 页）。
     ///
     /// 刻意远小于阅读器的**图片**预加载窗口（默认 10）：看图是免费的，

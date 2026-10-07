@@ -282,7 +282,9 @@ struct KomgaDataSourceTests {
                 return
             }
             #expect(code == 401)
-            #expect(error.message.contains("拒绝访问"))
+            // 文案来自包层文案表（随语言变化），因此断言**占位符被真的填进去了**：
+            // 若哪天退回成 key 字符串，这里立刻会红。
+            #expect(error.message.contains("401"))
         }
     }
 

@@ -88,7 +88,7 @@ struct TranslationSettingsView: View {
                 set: { backend = $0; settings.translationBackend = $0 }
             )) {
                 ForEach(TranslationBackend.allCases, id: \.self) { item in
-                    Text(item.displayName).tag(item)
+                    Text(item.localizedName).tag(item)
                 }
             }
             .pickerStyle(.inline)
@@ -108,7 +108,7 @@ struct TranslationSettingsView: View {
                 set: { source = $0; settings.sourceLanguage = $0 }
             )) {
                 ForEach(TranslationLanguage.allCases, id: \.self) { item in
-                    Text(item.displayName).tag(item)
+                    Text(item.localizedName).tag(item)
                 }
             }
 
@@ -118,7 +118,7 @@ struct TranslationSettingsView: View {
             )) {
                 // `auto` 只能当原文语言，译文语言必须是具体语言
                 ForEach(TranslationLanguage.targetChoices, id: \.self) { item in
-                    Text(item.displayName).tag(item)
+                    Text(item.localizedName).tag(item)
                 }
             }
 

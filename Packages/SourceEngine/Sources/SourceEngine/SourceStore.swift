@@ -151,7 +151,7 @@ public final class SourceStore: @unchecked Sendable {
     public func addRepository(_ urlString: String) throws -> Bool {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard ModelValidation.isValidURLString(trimmed) else {
-            throw AppError.invalidInput("仓库地址不合法：\(urlString)")
+            throw AppError.invalidInput(Copy.format("error.store.invalidRepositoryURL", urlString))
         }
         lock.lock()
         guard !repositoryList.contains(trimmed) else {
@@ -243,7 +243,7 @@ public final class SourceStore: @unchecked Sendable {
 
         // 双重保险：key 会作为文件名使用。
         guard ModelValidation.isValidSourceID(key) else {
-            throw AppError.invalidInput("源标识不合法：\(key)")
+            throw AppError.invalidInput(Copy.format("error.store.invalidKey", key))
         }
 
         let finalURL = scriptURL(for: key)
@@ -266,7 +266,7 @@ public final class SourceStore: @unchecked Sendable {
                     try? fileSystem.move(from: backupURL, to: finalURL)
                 }
                 try? fileSystem.remove(at: temporaryURL)
-                throw AppError.fileSystem("源脚本落盘失败：\(key)")
+                throw AppError.fileSystem(Copy.format("error.store.scriptWriteFailed", key))
             }
 
             let entry = InstalledSource(
@@ -287,7 +287,7 @@ public final class SourceStore: @unchecked Sendable {
                 if hadPrevious, fileSystem.exists(at: backupURL) {
                     try? fileSystem.move(from: backupURL, to: finalURL)
                 }
-                throw AppError.fileSystem("源元数据写入失败：\(key)")
+                throw AppError.fileSystem(Copy.format("error.store.metadataWriteFailed", key))
             }
 
             if fileSystem.exists(at: backupURL) {
@@ -307,7 +307,7 @@ public final class SourceStore: @unchecked Sendable {
     @discardableResult
     public func uninstall(key: String) throws -> Bool {
         guard ModelValidation.isValidSourceID(key) else {
-            throw AppError.invalidInput("源标识不合法：\(key)")
+            throw AppError.invalidInput(Copy.format("error.store.invalidKey", key))
         }
         lock.lock()
         let existed = metadata[key] != nil
@@ -325,11 +325,11 @@ public final class SourceStore: @unchecked Sendable {
     /// 读取已安装脚本内容。
     public func script(for key: String) throws -> String {
         guard ModelValidation.isValidSourceID(key) else {
-            throw AppError.invalidInput("源标识不合法：\(key)")
+            throw AppError.invalidInput(Copy.format("error.store.invalidKey", key))
         }
         let url = scriptURL(for: key)
         guard fileSystem.exists(at: url) else {
-            throw AppError.notFound("源脚本 \(key)")
+            throw AppError.notFound(Copy.format("error.store.payloadScript", key))
         }
         do {
             let data = try fileSystem.read(from: url)

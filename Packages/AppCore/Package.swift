@@ -13,6 +13,12 @@ let package = Package(
         .library(name: "AppCore", targets: ["AppCore"])
     ],
     targets: [
-        .target(name: "AppCore")
+        // 包层文案表（`Copy`）必须作为资源随包分发：
+        // 缺了 `.process("Resources")` 时 `Bundle.module` 会编译报错，
+        // 这样「文案表没打进 App」是编译期问题而不是线上问题。
+        .target(
+            name: "AppCore",
+            resources: [.process("Resources")]
+        )
     ]
 )

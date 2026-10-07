@@ -259,7 +259,7 @@ final class DownloadCoordinator {
 
         let pages = try await loadPageList(manga.sourceID, chapter.url)
         guard !pages.isEmpty else {
-            throw AppError.invalidInput("章节没有可下载的页")
+            throw AppError.invalidInput(L("downloads.error.noPages"))
         }
 
         // 只把「每页自带且各页一致」的请求头提升为任务级，其余按 URL 存。

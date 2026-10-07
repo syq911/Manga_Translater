@@ -118,17 +118,17 @@ public enum SourceRepositoryError: Error, Equatable {
     public var message: String {
         switch self {
         case let .invalidRepositoryURL(url):
-            return "仓库地址不合法：\(url)"
+            return Copy.format("error.repo.invalidURL", url)
         case let .indexUnavailable(reason):
-            return "无法获取 index.json：\(reason)"
+            return Copy.format("error.repo.indexUnavailable", reason)
         case let .indexRejected(reason):
-            return "仓库索引被拒绝：\(reason)"
+            return Copy.format("error.repo.indexRejected", reason)
         case let .scriptUnavailable(reason):
-            return "无法获取源脚本：\(reason)"
+            return Copy.format("error.repo.scriptUnavailable", reason)
         case let .keyMismatch(expected, actual):
-            return "脚本声明的来源标识（\(actual)）与仓库索引（\(expected)）不一致"
+            return Copy.format("error.repo.keyMismatch", actual, expected)
         case let .entryNotFound(key):
-            return "仓库里没有这个源：\(key)"
+            return Copy.format("error.repo.entryNotFound", key)
         }
     }
 }
@@ -270,7 +270,7 @@ public actor SourceRepositoryService {
             throw SourceRepositoryError.scriptUnavailable("HTTP \(response.statusCode)")
         }
         guard let script = String(data: response.data, encoding: .utf8) else {
-            throw SourceRepositoryError.scriptUnavailable("脚本不是合法的 UTF-8 文本")
+            throw SourceRepositoryError.scriptUnavailable(Copy.text("error.repo.notUTF8"))
         }
 
         // 索引与脚本必须说同一个 key，否则会出现「索引装的是 A、磁盘上是 B」
@@ -321,7 +321,7 @@ public actor SourceRepositoryService {
             throw SourceRepositoryError.scriptUnavailable("HTTP \(response.statusCode)")
         }
         guard let script = String(data: response.data, encoding: .utf8) else {
-            throw SourceRepositoryError.scriptUnavailable("脚本不是合法的 UTF-8 文本")
+            throw SourceRepositoryError.scriptUnavailable(Copy.text("error.repo.notUTF8"))
         }
         return script
     }

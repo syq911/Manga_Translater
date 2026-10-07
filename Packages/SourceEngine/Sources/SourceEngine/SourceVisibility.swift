@@ -15,6 +15,7 @@
 //
 
 import Foundation
+import AppCore
 
 /// 源可见性规则。
 public enum SourceVisibilityRule {
@@ -43,6 +44,6 @@ public enum SourceVisibilityRule {
     /// 被隐藏时的原因文案（交给界面本地化）。
     public static func hiddenReason(_ source: InstalledSource, showsNSFWSources: Bool) -> String? {
         guard !isVisible(source, showsNSFWSources: showsNSFWSources) else { return nil }
-        return "该源标记为成人内容，已在设置中隐藏"
+        return Copy.text("text.source.nsfwHidden")
     }
 }

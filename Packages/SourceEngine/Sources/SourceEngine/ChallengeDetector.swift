@@ -27,13 +27,8 @@ public enum ChallengeKind: String, Equatable, Sendable {
     /// 识别不出具体厂商，但确实是「先验证再访问」的页面。
     case generic
 
-    public var displayName: String {
-        switch self {
-        case .cloudflare: return "Cloudflare 校验"
-        case .captcha: return "人机验证"
-        case .generic: return "人工验证"
-        }
-    }
+    // 展示名不在这里：本包拿不到 App 目标的 `L()`。
+    // 界面上的名称见 App 层 `Localization+Names.swift`（`localizedName`）。
 }
 
 /// 一次命中的判定结果。
@@ -72,9 +67,11 @@ public enum ChallengeDetector {
         ("hcaptcha", .captcha),
         ("cf-turnstile", .captcha),
         ("turnstile", .captcha),
-        ("请稍候", .generic),
-        ("正在验证", .generic),
-        ("需要验证", .generic),
+        // 下面三条是**待匹配的页面正文**，不是界面文案：它们必须是站点真正
+        // 写出来的那几个词，不能本地化，否则中文验证页会漏判（i18n-exempt）。
+        ("请稍候", .generic),          // i18n-exempt
+        ("正在验证", .generic),         // i18n-exempt
+        ("需要验证", .generic),         // i18n-exempt
         ("verify you are human", .generic),
         ("enable javascript and cookies to continue", .generic),
     ]

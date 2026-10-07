@@ -93,7 +93,7 @@ public final class FilePageStore: PageStoring, @unchecked Sendable {
     /// 正确做法是把标识**安全化**成文件名片段（同时消除路径穿越的可能）。
     private func directory(for jobID: String) throws -> URL {
         guard !jobID.isEmpty else {
-            throw AppError.invalidInput("任务标识为空")
+            throw AppError.invalidInput(Copy.text("error.download.emptyJobID"))
         }
         return rootDirectory.appendingPathComponent(
             FileNameSanitizer.segment(jobID),

@@ -1,0 +1,249 @@
+/* MangaTranslater — package-level copy (English)
+ *
+ * This table belongs to the SwiftPM resource bundle (`AppCore.Copy`) and is shared
+ * by every local package: AppCore / ComicNet / SourceEngine / ComicDownload /
+ * AppDatabase. The app target keeps its own table in
+ * MangaTranslater/Resources/en.lproj/Localizable.strings.
+ *
+ * Convention: keys look like `<domain>.<type>.<case>`; placeholders are `%@` (text)
+ * and `%ld` (integer). tools/check_localization.py verifies that both languages
+ * define exactly the same keys and that every key used in code exists here.
+ */
+
+
+/* app */
+"error.app.cancelled" = "The operation was cancelled";
+"error.app.fileSystem" = "File operation failed: %@";
+"error.app.invalidInput" = "Invalid input: %@";
+"error.app.logOpenFailed" = "Could not open the diagnostics log: %@";
+"error.app.network" = "Network request failed: %@";
+"error.app.notFound" = "Not found: %@";
+"error.app.unknown" = "Unknown error: %@";
+"error.app.unsupported" = "Not supported here: %@";
+
+/* cbz */
+"error.cbz.invalidExtension" = "Invalid extension: %@";
+"error.cbz.invalidTitle" = "Invalid title: %@";
+"error.cbz.noPages" = "There are no pages to export";
+"error.cbz.tooManyPages" = "Too many pages (%ld)";
+
+/* cookie */
+"error.cookie.nameEmpty" = "Cookie name must not be empty";
+"error.cookie.nameInvalid" = "Cookie name contains characters that are not allowed: %@";
+"error.cookie.valueHasNewline" = "Cookie value contains a line break";
+
+/* db */
+"error.db.createDirectoryFailed" = "Could not create the database directory: %@";
+"error.db.migrationFailed" = "Database migration failed: %@";
+"error.db.openFailed" = "Could not open the database: %@";
+
+/* decoder */
+"error.decoder.chapterListShape" = "The chapter list is not an array";
+"error.decoder.emptyString" = "The source returned an empty string";
+"error.decoder.filterListShape" = "The filter list is not an array";
+"error.decoder.mangaDetailMissingURL" = "Title details have no usable url";
+"error.decoder.mangaDetailShape" = "Title details are not an object";
+"error.decoder.mangaListShape" = "The title list is neither an object nor an array";
+"error.decoder.notJSON" = "The returned value is not valid JSON: %@";
+"error.decoder.notUTF8" = "The source returned a value that is not UTF-8 text";
+"error.decoder.pageListShape" = "The page list is not an array";
+
+/* download */
+"error.download.chapterHasNoPages" = "This chapter has no downloadable pages";
+"error.download.emptyChapterID" = "The chapter identifier is empty";
+"error.download.emptyJobID" = "The task identifier is empty";
+"error.download.jobExists" = "A task already exists: %@";
+"error.download.pageTooLarge" = "A single page is too large (%ld bytes; limit %ld)";
+"error.download.unknown" = "Unknown error";
+
+/* fetcher */
+"error.fetcher.missingContext" = "Downloading from an online source requires a task context (source / Referer)";
+
+/* hosted */
+"error.hosted.accessDenied" = "The server refused access (HTTP %ld); check your credentials";
+"error.hosted.authenticationFailed" = "Could not sign in to the server: %@";
+"error.hosted.cancelled" = "Cancelled";
+"error.hosted.chapterHasNoPages" = "Chapter %@ has no readable pages";
+"error.hosted.duplicateID" = "That identifier already exists: %@";
+"error.hosted.emptyResponse" = "Empty response: %@";
+"error.hosted.httpStatus" = "The server returned HTTP %ld: %@";
+"error.hosted.incompleteManga" = "The fields for title %@ are incomplete";
+"error.hosted.invalidBaseURL" = "Invalid server address: %@";
+"error.hosted.invalidServerID" = "Invalid server identifier";
+"error.hosted.missingToken" = "The response contains no token";
+"error.hosted.noCredentials" = "No server credentials have been entered yet";
+"error.hosted.notConfigured" = "This server is not configured: %@";
+"error.hosted.notJSON" = "Not valid JSON: %@ (%@)";
+"error.hosted.offline" = "Network unavailable";
+"error.hosted.payloadServer" = "server: %@";
+"error.hosted.responseTooLarge" = "Response too large (%ld bytes)";
+"error.hosted.timeout" = "The server timed out (%ld second(s))";
+"error.hosted.unparsable" = "The server response could not be parsed: %@";
+"error.hosted.unrecognizedChapterURL" = "Unrecognised chapter address: %@";
+"error.hosted.unrecognizedMangaURL" = "Unrecognised title address: %@";
+
+/* image */
+"error.image.blockedScheme" = "Unsupported image scheme: %@";
+"error.image.cancelled" = "Image fetch cancelled";
+"error.image.emptyResponse" = "The image response was empty";
+"error.image.invalidURL" = "Invalid image address: %@";
+"error.image.notAnImage" = "The response is not an image (%@)";
+"error.image.offline" = "network unavailable";
+"error.image.payloadURLReason" = "%@: %@";
+"error.image.timeout" = "timed out (%ld second(s))";
+"error.image.tooLarge" = "Image too large (limit %ld bytes)";
+"error.image.unavailable" = "Could not fetch the image: %@";
+
+/* index */
+"error.index.duplicateKey" = "Duplicate source key: %@";
+"error.index.empty" = "The repository contains no source";
+"error.index.invalidEntry" = "Entry %ld is invalid: %@";
+"error.index.invalidJSON" = "index.json is not valid JSON: %@";
+"error.index.payloadBadKey" = "key does not follow the naming rules (%@)";
+"error.index.payloadBadVersion" = "version is not a valid version number (%@)";
+"error.index.payloadEmptyField" = "%@ is empty";
+"error.index.payloadMissingField" = "%@ is missing or has the wrong type";
+"error.index.payloadNameTooLong" = "name is too long";
+"error.index.payloadRootMustBeArray" = "the root must be an array";
+"error.index.tooLarge" = "Index too large (%ld bytes; limit %ld)";
+"error.index.tooManyEntries" = "Too many repository entries (%ld)";
+"error.index.unsafeFileName" = "Unsafe file name: %@";
+
+/* library */
+"error.library.categoryNotFound" = "No such category: %@";
+"error.library.corruptRow" = "Corrupt data: %@";
+"error.library.duplicateCategoryName" = "A category with that name already exists: %@";
+"error.library.entryDecodeFailed" = "Could not decode the entry: %@";
+"error.library.entryEncodeFailed" = "Could not encode the entry: %@";
+"error.library.entryNotFound" = "No such entry in the library: %@";
+"error.library.entryNotUTF8" = "The entry JSON is not valid UTF-8";
+"error.library.historyDecodeFailed" = "Could not decode the history: %@";
+"error.library.historyEncodeFailed" = "Could not encode the history: %@";
+"error.library.historyNotUTF8" = "The history JSON is not valid UTF-8";
+"error.library.invalidCategoryName" = "Invalid category name: %@";
+"error.library.invalidLimit" = "Invalid count argument: %ld";
+"error.library.invalidPageIndex" = "Invalid page index: %ld";
+"error.library.payloadCategory" = "category %@";
+"error.library.payloadCorruptRow" = "corrupt database row: %@";
+"error.library.payloadDuplicateName" = "duplicate category name: %@";
+"error.library.payloadEntry" = "library entry %@";
+"error.library.payloadInvalidName" = "invalid category name: %@";
+"error.library.payloadLimit" = "count %ld";
+"error.library.payloadPageIndex" = "page %ld";
+
+/* local */
+"error.local.bookNotFound" = "Local title not found: %@";
+"error.local.fileMissing" = "File not found: %@";
+"error.local.importFailed" = "Import failed: %@";
+"error.local.invalidRelativePath" = "Invalid title path: %@";
+"error.local.noImages" = "The archive contains no images: %@";
+"error.local.notAZip" = "Not a valid cbz/zip archive: %@";
+"error.local.pageNotFound" = "Page not found in the archive: %@";
+"error.local.pageOutOfRange" = "Page index out of range: %ld of %ld pages";
+"error.local.payloadMangaChapter" = "chapter %@ of %@";
+"error.local.payloadFileReason" = "%@: %@";
+"error.local.unsupportedExtension" = "Unsupported file type: .%@ (only cbz / zip are accepted)";
+
+/* net */
+"error.net.cancelled" = "Request cancelled";
+"error.net.decoding" = "Parsing failed: %@";
+"error.net.httpStatus" = "Server returned %ld";
+"error.net.httpStatusRetry" = "Server returned %ld; retry in about %ld second(s)";
+"error.net.invalidURL" = "Invalid address: %@";
+"error.net.noRequest" = "No request was issued";
+"error.net.nonHTTPResponse" = "Not an HTTP response";
+"error.net.offline" = "Network unavailable";
+"error.net.payloadTooLarge" = "response over %ld bytes";
+"error.net.payloadURL" = "URL: %@";
+"error.net.responseTooLarge" = "Response too large (limit %ld bytes)";
+"error.net.timeout" = "Request timed out after %ld second(s)";
+"error.net.transport" = "Network transport failed: %@";
+
+/* repo */
+"error.repo.entryNotFound" = "The repository has no such source: %@";
+"error.repo.indexRejected" = "The repository index was rejected: %@";
+"error.repo.indexUnavailable" = "Could not fetch index.json: %@";
+"error.repo.invalidURL" = "Invalid repository address: %@";
+"error.repo.keyMismatch" = "The source identifier declared by the script (%@) does not match the repository index (%@)";
+"error.repo.notUTF8" = "The script is not valid UTF-8 text";
+"error.repo.scriptUnavailable" = "Could not fetch the source script: %@";
+
+/* runner */
+"error.runner.cancelled" = "Source call cancelled";
+"error.runner.executionFailed" = "Source execution failed: %@";
+"error.runner.incompleteContract" = "Source does not implement required methods: %@";
+"error.runner.invalidResponse" = "Source returned invalid data: %@";
+"error.runner.notInstalled" = "Source not installed: %@";
+"error.runner.scriptRejected" = "Source script rejected: %@";
+"error.runner.timeout" = "Source execution timed out (%ld second(s))";
+
+/* runtime */
+"error.runtime.bridgeInitFailed" = "Bridge initialisation failed: %@";
+"error.runtime.idMismatch" = "The source id declared by the script (%@) does not match the expected one (%@)";
+"error.runtime.invalidArgumentJSON" = "Argument is not valid JSON: %@";
+"error.runtime.notThenable" = "The source did not return a thenable object";
+"error.runtime.scriptExecutionFailed" = "Script execution failed: %@";
+"error.runtime.unknownError" = "Unknown error";
+"error.runtime.unknownJSException" = "Unknown JavaScript exception";
+"error.runtime.vmCreationFailed" = "Could not create the JavaScript virtual machine";
+"error.runtime.wrapperCreationFailed" = "Could not build the call wrapper";
+
+/* script */
+"error.script.containsNullByte" = "The script contains a null byte; it looks like a binary file";
+"error.script.empty" = "The script is empty";
+"error.script.forbiddenAPI" = "Contains a forbidden API: %@";
+"error.script.invalidField" = "Invalid field %@: %@";
+"error.script.missingField" = "Missing required field: %@";
+"error.script.missingMetadata" = "No source metadata found (expected `const source = { ... }`)";
+"error.script.reason.empty" = "empty";
+"error.script.reason.keyFormat" = "must start with a lowercase letter or digit, may contain - and _, length 1...64";
+"error.script.reason.languageTooLong" = "the language code is too long";
+"error.script.reason.notAURL" = "not a valid address";
+"error.script.reason.notAVersion" = "not a valid version number";
+"error.script.reason.notAnIntegerInRange" = "must be an integer from 0 to 60000";
+"error.script.reason.tooLong" = "longer than %ld characters";
+"error.script.tooLarge" = "Script too large (%ld bytes; limit %ld)";
+
+/* selector */
+"error.selector.danglingCombinator" = "A combinator is not followed by a selector";
+"error.selector.empty" = "The selector is empty";
+"error.selector.invalidAttribute" = "Attribute selector could not be parsed: %@";
+"error.selector.invalidSimple" = "Selector fragment could not be parsed: %@";
+
+/* store */
+"error.store.invalidKey" = "Invalid source identifier: %@";
+"error.store.invalidRepositoryURL" = "Invalid repository address: %@";
+"error.store.metadataWriteFailed" = "Could not write the source metadata: %@";
+"error.store.payloadScript" = "source script %@";
+"error.store.scriptWriteFailed" = "Could not write the source script: %@";
+
+/* transport */
+"error.transport.blockedHost" = "That address is not allowed: %@";
+"error.transport.blockedScheme" = "Unsupported scheme: %@";
+"error.transport.bodyTooLarge" = "Response too large (%ld bytes; limit %ld)";
+"error.transport.notFound" = "Request failed: %@";
+"error.transport.payloadHTTP" = "http (non-local)";
+"error.transport.unsupportedMethod" = "Unsupported request method: %@";
+
+/* zip */
+"error.zip.corruptEntry" = "Corrupt entry data: %@";
+"error.zip.duplicateEntryName" = "Duplicate entry name: %@";
+"error.zip.emptyArchive" = "The archive is empty";
+"error.zip.entryNotFound" = "Entry not found: %@";
+"error.zip.invalidName" = "Invalid entry name: %@";
+"error.zip.invalidSignature" = "Invalid signature: 0x%@";
+"error.zip.missingCentralDirectory" = "Central directory not found (corrupt file, or not a ZIP)";
+"error.zip.tooLarge" = "Archive exceeds the size limit (%ld bytes)";
+"error.zip.truncated" = "The data is truncated";
+"error.zip.unsupportedCompression" = "Unsupported compression method: %ld";
+"error.zip.writerFinished" = "The writer has already finished";
+
+/* decoder */
+"text.decoder.untitled" = "Untitled";
+
+/* hosted */
+"text.hosted.probeLibraries" = "Connected; %ld libraries";
+"text.hosted.probeNoLibraries" = "Connected, but the server has no libraries";
+
+/* source */
+"text.source.nsfwHidden" = "This source is marked as adult content and is hidden in settings";

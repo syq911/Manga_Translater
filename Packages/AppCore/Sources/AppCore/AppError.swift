@@ -30,19 +30,19 @@ extension AppError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .invalidInput(reason):
-            return "输入不合法：\(reason)"
+            return Copy.format("error.app.invalidInput", reason)
         case let .notFound(what):
-            return "找不到内容：\(what)"
+            return Copy.format("error.app.notFound", what)
         case let .fileSystem(reason):
-            return "文件操作失败：\(reason)"
+            return Copy.format("error.app.fileSystem", reason)
         case let .network(reason):
-            return "网络请求失败：\(reason)"
+            return Copy.format("error.app.network", reason)
         case let .unsupported(what):
-            return "当前环境不支持：\(what)"
+            return Copy.format("error.app.unsupported", what)
         case .cancelled:
-            return "操作已取消"
+            return Copy.text("error.app.cancelled")
         case let .unknown(reason):
-            return "未知错误：\(reason)"
+            return Copy.format("error.app.unknown", reason)
         }
     }
 

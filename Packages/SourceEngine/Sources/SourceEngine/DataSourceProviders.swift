@@ -39,7 +39,7 @@ public struct HostedDataSourceProvider: MangaDataSourceProviding {
 
     public func dataSource(for sourceID: SourceID) async throws -> MangaDataSource {
         guard let server = store.server(id: sourceID.rawValue) else {
-            throw HostedServerError.unavailable("没有配置这台服务器：\(sourceID.rawValue)")
+            throw HostedServerError.unavailable(Copy.format("error.hosted.notConfigured", sourceID.rawValue))
         }
         switch server.kind {
         case .komga:

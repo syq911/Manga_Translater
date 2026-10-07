@@ -92,13 +92,13 @@ public final class CookieJar: @unchecked Sendable {
     public func set(_ cookie: StoredCookie, for sourceID: SourceID) throws {
         let name = cookie.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
-            throw AppError.invalidInput("Cookie 名称不能为空")
+            throw AppError.invalidInput(Copy.text("error.cookie.nameEmpty"))
         }
         guard !name.contains(";"), !name.contains("="), !name.contains("\n") else {
-            throw AppError.invalidInput("Cookie 名称含非法字符：\(name)")
+            throw AppError.invalidInput(Copy.format("error.cookie.nameInvalid", name))
         }
         guard !cookie.value.contains("\n") else {
-            throw AppError.invalidInput("Cookie 值含换行符")
+            throw AppError.invalidInput(Copy.text("error.cookie.valueHasNewline"))
         }
 
         var normalized = cookie

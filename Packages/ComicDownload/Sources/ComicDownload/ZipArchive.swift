@@ -17,6 +17,7 @@
 
 import Foundation
 import Compression
+import AppCore
 
 /// ZIP 相关错误。
 public enum ZipArchiveError: Error, Equatable {
@@ -33,16 +34,18 @@ public enum ZipArchiveError: Error, Equatable {
 
     public var message: String {
         switch self {
-        case .emptyArchive: return "归档为空"
-        case .missingEndOfCentralDirectory: return "找不到中央目录（文件损坏或不是 ZIP）"
-        case let .invalidSignature(found): return "签名不合法：0x\(String(found, radix: 16))"
-        case let .unsupportedCompression(method): return "不支持的压缩方式：\(method)"
-        case let .entryNotFound(name): return "找不到条目：\(name)"
-        case let .corruptEntry(name): return "条目数据损坏：\(name)"
-        case let .duplicateEntryName(name): return "条目重名：\(name)"
-        case let .invalidName(name): return "条目名不合法：\(name)"
-        case .dataTruncated: return "数据被截断"
-        case let .tooManyBytes(limit): return "归档超过大小上限（\(limit) 字节）"
+        case .emptyArchive: return Copy.text("error.zip.emptyArchive")
+        case .missingEndOfCentralDirectory: return Copy.text("error.zip.missingCentralDirectory")
+        case let .invalidSignature(found):
+            return Copy.format("error.zip.invalidSignature", String(found, radix: 16))
+        case let .unsupportedCompression(method):
+            return Copy.format("error.zip.unsupportedCompression", Int(method))
+        case let .entryNotFound(name): return Copy.format("error.zip.entryNotFound", name)
+        case let .corruptEntry(name): return Copy.format("error.zip.corruptEntry", name)
+        case let .duplicateEntryName(name): return Copy.format("error.zip.duplicateEntryName", name)
+        case let .invalidName(name): return Copy.format("error.zip.invalidName", name)
+        case .dataTruncated: return Copy.text("error.zip.truncated")
+        case let .tooManyBytes(limit): return Copy.format("error.zip.tooLarge", limit)
         }
     }
 }
@@ -151,7 +154,7 @@ public struct ZipArchiveWriter {
     /// 追加一个文件。
     /// - Throws: `ZipArchiveError.invalidName` / `.duplicateEntryName` / `.tooManyBytes`
     public mutating func addFile(name: String, data: Data, date: Date = Date()) throws {
-        guard !finalized else { throw ZipArchiveError.corruptEntry("写入器已结束") }
+        guard !finalized else { throw ZipArchiveError.corruptEntry(Copy.text("error.zip.writerFinished")) }
         guard ZipArchiveWriter.isValidEntryName(name) else {
             throw ZipArchiveError.invalidName(name)
         }

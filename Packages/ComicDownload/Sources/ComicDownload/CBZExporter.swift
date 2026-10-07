@@ -34,10 +34,10 @@ public enum CbzExportError: Error, Equatable {
 
     public var message: String {
         switch self {
-        case .noPages: return "没有可导出的页"
-        case let .tooManyPages(count): return "页数过多（\(count)）"
-        case let .invalidExtension(ext): return "扩展名不合法：\(ext)"
-        case let .invalidTitle(title): return "标题不合法：\(title)"
+        case .noPages: return Copy.text("error.cbz.noPages")
+        case let .tooManyPages(count): return Copy.format("error.cbz.tooManyPages", count)
+        case let .invalidExtension(ext): return Copy.format("error.cbz.invalidExtension", ext)
+        case let .invalidTitle(title): return Copy.format("error.cbz.invalidTitle", title)
         }
     }
 }

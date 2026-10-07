@@ -577,13 +577,13 @@ public final class DatabaseLibraryStore: LibraryStoring, @unchecked Sendable {
         do {
             let data = try JSONEncoder().encode(entry)
             guard let text = String(data: data, encoding: .utf8) else {
-                throw LibraryStoreError.corruptRow(reason: "条目 JSON 无法转为 UTF-8")
+                throw LibraryStoreError.corruptRow(reason: Copy.text("error.library.entryNotUTF8"))
             }
             return text
         } catch let error as LibraryStoreError {
             throw error
         } catch {
-            throw LibraryStoreError.corruptRow(reason: "条目编码失败：\(error.localizedDescription)")
+            throw LibraryStoreError.corruptRow(reason: Copy.format("error.library.entryEncodeFailed", error.localizedDescription))
         }
     }
 
@@ -591,7 +591,7 @@ public final class DatabaseLibraryStore: LibraryStoring, @unchecked Sendable {
         do {
             return try JSONDecoder().decode(LibraryEntry.self, from: Data(payload.utf8))
         } catch {
-            throw LibraryStoreError.corruptRow(reason: "条目解码失败：\(error.localizedDescription)")
+            throw LibraryStoreError.corruptRow(reason: Copy.format("error.library.entryDecodeFailed", error.localizedDescription))
         }
     }
 
@@ -599,13 +599,13 @@ public final class DatabaseLibraryStore: LibraryStoring, @unchecked Sendable {
         do {
             let data = try JSONEncoder().encode(entry)
             guard let text = String(data: data, encoding: .utf8) else {
-                throw LibraryStoreError.corruptRow(reason: "历史 JSON 无法转为 UTF-8")
+                throw LibraryStoreError.corruptRow(reason: Copy.text("error.library.historyNotUTF8"))
             }
             return text
         } catch let error as LibraryStoreError {
             throw error
         } catch {
-            throw LibraryStoreError.corruptRow(reason: "历史编码失败：\(error.localizedDescription)")
+            throw LibraryStoreError.corruptRow(reason: Copy.format("error.library.historyEncodeFailed", error.localizedDescription))
         }
     }
 
@@ -613,7 +613,7 @@ public final class DatabaseLibraryStore: LibraryStoring, @unchecked Sendable {
         do {
             return try JSONDecoder().decode(ReadingHistoryEntry.self, from: Data(payload.utf8))
         } catch {
-            throw LibraryStoreError.corruptRow(reason: "历史解码失败：\(error.localizedDescription)")
+            throw LibraryStoreError.corruptRow(reason: Copy.format("error.library.historyDecodeFailed", error.localizedDescription))
         }
     }
 }

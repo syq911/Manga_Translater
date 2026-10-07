@@ -23,7 +23,10 @@ public enum HostedServerKind: String, Codable, Sendable, CaseIterable {
     case komga
     case kavita
 
-    public var displayName: String {
+    /// 品牌名。**不做本地化**：这是产品名而不是界面文案，任何语言下都写作 Komga / Kavita。
+    /// 之所以不叫 `displayName`：那个名字会让人以为它该随语言变化，
+    /// 而包层又拿不到 App 的 `L()`——索性把命名说清楚。
+    public var brandName: String {
         switch self {
         case .komga: return "Komga"
         case .kavita: return "Kavita"
@@ -218,10 +221,10 @@ public final class ServerStore: @unchecked Sendable {
         defer { lock.unlock() }
         var current = cache ?? loadFromDisk()
         guard !server.id.isEmpty, ModelValidation.isValidSourceID(server.id) else {
-            throw AppError.invalidInput("服务器标识不合法")
+            throw AppError.invalidInput(Copy.text("error.hosted.invalidServerID"))
         }
         guard !current.contains(where: { $0.id == server.id }) else {
-            throw AppError.invalidInput("标识已存在：\(server.id)")
+            throw AppError.invalidInput(Copy.format("error.hosted.duplicateID", server.id))
         }
         current.append(server)
         try persist(current)
@@ -235,7 +238,7 @@ public final class ServerStore: @unchecked Sendable {
         defer { lock.unlock() }
         var current = cache ?? loadFromDisk()
         guard let index = current.firstIndex(where: { $0.id == server.id }) else {
-            throw AppError.notFound("服务器：\(server.id)")
+            throw AppError.notFound(Copy.format("error.hosted.payloadServer", server.id))
         }
         current[index] = server
         try persist(current)

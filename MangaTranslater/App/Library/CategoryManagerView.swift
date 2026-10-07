@@ -34,7 +34,7 @@ struct CategoryManagerView: View {
         List {
             Section {
                 if categories.isEmpty {
-                    Text("还没有分类。点右上角「+」新建一个。")
+                    Text(L("category.empty"))
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(categories) { category in
@@ -44,10 +44,10 @@ struct CategoryManagerView: View {
                     .onDelete(perform: delete)
                 }
             } footer: {
-                Text("删除分类只会把作品移出该分类，不会删除作品本身。")
+                Text(L("category.footer"))
             }
         }
-        .navigationTitle("分类管理")
+        .navigationTitle(L("category.title"))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { EditButton() }
             ToolbarItem(placement: .topBarTrailing) {
@@ -55,33 +55,33 @@ struct CategoryManagerView: View {
                     draftName = ""
                     isCreating = true
                 } label: {
-                    Label("新建分类", systemImage: "plus")
+                    Label(L("category.create"), systemImage: "plus")
                 }
             }
         }
         .onAppear(perform: reload)
-        .alert("新建分类", isPresented: $isCreating) {
-            TextField("分类名称", text: $draftName)
-            Button("取消", role: .cancel) { draftName = "" }
-            Button("创建") { create() }
+        .alert(L("category.create"), isPresented: $isCreating) {
+            TextField(L("category.name"), text: $draftName)
+            Button(L("common.cancel"), role: .cancel) { draftName = "" }
+            Button(L("category.create.action")) { create() }
         } message: {
-            Text("可以创建暂时没有作品的分类。")
+            Text(L("category.create.message"))
         }
-        .alert("重命名分类", isPresented: Binding(
+        .alert(L("category.rename"), isPresented: Binding(
             get: { renamingCategory != nil },
             set: { if !$0 { renamingCategory = nil } }
         )) {
-            TextField("分类名称", text: $renameDraft)
-            Button("取消", role: .cancel) { renamingCategory = nil }
-            Button("保存") { rename() }
+            TextField(L("category.name"), text: $renameDraft)
+            Button(L("common.cancel"), role: .cancel) { renamingCategory = nil }
+            Button(L("common.save")) { rename() }
         } message: {
-            Text("作品仍留在该分类里，只是名称变了。")
+            Text(L("category.rename.message"))
         }
-        .alert("提示", isPresented: Binding(
+        .alert(L("common.notice"), isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
         )) {
-            Button("好", role: .cancel) { message = nil }
+            Button(L("common.ok"), role: .cancel) { message = nil }
         } message: {
             Text(message ?? "")
         }
@@ -93,7 +93,7 @@ struct CategoryManagerView: View {
         HStack {
             Text(category.name)
             Spacer()
-            Text("\(counts[category.id] ?? 0) 部")
+            Text(String(format: L("category.count"), counts[category.id] ?? 0))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

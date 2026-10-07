@@ -1,0 +1,248 @@
+/* MangaTranslater — 包层文案（简体中文）
+ *
+ * 这张表属于 SwiftPM 资源包（`AppCore.Copy`），由各包共享：
+ * AppCore / ComicNet / SourceEngine / ComicDownload / AppDatabase。
+ * App 目标自己的文案在 MangaTranslater/Resources/zh-Hans.lproj/Localizable.strings。
+ *
+ * 约定：key 形如 `<域>.<类型>.<情形>`；占位符用 `%@`（文本）与 `%ld`（整数）。
+ * 由 tools/check_localization.py 校验「两种语言 key 集合一致」与
+ * 「代码里用到的 key 必须存在」。
+ */
+
+
+/* app */
+"error.app.cancelled" = "操作已取消";
+"error.app.fileSystem" = "文件操作失败：%@";
+"error.app.invalidInput" = "输入不合法：%@";
+"error.app.logOpenFailed" = "无法打开诊断日志：%@";
+"error.app.network" = "网络请求失败：%@";
+"error.app.notFound" = "找不到内容：%@";
+"error.app.unknown" = "未知错误：%@";
+"error.app.unsupported" = "当前环境不支持：%@";
+
+/* cbz */
+"error.cbz.invalidExtension" = "扩展名不合法：%@";
+"error.cbz.invalidTitle" = "标题不合法：%@";
+"error.cbz.noPages" = "没有可导出的页";
+"error.cbz.tooManyPages" = "页数过多（%ld）";
+
+/* cookie */
+"error.cookie.nameEmpty" = "Cookie 名称不能为空";
+"error.cookie.nameInvalid" = "Cookie 名称含非法字符：%@";
+"error.cookie.valueHasNewline" = "Cookie 值含换行符";
+
+/* db */
+"error.db.createDirectoryFailed" = "无法创建数据库目录：%@";
+"error.db.migrationFailed" = "数据库迁移失败：%@";
+"error.db.openFailed" = "无法打开数据库：%@";
+
+/* decoder */
+"error.decoder.chapterListShape" = "章节列表不是数组";
+"error.decoder.emptyString" = "源返回了空字符串";
+"error.decoder.filterListShape" = "筛选项不是数组";
+"error.decoder.mangaDetailMissingURL" = "作品详情缺少可用的 url";
+"error.decoder.mangaDetailShape" = "作品详情不是对象";
+"error.decoder.mangaListShape" = "作品列表不是对象或数组";
+"error.decoder.notJSON" = "返回值不是合法 JSON：%@";
+"error.decoder.notUTF8" = "源返回值不是 UTF-8 文本";
+"error.decoder.pageListShape" = "页面列表不是数组";
+
+/* download */
+"error.download.chapterHasNoPages" = "章节没有可下载的页";
+"error.download.emptyChapterID" = "章节标识为空";
+"error.download.emptyJobID" = "任务标识为空";
+"error.download.jobExists" = "任务已存在：%@";
+"error.download.pageTooLarge" = "单页数据过大（%ld 字节，上限 %ld）";
+"error.download.unknown" = "未知错误";
+
+/* fetcher */
+"error.fetcher.missingContext" = "在线来源的下载必须带上任务上下文（来源 / Referer）";
+
+/* hosted */
+"error.hosted.accessDenied" = "服务器拒绝访问（HTTP %ld），请检查凭据";
+"error.hosted.authenticationFailed" = "登录服务器失败：%@";
+"error.hosted.cancelled" = "已取消";
+"error.hosted.chapterHasNoPages" = "章节 %@ 没有可读页";
+"error.hosted.duplicateID" = "标识已存在：%@";
+"error.hosted.emptyResponse" = "空响应：%@";
+"error.hosted.httpStatus" = "服务器返回 HTTP %ld：%@";
+"error.hosted.incompleteManga" = "作品 %@ 的字段不完整";
+"error.hosted.invalidBaseURL" = "服务器地址不合法：%@";
+"error.hosted.invalidServerID" = "服务器标识不合法";
+"error.hosted.missingToken" = "响应里没有 token";
+"error.hosted.noCredentials" = "还没有填写服务器凭据";
+"error.hosted.notConfigured" = "没有配置这台服务器：%@";
+"error.hosted.notJSON" = "不是合法 JSON：%@（%@）";
+"error.hosted.offline" = "网络不可用";
+"error.hosted.payloadServer" = "服务器：%@";
+"error.hosted.responseTooLarge" = "响应过大（%ld 字节）";
+"error.hosted.timeout" = "服务器超时（%ld 秒）";
+"error.hosted.unparsable" = "服务器响应无法解析：%@";
+"error.hosted.unrecognizedChapterURL" = "无法识别的章节地址：%@";
+"error.hosted.unrecognizedMangaURL" = "无法识别的作品地址：%@";
+
+/* image */
+"error.image.blockedScheme" = "不支持的图片协议：%@";
+"error.image.cancelled" = "图片获取已取消";
+"error.image.emptyResponse" = "图片内容为空";
+"error.image.invalidURL" = "图片地址不合法：%@";
+"error.image.notAnImage" = "返回的不是图片（%@）";
+"error.image.offline" = "网络不可用";
+"error.image.payloadURLReason" = "%@：%@";
+"error.image.timeout" = "超时（%ld 秒）";
+"error.image.tooLarge" = "图片过大（上限 %ld 字节）";
+"error.image.unavailable" = "图片获取失败：%@";
+
+/* index */
+"error.index.duplicateKey" = "来源 key 重复：%@";
+"error.index.empty" = "仓库里没有任何源";
+"error.index.invalidEntry" = "第 %ld 条不合法：%@";
+"error.index.invalidJSON" = "index.json 不是合法 JSON：%@";
+"error.index.payloadBadKey" = "key 不符合命名规则（%@）";
+"error.index.payloadBadVersion" = "version 不是合法版本号（%@）";
+"error.index.payloadEmptyField" = "%@ 为空";
+"error.index.payloadMissingField" = "%@ 缺失或类型错误";
+"error.index.payloadNameTooLong" = "name 过长";
+"error.index.payloadRootMustBeArray" = "根节点必须是数组";
+"error.index.tooLarge" = "索引过大（%ld 字节，上限 %ld）";
+"error.index.tooManyEntries" = "仓库条目过多（%ld）";
+"error.index.unsafeFileName" = "文件名不安全：%@";
+
+/* library */
+"error.library.categoryNotFound" = "分类不存在：%@";
+"error.library.corruptRow" = "数据损坏：%@";
+"error.library.duplicateCategoryName" = "已有同名分类：%@";
+"error.library.entryDecodeFailed" = "条目解码失败：%@";
+"error.library.entryEncodeFailed" = "条目编码失败：%@";
+"error.library.entryNotFound" = "书架里没有这个条目：%@";
+"error.library.entryNotUTF8" = "条目 JSON 无法转为 UTF-8";
+"error.library.historyDecodeFailed" = "历史解码失败：%@";
+"error.library.historyEncodeFailed" = "历史编码失败：%@";
+"error.library.historyNotUTF8" = "历史 JSON 无法转为 UTF-8";
+"error.library.invalidCategoryName" = "分类名不合法：%@";
+"error.library.invalidLimit" = "数量参数不合法：%ld";
+"error.library.invalidPageIndex" = "页码不合法：%ld";
+"error.library.payloadCategory" = "分类 %@";
+"error.library.payloadCorruptRow" = "数据库行损坏：%@";
+"error.library.payloadDuplicateName" = "分类名重复：%@";
+"error.library.payloadEntry" = "书架条目 %@";
+"error.library.payloadInvalidName" = "分类名不合法：%@";
+"error.library.payloadLimit" = "数量 %ld";
+"error.library.payloadPageIndex" = "页码 %ld";
+
+/* local */
+"error.local.bookNotFound" = "找不到本地作品：%@";
+"error.local.fileMissing" = "文件不存在：%@";
+"error.local.importFailed" = "导入失败：%@";
+"error.local.invalidRelativePath" = "作品地址不合法：%@";
+"error.local.noImages" = "归档里没有图片：%@";
+"error.local.notAZip" = "不是有效的 cbz/zip 归档：%@";
+"error.local.pageNotFound" = "归档里找不到页：%@";
+"error.local.pageOutOfRange" = "页码越界：%ld / 共 %ld 页";
+"error.local.payloadMangaChapter" = "%@ 的章节 %@";
+"error.local.payloadFileReason" = "%@：%@";
+"error.local.unsupportedExtension" = "不支持的文件类型：.%@（只接受 cbz / zip）";
+
+/* net */
+"error.net.cancelled" = "请求已取消";
+"error.net.decoding" = "解析失败：%@";
+"error.net.httpStatus" = "服务器返回 %ld";
+"error.net.httpStatusRetry" = "服务器返回 %ld，建议 %ld 秒后重试";
+"error.net.invalidURL" = "地址不合法：%@";
+"error.net.noRequest" = "未发起请求";
+"error.net.nonHTTPResponse" = "非 HTTP 响应";
+"error.net.offline" = "网络不可用";
+"error.net.payloadTooLarge" = "响应超过 %ld 字节";
+"error.net.payloadURL" = "URL：%@";
+"error.net.responseTooLarge" = "响应过大（上限 %ld 字节）";
+"error.net.timeout" = "请求超时（%ld 秒）";
+"error.net.transport" = "网络传输失败：%@";
+
+/* repo */
+"error.repo.entryNotFound" = "仓库里没有这个源：%@";
+"error.repo.indexRejected" = "仓库索引被拒绝：%@";
+"error.repo.indexUnavailable" = "无法获取 index.json：%@";
+"error.repo.invalidURL" = "仓库地址不合法：%@";
+"error.repo.keyMismatch" = "脚本声明的来源标识（%@）与仓库索引（%@）不一致";
+"error.repo.notUTF8" = "脚本不是合法的 UTF-8 文本";
+"error.repo.scriptUnavailable" = "无法获取源脚本：%@";
+
+/* runner */
+"error.runner.cancelled" = "源调用已取消";
+"error.runner.executionFailed" = "源执行失败：%@";
+"error.runner.incompleteContract" = "源未实现必需方法：%@";
+"error.runner.invalidResponse" = "源返回数据不合法：%@";
+"error.runner.notInstalled" = "源未安装：%@";
+"error.runner.scriptRejected" = "源脚本被拒绝：%@";
+"error.runner.timeout" = "源执行超时（%ld 秒）";
+
+/* runtime */
+"error.runtime.bridgeInitFailed" = "桥接初始化失败：%@";
+"error.runtime.idMismatch" = "脚本声明的来源 id（%@）与预期不符（%@）";
+"error.runtime.invalidArgumentJSON" = "参数不是合法 JSON：%@";
+"error.runtime.notThenable" = "源返回的不是可等待对象";
+"error.runtime.scriptExecutionFailed" = "脚本执行出错：%@";
+"error.runtime.unknownError" = "未知错误";
+"error.runtime.unknownJSException" = "未知 JavaScript 异常";
+"error.runtime.vmCreationFailed" = "无法创建 JavaScript 虚拟机";
+"error.runtime.wrapperCreationFailed" = "无法构造调用包装器";
+
+/* script */
+"error.script.containsNullByte" = "脚本包含空字节，疑似二进制文件";
+"error.script.empty" = "脚本内容为空";
+"error.script.forbiddenAPI" = "包含被禁用的 API：%@";
+"error.script.invalidField" = "字段 %@ 不合法：%@";
+"error.script.missingField" = "缺少必需字段：%@";
+"error.script.missingMetadata" = "未找到源元信息（需要 `const source = { ... }`）";
+"error.script.reason.empty" = "为空";
+"error.script.reason.keyFormat" = "只允许小写字母/数字开头，含 - 和 _，长度 1...64";
+"error.script.reason.languageTooLong" = "语言代码过长";
+"error.script.reason.notAURL" = "不是合法地址";
+"error.script.reason.notAVersion" = "不是合法版本号";
+"error.script.reason.notAnIntegerInRange" = "必须是 0...60000 的整数";
+"error.script.reason.tooLong" = "超过 %ld 字符";
+"error.script.tooLarge" = "脚本过大（%ld 字节，上限 %ld）";
+
+/* selector */
+"error.selector.danglingCombinator" = "组合子后缺少选择器";
+"error.selector.empty" = "选择器为空";
+"error.selector.invalidAttribute" = "无法解析的属性选择器：%@";
+"error.selector.invalidSimple" = "无法解析的选择器片段：%@";
+
+/* store */
+"error.store.invalidKey" = "源标识不合法：%@";
+"error.store.invalidRepositoryURL" = "仓库地址不合法：%@";
+"error.store.metadataWriteFailed" = "源元数据写入失败：%@";
+"error.store.payloadScript" = "源脚本 %@";
+"error.store.scriptWriteFailed" = "源脚本落盘失败：%@";
+
+/* transport */
+"error.transport.blockedHost" = "该地址不被允许：%@";
+"error.transport.blockedScheme" = "不支持的协议：%@";
+"error.transport.bodyTooLarge" = "响应过大（%ld 字节，上限 %ld）";
+"error.transport.notFound" = "请求失败：%@";
+"error.transport.payloadHTTP" = "http（非本机）";
+"error.transport.unsupportedMethod" = "不支持的请求方法：%@";
+
+/* zip */
+"error.zip.corruptEntry" = "条目数据损坏：%@";
+"error.zip.duplicateEntryName" = "条目重名：%@";
+"error.zip.emptyArchive" = "归档为空";
+"error.zip.entryNotFound" = "找不到条目：%@";
+"error.zip.invalidName" = "条目名不合法：%@";
+"error.zip.invalidSignature" = "签名不合法：0x%@";
+"error.zip.missingCentralDirectory" = "找不到中央目录（文件损坏或不是 ZIP）";
+"error.zip.tooLarge" = "归档超过大小上限（%ld 字节）";
+"error.zip.truncated" = "数据被截断";
+"error.zip.unsupportedCompression" = "不支持的压缩方式：%ld";
+"error.zip.writerFinished" = "写入器已结束";
+
+/* decoder */
+"text.decoder.untitled" = "未命名";
+
+/* hosted */
+"text.hosted.probeLibraries" = "连接成功，共 %ld 个书库";
+"text.hosted.probeNoLibraries" = "连接成功，但服务器上没有书库";
+
+/* source */
+"text.source.nsfwHidden" = "该源标记为成人内容，已在设置中隐藏";

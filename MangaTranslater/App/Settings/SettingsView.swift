@@ -19,7 +19,6 @@ struct SettingsView: View {
     @Environment(AppEnvironment.self) private var environment
 
     @State private var showsAgeConfirmation = false
-    @State private var showsComingSoon = false
     @State private var statusMessage: String?
 
     private var settings: AppSettings { environment.settings }
@@ -43,10 +42,7 @@ struct SettingsView: View {
             } message: {
                 Text(L("settings.nsfw.confirm.body"))
             }
-            .alert(L("common.notAvailableYet"), isPresented: $showsComingSoon) {
-                Button(L("common.ok"), role: .cancel) {}
-            }
-            .alert("提示", isPresented: Binding(
+            .alert(L("common.notice"), isPresented: Binding(
                 get: { statusMessage != nil },
                 set: { if !$0 { statusMessage = nil } }
             )) {
@@ -112,8 +108,8 @@ struct SettingsView: View {
 
     /// 一句话概括当前翻译配置，省得每次都要点进去确认。
     private var translationSubtitle: String {
-        let backend = settings.translationBackend.displayName
-        let pair = "\(settings.sourceLanguage.displayName) → \(settings.targetLanguage.displayName)"
+        let backend = settings.translationBackend.localizedName
+        let pair = "\(settings.sourceLanguage.localizedName) → \(settings.targetLanguage.localizedName)"
         return "\(backend) · \(pair)"
     }
 
@@ -124,10 +120,10 @@ struct SettingsView: View {
                 set: { settings.readerMode = $0 }
             )) {
                 ForEach(ReaderMode.allCases, id: \.self) { mode in
-                    Text(mode.displayName).tag(mode)
+                    Text(mode.localizedName).tag(mode)
                 }
             } label: {
-                Text("阅读模式")
+                Text(L("settings.reader.mode"))
             }
 
             Picker(selection: Binding(
@@ -135,14 +131,14 @@ struct SettingsView: View {
                 set: { settings.readerTheme = $0 }
             )) {
                 ForEach(ReaderTheme.allCases, id: \.self) { theme in
-                    Text(theme.displayName).tag(theme)
+                    Text(theme.localizedName).tag(theme)
                 }
             } label: {
-                Text("阅读背景")
+                Text(L("settings.reader.theme"))
             }
 
             Stepper(
-                "页面留白：\(settings.readerPageSpacing) pt",
+                String(format: L("settings.reader.pageSpacing"), settings.readerPageSpacing),
                 value: Binding(
                     get: { settings.readerPageSpacing },
                     set: { settings.readerPageSpacing = $0 }
@@ -150,13 +146,13 @@ struct SettingsView: View {
                 in: AppSettings.readerPageSpacingRange
             )
 
-            Toggle("阅读时保持屏幕常亮", isOn: Binding(
+            Toggle(L("settings.reader.keepAwake"), isOn: Binding(
                 get: { settings.keepsScreenAwake },
                 set: { settings.keepsScreenAwake = $0 }
             ))
 
             Stepper(
-                "预加载页数：\(settings.preloadWindow)",
+                String(format: L("settings.reader.preload"), settings.preloadWindow),
                 value: Binding(
                     get: { settings.preloadWindow },
                     set: { settings.preloadWindow = $0 }
@@ -165,7 +161,7 @@ struct SettingsView: View {
             )
 
             Stepper(
-                "下载并发：\(settings.maxConcurrentDownloads)",
+                String(format: L("settings.reader.concurrency"), settings.maxConcurrentDownloads),
                 value: Binding(
                     get: { settings.maxConcurrentDownloads },
                     set: { settings.maxConcurrentDownloads = $0 }
@@ -198,16 +194,20 @@ struct SettingsView: View {
                 environment.diagnostics.clear()
             }
 
-            Button("清空封面缓存") {
+            Button(L("settings.cache.clearCover")) {
                 let removed = environment.coverCache.removeAll()
                 statusMessage = removed > 0
-                    ? "已清理 \(removed) 项封面缓存。"
-                    : "封面缓存本来就是空的。"
+                    ? String(format: L("settings.cache.coverCleared"), removed)
+                    : L("settings.cache.coverEmpty")
             }
 
-            Button(L("settings.about.license")) { showsComingSoon = true }
-            Button(L("settings.about.privacy")) { showsComingSoon = true }
-            Button(L("settings.about.terms")) { showsComingSoon = true }
+            ForEach(LegalDocumentKind.allCases) { kind in
+                NavigationLink {
+                    LegalDocumentView(kind: kind)
+                } label: {
+                    Text(kind.title)
+                }
+            }
         }
     }
 
@@ -227,7 +227,7 @@ struct SettingsView: View {
     }
 
     private static var appVersion: String {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
         return "\(version) (\(build))"
     }

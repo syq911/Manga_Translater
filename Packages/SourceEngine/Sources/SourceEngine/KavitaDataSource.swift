@@ -100,7 +100,7 @@ actor KavitaSession {
               let dictionary = object as? [String: Any],
               let issued = Mapping.string(dictionary["token"])
         else {
-            throw HostedServerError.authenticationFailed("响应里没有 token")
+            throw HostedServerError.authenticationFailed(Copy.text("error.hosted.missingToken"))
         }
         token = issued
         return issued
@@ -163,17 +163,17 @@ public struct KavitaDataSource: MangaDataSource, MangaDataSourceProbing {
 
     public func mangaDetails(url: String) async throws -> Manga {
         let identifier = KavitaMapping.numericID(fromURL: url, marker: "/api/Series/")
-        guard let identifier else { throw HostedServerError.malformedResponse("无法识别的作品地址：\(url)") }
+        guard let identifier else { throw HostedServerError.malformedResponse(Copy.format("error.hosted.unrecognizedMangaURL", url)) }
         let value = try await get("/api/Series/\(identifier)")
         guard let manga = KavitaMapping.manga(from: value, sourceID: sourceID, base: base) else {
-            throw HostedServerError.malformedResponse("作品 \(identifier) 的字段不完整")
+            throw HostedServerError.malformedResponse(Copy.format("error.hosted.incompleteManga", identifier))
         }
         return manga
     }
 
     public func chapterList(mangaURL: String, mangaID: String?) async throws -> [Chapter] {
         let identifier = KavitaMapping.numericID(fromURL: mangaURL, marker: "/api/Series/")
-        guard let identifier else { throw HostedServerError.malformedResponse("无法识别的作品地址：\(mangaURL)") }
+        guard let identifier else { throw HostedServerError.malformedResponse(Copy.format("error.hosted.unrecognizedMangaURL", mangaURL)) }
         let owner = mangaID ?? Manga.makeID(sourceID: sourceID, url: mangaURL)
         let value = try await get("/api/Series/volumes", query: ["seriesId": identifier])
         return KavitaMapping.chapters(from: value, mangaID: owner, base: base)
@@ -181,12 +181,12 @@ public struct KavitaDataSource: MangaDataSource, MangaDataSourceProbing {
 
     public func pageList(chapterURL: String) async throws -> [ComicPage] {
         let identifier = KavitaMapping.numericID(fromURL: chapterURL, marker: "/api/Reader/chapter/")
-        guard let identifier else { throw HostedServerError.malformedResponse("无法识别的章节地址：\(chapterURL)") }
+        guard let identifier else { throw HostedServerError.malformedResponse(Copy.format("error.hosted.unrecognizedChapterURL", chapterURL)) }
         // 页数从 chapter-info 取：章节列表里的 `pages` 字段在版本间存在缺失
         let value = try await get("/api/Reader/chapter-info", query: ["chapterId": identifier])
         let count = KavitaMapping.pageCount(from: value)
         guard count > 0 else {
-            throw HostedServerError.malformedResponse("章节 \(identifier) 没有可读页")
+            throw HostedServerError.malformedResponse(Copy.format("error.hosted.chapterHasNoPages", identifier))
         }
         let key = server.apiKey?.trimmingCharacters(in: .whitespaces) ?? ""
         return (0..<count).map { index in
@@ -209,9 +209,9 @@ public struct KavitaDataSource: MangaDataSource, MangaDataSourceProbing {
         let value = try await get("/api/Library")
         let names = Mapping.array(value).compactMap { Mapping.string($0["name"]) }
         guard !names.isEmpty else {
-            return "连接成功，但服务器上没有书库"
+            return Copy.text("text.hosted.probeNoLibraries")
         }
-        return "连接成功，共 \(names.count) 个书库"
+        return Copy.format("text.hosted.probeLibraries", names.count)
     }
 
     // MARK: 带鉴权的 GET
@@ -255,13 +255,13 @@ public struct KavitaDataSource: MangaDataSource, MangaDataSourceProbing {
             throw HostedServerError.httpStatus(response.statusCode, target)
         }
         guard !response.data.isEmpty else {
-            throw HostedServerError.malformedResponse("空响应：\(target)")
+            throw HostedServerError.malformedResponse(Copy.format("error.hosted.emptyResponse", target))
         }
         do {
             return try JSONSerialization.jsonObject(with: response.data)
         } catch {
             throw HostedServerError.malformedResponse(
-                "不是合法 JSON：\(target)（\(error.localizedDescription)）"
+                Copy.format("error.hosted.notJSON", target, error.localizedDescription)
             )
         }
     }

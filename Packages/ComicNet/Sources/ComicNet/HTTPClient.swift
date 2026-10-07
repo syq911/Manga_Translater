@@ -63,7 +63,7 @@ public struct URLSessionTransport: HTTPTransporting {
         do {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else {
-                throw NetworkError.transport("非 HTTP 响应")
+                throw NetworkError.transport(Copy.text("error.net.nonHTTPResponse"))
             }
             return (data, http)
         } catch let error as NetworkError {
@@ -213,7 +213,7 @@ public struct HTTPClient: Sendable {
         }
 
         let attempts = allowsRetry ? configuration.maxRetries + 1 : 1
-        var lastError: NetworkError = .transport("未发起请求")
+        var lastError: NetworkError = .transport(Copy.text("error.net.noRequest"))
 
         for attempt in 0..<attempts {
             try Task.checkCancellation()

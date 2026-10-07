@@ -64,19 +64,19 @@ public enum SourceScriptValidationError: Error, Equatable {
     public var message: String {
         switch self {
         case .emptyScript:
-            return "脚本内容为空"
+            return Copy.text("error.script.empty")
         case let .tooLarge(bytes, limit):
-            return "脚本过大（\(bytes) 字节，上限 \(limit)）"
+            return Copy.format("error.script.tooLarge", bytes, limit)
         case .containsNullByte:
-            return "脚本包含空字节，疑似二进制文件"
+            return Copy.text("error.script.containsNullByte")
         case .missingMetadataBlock:
-            return "未找到源元信息（需要 `const source = { ... }`）"
+            return Copy.text("error.script.missingMetadata")
         case let .missingField(name):
-            return "缺少必需字段：\(name)"
+            return Copy.format("error.script.missingField", name)
         case let .invalidField(name, reason):
-            return "字段 \(name) 不合法：\(reason)"
+            return Copy.format("error.script.invalidField", name, reason)
         case let .forbiddenAPI(api):
-            return "包含被禁用的 API：\(api)"
+            return Copy.format("error.script.forbiddenAPI", api)
         }
     }
 }
@@ -121,19 +121,25 @@ public enum SourceScriptValidator {
         guard ModelValidation.isValidSourceID(id) else {
             throw SourceScriptValidationError.invalidField(
                 name: "id",
-                reason: "只允许小写字母/数字开头，含 - 和 _，长度 1...64"
+                reason: Copy.text("error.script.reason.keyFormat")
             )
         }
 
         let name = try requiredString(fields, name: "name")
         guard name.count <= maxFieldLength else {
-            throw SourceScriptValidationError.invalidField(name: "name", reason: "超过 \(maxFieldLength) 字符")
+            throw SourceScriptValidationError.invalidField(
+                name: "name",
+                reason: Copy.format("error.script.reason.tooLong", maxFieldLength)
+            )
         }
 
         var baseURL: String?
         if let raw = fields["baseurl"], !raw.isEmpty {
             guard ModelValidation.isValidURLString(raw) else {
-                throw SourceScriptValidationError.invalidField(name: "baseUrl", reason: "不是合法地址")
+                throw SourceScriptValidationError.invalidField(
+                name: "baseUrl",
+                reason: Copy.text("error.script.reason.notAURL")
+            )
             }
             baseURL = raw
         }
@@ -141,7 +147,10 @@ public enum SourceScriptValidator {
         var loginURL: String?
         if let raw = fields["loginurl"], !raw.isEmpty {
             guard ModelValidation.isValidURLString(raw) else {
-                throw SourceScriptValidationError.invalidField(name: "loginUrl", reason: "不是合法地址")
+                throw SourceScriptValidationError.invalidField(
+                name: "loginUrl",
+                reason: Copy.text("error.script.reason.notAURL")
+            )
             }
             loginURL = raw
         }
@@ -149,7 +158,10 @@ public enum SourceScriptValidator {
         var version: String?
         if let raw = fields["version"], !raw.isEmpty {
             guard ModelValidation.isValidVersionString(raw) else {
-                throw SourceScriptValidationError.invalidField(name: "version", reason: "不是合法版本号")
+                throw SourceScriptValidationError.invalidField(
+                name: "version",
+                reason: Copy.text("error.script.reason.notAVersion")
+            )
             }
             version = raw
         }
@@ -159,7 +171,7 @@ public enum SourceScriptValidator {
             guard let parsed = Int(raw), parsed >= 0, parsed <= 60_000 else {
                 throw SourceScriptValidationError.invalidField(
                     name: "rateLimitMs",
-                    reason: "必须是 0...60000 的整数"
+                    reason: Copy.text("error.script.reason.notAnIntegerInRange")
                 )
             }
             rateLimit = parsed
@@ -168,7 +180,10 @@ public enum SourceScriptValidator {
         let isNSFW = parseBool(fields["nsfw"]) ?? false
         let language = fields["lang"].flatMap { $0.isEmpty ? nil : $0 } ?? "all"
         guard language.count <= 16 else {
-            throw SourceScriptValidationError.invalidField(name: "lang", reason: "语言代码过长")
+            throw SourceScriptValidationError.invalidField(
+                name: "lang",
+                reason: Copy.text("error.script.reason.languageTooLong")
+            )
         }
 
         let capabilities = declaredCapabilities(in: script)
@@ -282,7 +297,10 @@ public enum SourceScriptValidator {
         }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            throw SourceScriptValidationError.invalidField(name: name, reason: "为空")
+            throw SourceScriptValidationError.invalidField(
+                name: name,
+                reason: Copy.text("error.script.reason.empty")
+            )
         }
         return trimmed
     }

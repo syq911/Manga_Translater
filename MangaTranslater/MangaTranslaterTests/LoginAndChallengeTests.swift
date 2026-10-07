@@ -298,10 +298,12 @@ struct ChallengeDetectorTests {
         #expect(ChallengeDetector.detect(inMessage: "网络不可用") == nil)
     }
 
-    @Test("每种验证都有可显示的名字")
-    func kindsHaveNames() {
-        #expect(ChallengeKind.cloudflare.displayName.isEmpty == false)
-        #expect(ChallengeKind.captcha.displayName.isEmpty == false)
-        #expect(ChallengeKind.generic.displayName.isEmpty == false)
+    @Test("每种验证的标识稳定（展示名已移到 App 层，见 Localization+Names）")
+    func kindsHaveStableIdentifiers() {
+        // 这些 rawValue 会写进诊断日志，改动会让历史日志对不上，因此钉死。
+        #expect(ChallengeKind.cloudflare.rawValue == "cloudflare")
+        #expect(ChallengeKind.captcha.rawValue == "captcha")
+        #expect(ChallengeKind.generic.rawValue == "generic")
+        #expect(ChallengeKind.allCases.count == 3)
     }
 }
