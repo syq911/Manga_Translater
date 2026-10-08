@@ -18,9 +18,12 @@
 - **副作用**：写盘、网络、外部浏览器、后台任务。
 - 行号不写（会腐化），定位请按「屏 + 元素名」搜。
 
-> 统计口径：**12 个跳转面**（4 个 Tab + 8 个子页/模态），下面逐条编号共 **167 条**，
-> 其中约 120 条是真正可点的元素，其余是静态展示、副作用（无按钮的自动跳转），
+> 统计口径：**14 个跳转面**（4 个 Tab + 10 个子页/模态），下面逐条编号共 **193 条**，
+> 其中约 145 条是真正可点的元素，其余是静态展示、副作用（无按钮的自动跳转），
 > 以及**明确标出的缺失入口**（缺失项也编号，否则它们最容易被忘掉）。
+>
+> 「本轮」= O-6…O-11 的实现（阅读器目录 / 下载 / 阅读设置、书架检查更新与网格、
+> 本地文件删除、备份恢复）。带 🔹 的行是本轮新加的交互面。
 
 ---
 
@@ -54,6 +57,12 @@
 | L13 | 行长按菜单「置顶 / 取消置顶」 | Button | `setPinned` → `reload()` | |
 | L14 | 行长按菜单「移出书架」 | Button（destructive） | `remove(mangaID:)` → `reload()` | **无确认**；不删下载 |
 | L15 | 提示 alert「好」 | Alert | 关闭 | 导入结果 / 移出失败都用它 |
+| L16 🔹 | 工具栏「布局」Picker（嵌在排序菜单里） | Picker | `displayMode`（网格 / 列表），选择持久化 | 网格是手册 §8.1 的默认；列表是**唯一能左滑**的布局 |
+| L17 🔹 | 下拉刷新 | `.refreshable` | `checkForUpdates()`：重读本地库 → 逐源拉章节列表 → 写未读角标 → 汇报 | 手册 §5.3；只检查在线来源，本地文件跳过 |
+| L18 🔹 | 「最近阅读」条（每部一个） | NavigationLink | push `ReaderView` | 取 `lastReadAt` 倒序前 8 部；`lastReadAt` 为空时不显示这一条 |
+| L19 🔹 | 网格单元格（每部一个） | NavigationLink（LazyVGrid） | push `ReaderView` | 与 L8 同一个目的地；长按菜单同 L11–L14（网格里没有左滑） |
+| L20 🔹 | 未读角标「新 N」 | 静态 | — | `unreadCount > 0` 时显示；数字来自「检查更新」的判定（`LibraryUpdateRule`） |
+| L21 🔹 | 网格标题里的作品数 | 静态 | — | 只有网格布局有分区标题 |
 
 ## 3. 分类管理（CategoryManagerView）
 
@@ -88,7 +97,9 @@
 | LB2 | 作品行 | NavigationLink | push `ReaderView(manga:readingSource:)` | 文件头注释说「点进去会自动加入书架」——**实现里不是**（见 O-5） |
 | LB3 | 空状态 | 静态 | — | |
 | LB4 | 导入结果 alert「好」 | Alert | 关闭 | 成功/部分失败都在这里 |
-| LB5 | 缺失：删除本地文件 | — | — | App 内没有任何删除入口（见 O-9） |
+| LB5 🔹 | 作品行左滑「删除文件」 | swipe Button（destructive） | `pendingDeletion = book` → 确认对话框 | **本轮新增**（原先 App 内没有任何删除入口，见 O-9） |
+| LB6 🔹 | 删除确认「删除文件」 | Dialog | `localSource.removeBook` + 移出书架 + 重新扫描 | 文案写明「App 里没有回收站」——用户默认以为会进废纸篓 |
+| LB7 🔹 | 删除确认「取消」 | Dialog | `pendingDeletion = nil` | |
 
 ## 6. 服务器与仓库
 
@@ -179,8 +190,9 @@
 
 | # | 元素 | 类型 | 动作 | 守卫与副作用 |
 |---|---|---|---|---|
-| RD1 | 左侧 60pt 点击带 | 手势 | `advance(forward:)`，方向随阅读模式（右到左时左=下一页） | 宽度写死 60pt（见 O-19） |
-| RD2 | 右侧 60pt 点击带 | 手势 | 反向 | 中间区域单击**无动作**（见 O-10） |
+| RD1 | 左侧点击带（按容器宽度 15%，夹在 44…120pt） | 手势 | `advance(forward:)`，方向随阅读模式（右到左时左=下一页） | 宽度取自 `ReaderNavigation.tapZoneWidth`，可单测（原写死 60pt） |
+| RD2 | 右侧点击带（同上） | 手势 | 反向 | |
+| RD2b 🔹 | 中央区域单击 | 手势 | `showsChrome.toggle()`：收起 / 呼出顶栏与底栏 | 手册 §8.2「三区点按」；单击会等双击判定窗口，所以双击缩放不会顺带收栏 |
 | RD3 | 双击页面 | 手势 | 1× / 2× 缩放切换，并钳制位移 | |
 | RD4 | 横向拖动（未放大） | 手势 | 位移 > 40 且横向为主 → 翻页 | 放大状态下只平移，不翻页 |
 | RD5 | 捏合 | 手势 | 缩放（`ZoomState` 限幅） | 手势结束钳制位移 |
@@ -196,8 +208,32 @@
 | RD15 | 末章最后一页再前进 | 副作用 | alert「已经是最后一页了」 | |
 | RD16 | 提示 alert「好」 | Alert | 关闭 | |
 | RD17 | 返回 | 系统 | `onDisappear`：恢复系统休眠、取消预加载、`translation.stopAndReset()` | 翻译缓存留盘（跨会话复用） |
-| RD18 | 缺失：下载当前章 | — | — | 手册 §8.2 顶栏有 ⤓（见 O-6） |
-| RD19 | 缺失：阅读设置入口 | — | — | 手册 §8.2 顶栏有 ⚙（见 O-6） |
+| RD18 🔹 | 顶栏 ⤓ 下载本话 | Button | 按 `ChapterActionMenu`：未下载→下载、进行中→取消、已下载→提示 | 本地来源整颗禁用（文件已经是本地的）；**顶栏不做删除归档** |
+| RD19 🔹 | 顶栏 ⚙ 阅读设置 | Button | sheet `ReaderSettingsSheet` | 与设置页共用 `ReaderSettingsSections`，实现只有一份 |
+| RD20 🔹 | 顶栏 ☰ 目录 | Button | sheet `ReaderJumpSheet` | 跳章 + 跳页（见 §8.1） |
+| RD21 🔹 | 底栏本章进度条 | 静态 | — | 跟 `pageIndex / pages.count`；页码用等宽数字（翻页时整行不抖） |
+
+### 8.1 目录（ReaderJumpSheet，模态）🔹
+
+| # | 元素 | 类型 | 动作 | 守卫 |
+|---|---|---|---|---|
+| RJ1 | 页码输入框 | TextField | 写 `pageInput`（数字键盘） | 占位文案直接显示「12 / 48」的当前态 |
+| RJ2 | 「跳转」 | Button | `ReaderJump.resolvePage` → 跳页并关窗 / 钳制并说明 / 报错 | 页数为 0（还没载入完）时禁用 |
+| RJ3 | 提示行 | 静态 | — | 只在越界或解析失败时出现——**静默等于「点了没反应」** |
+| RJ4 | 章节行（每话一个） | Button | `onJumpToChapter(index)` + 关窗 | 当前章打勾；点当前章不会重新载入（避免闪一下） |
+| RJ5 | 「完成」 | ToolbarItem | 关窗 | |
+
+### 8.2 阅读设置（ReaderSettingsSheet，模态）🔹
+
+| # | 元素 | 类型 | 动作 | 守卫 |
+|---|---|---|---|---|
+| RS1 | 阅读模式 Picker | Picker | `settings.readerMode` | 与设置页**同一份实现**（`ReaderSettingsSections`） |
+| RS2 | 阅读背景 Picker | Picker | `settings.readerTheme` | 改动即时生效 |
+| RS3 | 页面留白 Stepper | Stepper | `settings.readerPageSpacing` | |
+| RS4 | 屏幕常亮 Toggle | Toggle | `settings.keepsScreenAwake` | |
+| RS5 | 预加载页数 Stepper | Stepper | `settings.preloadWindow` | |
+| RS6 | 下载并发 Stepper | Stepper | `settings.maxConcurrentDownloads` | |
+| RS7 | 「完成」 | ToolbarItem | 关窗 | 没有「保存」：改动是即时写回的，给个「保存」反而让人以为不点就不生效 |
 
 ## 9. 下载（DownloadsView）
 
@@ -229,7 +265,7 @@
 | ST4 | 年龄确认「我已年满 18 周岁」 | Alert | `hasConfirmedAdultContent = true` + 开启 | |
 | ST5 | 该 Toggle 关 | Toggle | 直接关闭 | |
 | ST6 | 「翻译」行 | NavigationLink | push `TranslationSettingsView` | 副标题显示后端 + 语言对 |
-| ST7 | 阅读模式 Picker | Picker | `settings.readerMode` | |
+| ST7 | 阅读模式 Picker（ST7–ST12 共用一个组件 `ReaderSettingsSections`） | Picker | `settings.readerMode` | 阅读器顶栏 ⚙ 用的是**同一个**组件，两处不会分叉 |
 | ST8 | 阅读背景 Picker | Picker | `settings.readerTheme` | |
 | ST9 | 页面留白 Stepper | Stepper | `settings.readerPageSpacing` | |
 | ST10 | 屏幕常亮 Toggle | Toggle | `settings.keepsScreenAwake` | |
@@ -240,7 +276,10 @@
 | ST15 | 「清空封面缓存」 | Button | `coverCache.removeAll()` → alert 结果 | 无确认（可再生成） |
 | ST16 | 版本行 | 静态 | — | 显示 `CFBundleShortVersionString (build)` |
 | ST17 | 提示 alert「好」 | Alert | 关闭 | |
-| ST18 | 缺失：备份 / 恢复 | — | — | `AppSettings` 已有快照编解码，只缺入口（见 O-8） |
+| ST18 🔹 | 「导出备份」 | Button | `environment.makeBackupBundle()` → 系统文件导出面板（JSON） | 备份内容见 `BackupBundle`：**不含任何凭据** |
+| ST19 🔹 | 「从备份恢复」 | Button | 系统文件选择器（`.json`） | 读取 → `BackupBundle.decoded` → 确认 |
+| ST20 🔹 | 恢复确认「恢复」 | Dialog | `environment.restore(from:)` → 汇报新增数量 | 策略 `.restoreBackup` 要求确认；文案写明「设置会被覆盖、已有作品跳过」 |
+| ST21 🔹 | 恢复确认「取消」 | Dialog | `pendingRestore = nil` | |
 
 ### 10.2 翻译设置（TranslationSettingsView）
 
@@ -305,6 +344,8 @@
 | 清空译文缓存 | 翻译设置 | **是** | 要重新翻译（**耗额度 / 花钱**） | **已修 O-2** |
 | 退出登录 | 云账号 | 否 | 可（同邮箱再登录） | 保持 |
 | 注销账号 | 云账号 | 是（输邮箱） | 不可 | 保持 |
+| 删除本地文件 | 本地文件左滑 | **是** | **不可**（App 里没有回收站） | 本轮新增（O-9） |
+| 从备份恢复 | 设置 → 备份与恢复 | **是** | 可（但设置会被覆盖） | 本轮新增（O-8）；确认文案写明合并语义 |
 
 这张表现在不只是文档：它对应 `AppCore.DestructiveActionPolicy` 的 16 个枚举值，
 `InteractionRulesTests` 里有一张**逐条对照**的期望矩阵与计数断言。
@@ -340,17 +381,37 @@
 - **O-5 [过期] LocalBooksView 头注释说「点进去阅读时会自动加入书架」**，实现里只有点
   星标才加入书架（阅读器顶部），不点就不记进度。
   **✅ 已修**：改注释说清「加入书架发生在导入那一刻，阅读本身不写书架」。
-- **O-6 [缺失] 阅读器顶栏缺「下载」与「阅读设置」两个入口**（手册 §8.2 的线框图是
+- **O-6 [缺失 · 已修] 阅读器顶栏缺「下载」与「阅读设置」两个入口**（手册 §8.2 的线框图是
   ⤓ / Ⓣ / ⚙）。现在想改阅读主题必须退出阅读器回设置页，对长时间阅读很不友好。
-- **O-7 [缺失] 书架没有「下拉检查更新」**（手册 §8.1），也没有独立的「最近阅读条」。
-- **O-8 [缺失] 设置里没有「备份 / 恢复」入口**：`AppSettings` 的快照编解码、越界钳制、
+  **✅ 已修**：顶栏补齐 ⤓（下载本话）/ ☰（目录）/ ⚙（阅读设置），桌面栏补上进度条。
+  下载按钮复用 `ChapterActionMenu`（未下载=下载、进行中=取消、已下载=提示），
+  顶栏**不做删除归档**——那是有确认流程的操作，不该放在阅读中的顶栏。
+  阅读设置做成弹窗且与设置页**共用同一个组件**（`ReaderSettingsSections`），
+  避免「同一个设置两个入口」慢慢分叉。
+- **O-7 [缺失 · 已修] 书架没有「下拉检查更新」**（手册 §8.1），也没有独立的「最近阅读条」。
+  **✅ 已修**：下拉逐源拉章节列表比对（`LibraryUpdateRule` + `LibraryUpdateChecker`）、
+  未读角标、最近阅读条，并补上手册要求但一直没做的**网格布局**（可切回列表）。
+  判定刻意保留「不知道」这一档：源没给章节号 / 上次读的那话不在列表里时不改角标——
+  角标是用户决定「要不要点进去」的信号，谎报比不报更糟。
+- **O-8 [缺失 · 已修] 设置里没有「备份 / 恢复」入口**：`AppSettings` 的快照编解码、越界钳制、
   向后兼容解码都已经写好并有测试，只缺一层界面（这是一个纯 UI 的收尾工作）。
-- **O-9 [缺失] 本地导入的文件在 App 内没有删除入口**：只能把作品移出书架，文件仍占空间；
+  **✅ 已修**：`BackupBundle`（纯 JSON、字节可 diff）+ 系统文件导入导出。
+  **凭据绝不进备份**（有专门用例在导出字节里搜 apiKey / 密码 / 用户名）；
+  恢复是**合并**语义，已存在的作品跳过（本地进度优先），设置是唯一的覆盖项且弹窗里写明。
+- **O-9 [缺失 · 已修] 本地导入的文件在 App 内没有删除入口**：只能把作品移出书架，文件仍占空间；
   用户找不到「清理导入文件」的地方（下载页只管理下载的归档）。
-- **O-10 [体验] 阅读器中间区域单击无动作**：两侧 60pt 是翻页带，中间只响应双击。
+  **✅ 已修**：本地文件左滑删除 → 确认 → 删文件 + 移出书架。
+  策略层把它标成**不可恢复**（与注销账号同级，App 里没有回收站），文案里也这么说。
+- **O-10 [体验 · 已修] 阅读器中间区域单击无动作**：两侧 60pt 是翻页带，中间只响应双击。
   常见阅读器会把「中间单击」用于隐藏/呼出工具栏，这里工具栏常驻，挤压了阅读面积。
-- **O-11 [体验] 阅读器没有「跳章 / 跳页」入口**：只能一页页翻（换章是自动的）。长作品
+  **✅ 已修**：中央单击收起 / 呼出顶栏与底栏（手册 §8.2 的「三区点按」），
+  顶栏收起来时连导航栏一起收，所以「呼出」才有意义。点击带宽度同时改成按容器比例
+  （44…120pt），顺带解决 O-19。
+- **O-11 [体验 · 已修] 阅读器没有「跳章 / 跳页」入口**：只能一页页翻（换章是自动的）。长作品
   （几十话）想回到某处非常费劲。
+  **✅ 已修**：新增「目录」模态（`ReaderJumpSheet`）：页码输入 + 章节列表。
+  输入解析在 `AppCore.ReaderJump`：容忍 `12` / `12 / 48` / 全角 `１２／４８`；
+  越界**钳制到边界并说明**（打错一位数字时「跳到最后一页」比「弹错然后什么都不做」更接近意图）。
 - **O-12 [风险] 书架「管理分类…」是 Menu 内嵌 NavigationLink**：iOS 上这类组合在
   「菜单关闭」与「入栈」的时序上有过边缘行为（点了没跳 / 菜单残留），建议真机确认；
   更稳的做法是换成独立入口或 sheet。
@@ -429,6 +490,12 @@ SwiftUI 视图本身不能直接单测（没有 ViewInspector 之类的依赖）
 | `LibraryFilterMenu` + `LibraryFilterTarget` | AppCore | 筛选菜单的项与顺序、分类被删后的回退 | `LibraryMenuTests` |
 | `LibraryPreferences` | App（App 层） | 排序偏好的解析与回退 | `LibraryMenuTests` |
 | `ServerFormIssue` / `ServerFormValidator` / `ServerFormDraft` | SourceEngine | 表单校验、「空 = 不改」的凭据语义与合并 | `ServerFormTests` |
+| `ReaderJump` | AppCore | 跳页输入解析与越界处理（含全角数字、`12 / 48`） | `ReaderJumpTests` |
+| `LibraryUpdateRule` | AppCore | 「有没有新章节」的判定（顺序无关、不知道就不猜） | `LibraryUpdateRuleTests` |
+| `LibraryUpdateChecker` | App（App 层） | 批量拉取编排 + 角标写回（依赖用闭包注入） | `LibraryUpdateCheckerTests` |
+| `LibraryPreferences.DisplayMode` | App（App 层） | 布局偏好的解析与回退 | `LibraryMenuTests` |
+| `BackupBundle` | App（App 层） | 备份文件的编解码与版本闸 | `BackupFormatTests` |
+| `BackupMerge` | App（App 层） | 恢复的合并规则（**哪一条会覆盖、哪一条会跳过**） | `BackupMergeTests` |
 
 测试的组织方式刻意是**穷举而不是抽样**：
 
