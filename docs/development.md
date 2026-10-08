@@ -136,11 +136,32 @@ git -c credential.helper= -c credential.helper='store --file=<路径>/cred' push
 | App target 误编译测试文件 | 同上（App target 的例外集必须包含测试文件名） |
 | 模拟器测试卡住 | 检查是否真实等待 / 真实网络；测试必须注入 sleeper 与 stub transport |
 | ipa 内版本不对 | tag 未推送或格式不是 `vX.Y.Z` |
-| **真机「启动即闪退」** | 先取 `Documents/boot.log`（见 §8）。文件不存在 → 加载 / 签名层；停在某一步 → 那一步之后崩的 |
+| **真机「启动即闪退」，模拟器与 CI 全绿** | 十有八九是 `__objc_protorefs` 被放进了只读的 `__DATA_CONST`（见下），**不是业务代码的问题** |
+| 真机「启动即闪退」，已排除上一条 | 取 `Documents/boot.log`（见 §8）。文件不存在 → 加载 / 签名层；停在某一步 → 那一步之后崩的 |
 
 **真机崩但 CI 全绿是正常组合，别因此怀疑测试**：单元测试是以 App 为测试宿主
 跑的，等于在**模拟器**上启动过 App 且全绿；而模拟器**不校验代码签名**。
 所以「模拟器好、真机崩」这个组合本身就把范围限定在了真机专属的那一层。
+
+### Xcode 26 + iOS 18：`__objc_protorefs` 会让 App 启动即闪退
+
+这是本项目**实际踩到过的第一个真机崩溃**，也是「本地完全看不见」的典型：
+不是编译错误、不是测试能覆盖的路径、模拟器上永远复现不出来。
+
+Xcode 26 的链接器默认把 `__objc_protorefs` 放进只读的 `__DATA_CONST`
+（Xcode 16 及更早放在可写的 `__DATA`）。dyld 在 fixup 完成后会把该段标记为只读，
+而 iOS 18 的 `libobjc` 在 `map_images_nolock` 做 protocol fixup 时仍要写它 →
+在 `main()` 之前 `EXC_BAD_ACCESS (SIGBUS)`。
+
+工程已在 App target 的 Debug / Release 各加 `-Wl,-no_data_const` 规避。
+**验证方式是对着产物看，不是看标志有没有写**：
+
+```bash
+otool -l MangaTranslater.app/MangaTranslater | grep -A2 __objc_protorefs
+#   segname 必须是 __DATA；出现 __DATA_CONST 就说明标志没生效
+```
+
+CI 的 `build-ipa` 已经把这条检查固化成一个步骤，一旦回到 `__DATA_CONST` 直接失败。
 
 ## 8. 诊断日志
 

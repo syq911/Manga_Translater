@@ -13,6 +13,46 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 （开发中的改动先写在这里，发版时整体挪到下面的版本号下。）
 
+## [0.0.3] - 2026-10-08
+
+> **修 0.0.1 / 0.0.2 在真机上「启动即闪退」。这一版找到了根因。**
+
+### 🐛 修复 / Fixed
+
+- **根因：Xcode 26 的链接器把 `__objc_protorefs` 放进了只读的 `__DATA_CONST`。**
+  拆开 0.0.1 的 IPA 实证（不是推测）：
+
+  ```
+  segment=__DATA_CONST   section=__objc_protorefs
+  segment=__DATA         section=__objc_const / __objc_selrefs / __objc_data
+  LC_BUILD_VERSION  minOS=18.0.0  SDK=26.5.0
+  [LOAD] /usr/lib/libobjc.A.dylib
+  ```
+
+  Xcode 16 及更早把 `__objc_protorefs` 放在**可写**的 `__DATA`；Xcode 26 改放
+  `__DATA_CONST`。而 dyld 在 fixup 完成后会把 `__DATA_CONST` 标记为只读，
+  之后 ObjC 运行时的 `map_images_nolock` 做 protocol fixup 时仍要写它 →
+  **EXC_BAD_ACCESS (SIGBUS)，发生在 `main()` 之前**。
+
+  这一个机制把此前所有反常现象一次解释清楚：
+
+  | 现象 | 解释 |
+  |---|---|
+  | 启动即闪退，且多半没有正常 crash report | 进程死在业务代码运行之前 |
+  | 模拟器与 CI 全绿 | 模拟器运行时对 `__DATA_CONST` 的保护宽松，且不校验签名。997 个用例是**以 App 为宿主**跑的，等于已经验证过 App 能在模拟器里启动 |
+  | 只有 iOS 18 真机中招 | iOS 26 的运行时行为已与链接器对齐 |
+
+  **修复**：App target 的 Debug / Release 各加 `-Wl,-no_data_const`，
+  让链接器不使用 `__DATA_CONST`。代价是「逻辑只读」数据回到可写段、
+  牺牲一点内存优化，功能不受影响。
+
+- **CI 防回归**：打包后用 `otool` 检查 `__objc_protorefs` 的 `segname`，
+  一旦回到 `__DATA_CONST` 直接失败。这类问题本地完全看不见——
+  它既不是编译错误，也不是测试能覆盖的路径。
+
+> 0.0.2 的两项改动（启动轨迹 `boot.log`、文案表降级）予以保留：
+> 前者是这次定位问题的手段，后者消除了同类「资源缺失即闪退」的风险。
+
 ## [0.0.2] - 2026-10-08
 
 > 针对 0.0.1 **在真机上「启动即闪退」**。这一版做了两件事：把能排除的变量排掉，

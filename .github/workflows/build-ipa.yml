@@ -42,7 +42,7 @@ jobs:
             -scheme "MangaTranslater"
 
       # 归档阶段不签名（CODE_SIGNING_ALLOWED=NO）；ad-hoc 签名在打包步骤里用 codesign 完成。
-          # 版本号优先取 tag（v0.0.2 → 0.0.2），分支构建用默认值；这样 tag 与 ipa 内版本永不漂移。
+          # 版本号优先取 tag（v0.0.3 → 0.0.3），分支构建用默认值；这样 tag 与 ipa 内版本永不漂移。
       - name: Resolve marketing version
         id: ver
         run: |
@@ -52,7 +52,7 @@ jobs:
             # 分支构建的兜底版本号：与 pbxproj 的 MARKETING_VERSION 保持一致。
             # 正式发布仍然只认 tag（见 docs/development.md 的发版流程）。
             # 当前处于 0.x 开发期（源 API 契约未冻结）。
-            VERSION="0.0.2"
+            VERSION="0.0.3"
           fi
           echo "版本号: $VERSION"
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
@@ -88,6 +88,18 @@ jobs:
           mkdir -p build/Payload
           cp -R "$APP" build/Payload/
           TARGET="build/Payload/MangaTranslater.app"
+
+          # 防回归：Xcode 26 的链接器默认把 __objc_protorefs 放进**只读**的
+          # __DATA_CONST，而 iOS 18 的 libobjc 在 protocol fixup 阶段仍会写它
+          # → 在 main() 之前 EXC_BAD_ACCESS(SIGBUS)。表现是「真机启动即闪退、
+          # 模拟器与 CI 全绿」，极难自查。工程里加了 -Wl,-no_data_const 让它
+          # 回到可写的 __DATA；这条检查直接盯着产物，比「记得那个标志还在」可靠。
+          echo "=== __objc_protorefs / __objc_classlist 所在 segment ==="
+          otool -l "$TARGET/MangaTranslater" | grep -A2 -E "__objc_protorefs|__objc_classlist" | grep -E "sectname|segname" || true
+          if otool -l "$TARGET/MangaTranslater" | grep -A2 "__objc_protorefs" | grep -q "__DATA_CONST"; then
+            echo "::error::__objc_protorefs 仍在 __DATA_CONST：iOS 18 真机会在启动时崩溃"
+            exit 1
+          fi
 
           # 清掉扩展属性 / 资源分叉，避免 codesign 报 detritus
           xattr -cr "$TARGET" || true
