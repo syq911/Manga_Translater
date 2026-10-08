@@ -108,10 +108,45 @@ Xcode 16 的「同步文件夹」机制下，`MangaTranslater/` 内的源码自�
 
 死锁还占住线程池，会间接拖慢别的套件：编排器的 `Task.detached` 就绪变慢，
 一度把 5 秒的等待超时撞破，报出「只翻译了 2 页而不是 3 页」这种看起来像逻辑错的假红灯。
-所以等待型断言（`settle`）的超时给到 10 秒——**超时太紧会把「机器忙」误判成「逻辑错」**。
 
-## 9. 判定标准
+**最后是靠 CI 层面彻底解决的**（而不是继续调超时）：`test` 作业现在分两步——
 
-- `test` job 全绿 + `build-ipa` job 成功，二者缺一不可。
+```yaml
+- name: Run Vision (OCR) suite alone   # -only-testing:MangaTranslaterTests/TranslationCoreTests
+- name: Run unit tests                 # -skip-testing:MangaTranslaterTests/TranslationCoreTests
+```
+
+理由是：光把该套件内部串行化还不够，**它与其它套件并行时仍然会把线程池饿死**
+（Vision 的识别调用会阻塞协作线程池上的线程，于是别的套件里 `Task.detached`
+长时间抢不到线程）。表现就是那条「随机少了一页」——
+实测烧掉过三轮 CI，每轮 12 分钟。分开跑之后，剩下的套件只面对轻量 CPU 工作。
+
+两步都带**计数守卫**（`grep -qE "Test run with [1-9][0-9]* tests"`），
+否则「选择器写坏 → 一条没跑 → job 绿」会变成最危险的那种假绿。
+
+同时等待型断言的写法也改了（见 §9）：**等结果，不等「不忙」**。
+
+## 9. 等待型断言：等结果，不等「不忙」
+
+```swift
+// ❌ 等「现在没事干」——那是给进度条用的语义，不等于「该干的事都干完了」
+while controller.isBusy, Date() < deadline { … }
+
+// ✅ 等「我断言的那个状态到位」
+while Date() < deadline {
+    if controller.completedCount >= expected { break }
+    if controller.failureMessage != nil { break }   // 真失败时立刻停，别白等
+    …
+}
+```
+
+后者有两个好处：**语义正确**（等的是断言的对象），以及**失败可诊断**
+（再加一句 `#expect(failureMessage == nil)`，「没跑完」和「真失败」在日志里就分得开）。
+超时给得宽（30 秒）——这些用例本身是毫秒级的，慢只可能来自机器忙，
+**超时太紧会把「机器忙」误判成「逻辑错」**。
+
+## 10. 判定标准
+
+- `test` job（两个步骤都要绿） + `build-ipa` job 成功，二者缺一不可。
 - 新增或修改行为必须同步新增 / 更新测试；修 bug 时先写能复现的测试。
 - 报告用例数时以 `Test run with N tests in M suites passed` 为准。

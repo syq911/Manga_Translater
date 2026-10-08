@@ -163,15 +163,42 @@ jobs:
           echo "挑中模拟器: $UDID"
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
 
-      - name: Run unit tests
+      # 真机 Vision 那一套**单独跑**。
+      #
+      # 原因：它 CPU 密集（大图 OCR），而 Vision 的识别调用会在协作线程池上
+      # 阻塞住线程；与其它套件并行时，别的套件里 `Task.detached`（把 OCR 挪出主线程）
+      # 会长时间抢不到线程，表现成「随机少了一页」——
+      # 实测这条不稳定烧掉过三轮 CI（每次 12 分钟）。
+      # 分开跑之后，剩下的套件只面对轻量 CPU 工作，等待型断言才真正可靠。
+      - name: Run Vision (OCR) suite alone
         run: |
+          set -o pipefail
           xcodebuild test \
             -project "MangaTranslater.xcodeproj" \
             -scheme "MangaTranslater" \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_IDENTITY="" \
+            -only-testing:MangaTranslaterTests/TranslationCoreTests \
+            2>&1 | tee /tmp/ocr-tests.log
+          # 守卫：过滤没生效（跑成 0 个用例）必须红，否则就是「假绿」
+          grep -qE "Test run with [1-9][0-9]* tests" /tmp/ocr-tests.log
+
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project "MangaTranslater.xcodeproj" \
+            -scheme "MangaTranslater" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            -skip-testing:MangaTranslaterTests/TranslationCoreTests \
+            2>&1 | tee /tmp/unit-tests.log
+          # 守卫：一条都没跑（选择器写坏 / 构建失败被吞掉）必须红
+          grep -qE "Test run with [0-9]{3,} tests" /tmp/unit-tests.log
 
   # 打 v* tag 时自动建 Release 并附上 ipa（用 runner 自带 gh + GITHUB_TOKEN，不需要 PAT）
   release:

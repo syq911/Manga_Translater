@@ -56,6 +56,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   这种错本地看不出、只有编译器看得见，一轮 CI 12 分钟。
   已修，并按「每修一类问题固化一条规则」补上预检第 13 项（见下）。
 
+### 🔧 修复 / Fixed（CI 稳定性）
+
+- **真机 Vision 套件改为单独跑**（`test` 作业分成 `-only-testing` + `-skip-testing` 两步）。
+  只把它内部串行化不够：Vision 的识别调用会阻塞协作线程池上的线程，
+  于是**别的套件里 `Task.detached` 长时间抢不到线程**，
+  表现成「随机少了一页」（`TranslationControllerTests` 的预取窗口用例）——
+  实测烧掉过三轮 CI，每轮 12 分钟。
+  两步各带**计数守卫**（`grep -qE "Test run with [0-9]{3,} tests"`），
+  防止「选择器写坏 → 一条没跑 → job 绿」这种假绿。
+- 等待型断言统一改成**等结果**（`settle(expecting:)`），并先断言 `failureMessage == nil`，
+  让「没跑完」与「真失败」在日志里分得开。
+
 ### 🛠 工具 / Tooling
 
 - **修掉 `check_api_usage.py` 的一个覆盖漏洞**：它原先只保留「恰好一个 init」的类型，
