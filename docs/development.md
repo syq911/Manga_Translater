@@ -30,7 +30,7 @@ xcodebuild build -project MangaTranslater.xcodeproj -scheme MangaTranslater \
 bash tools/preflight.sh
 ```
 
-预检共 **13 项**（每一步都对应一类真实踩过的问题，修完就把规则固化进来）：
+预检共 **14 项**（每一步都对应一类真实踩过的问题，修完就把规则固化进来）：
 
 | # | 检查 | 作用 |
 |---|---|---|
@@ -46,7 +46,8 @@ bash tools/preflight.sh
 | 10 | `tools/check_demo_repo.py` | **自测仓库语料与 CI 夹具逐字一致**：生成器里的 10 个文本块与 `DemoCorpus.swift` 必须相同，图片文件名集合也要一致 |
 | 11 | `tools/build_website.py` | 重新生成法务页面；校验官网双语标记齐备、相对链接存在、**不引外部资源** |
 | 12 | `tools/check_altstore_source.py` | 用**合成发布数据**把 AltStore 清单生成逻辑离线跑一遍：字段、版本倒序、URL 形状、图标与截图是否真实存在 |
-| 13 | `tools/check_redlines.py` | 合规红线：不得出现第三方站点名、不得提交源脚本（`*.js`）、不得提交凭据 |
+| 13 | `tools/check_member_receiver.py` | **成员挂错接收者**：`Type.member(…)` 里的 member 不声明在 `Type` 上、却唯一地声明在另一个包的类型上（`LibraryCategory.categoryNameKey` 实际在 `ModelValidation` 上——这种错只有编译器看得见，一轮 CI 12 分钟） |
+| 14 | `tools/check_redlines.py` | 合规红线：不得出现第三方站点名、不得提交源脚本（`*.js`）、不得提交凭据 |
 
 **每修掉一类问题，就把规则固化进这套预检**——否则同类问题会重复消耗一轮 CI（约 10 分钟）。
 

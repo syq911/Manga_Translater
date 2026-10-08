@@ -184,16 +184,16 @@ enum BackupMerge {
 
     /// 需要新建的分类名。
     ///
-    /// 按「忽略大小写与首尾空白」去重（`LibraryCategory.categoryNameKey`），
+    /// 按「忽略大小写与首尾空白」去重（`ModelValidation.categoryNameKey`），
     /// 与「新建分类不能重名」的规则保持一致——否则恢复完会出现两个「追更」。
     static func categoryNamesToCreate(
         backup: [LibraryCategory],
         existing: [LibraryCategory]
     ) -> [String] {
-        var taken = Set(existing.map { LibraryCategory.categoryNameKey($0.name) })
+        var taken = Set(existing.map { ModelValidation.categoryNameKey($0.name) })
         var result: [String] = []
         for category in backup {
-            let key = LibraryCategory.categoryNameKey(category.name)
+            let key = ModelValidation.categoryNameKey(category.name)
             guard !key.isEmpty, !taken.contains(key) else { continue }
             taken.insert(key)
             result.append(category.name)
@@ -254,11 +254,11 @@ enum BackupMerge {
     ) -> [String: String] {
         var byName: [String: String] = [:]
         for category in localCategories {
-            byName[LibraryCategory.categoryNameKey(category.name)] = category.id
+            byName[ModelValidation.categoryNameKey(category.name)] = category.id
         }
         var remap: [String: String] = [:]
         for category in backupCategories {
-            guard let target = byName[LibraryCategory.categoryNameKey(category.name)] else { continue }
+            guard let target = byName[ModelValidation.categoryNameKey(category.name)] else { continue }
             remap[category.id] = target
         }
         return remap

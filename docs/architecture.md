@@ -799,7 +799,7 @@ App 内用一个「够用就好」的 Markdown 渲染器（`LegalDocumentView`�
   `usage` / `entitlement` + 该邮箱残留的 `login_code`——最后一项最容易被漏：
   不清验证码的话，注销后短时间内还能用旧码登录，等于注销没生效。
 
-### 3.32 预检从 9 项长到 13 项（M5 贯穿）
+### 3.32 预检从 9 项长到 13 项（M5 贯穿；后续再加到 14，见下）
 
 M5 期间新增的四条规则，都来自「真实踩过」：
 
@@ -971,3 +971,22 @@ public enum LibraryUpdateVerdict { case upToDate; case newChapters(count: Int); 
 
 「钳制」而不是「拒绝」是这里唯一一个偏软的决定，代价是用户可能没意识到自己打错了，
 所以钳制时必须同时给一句说明（`reader.jump.clampedLast`）。
+
+### 3.41 预检第 14 条：成员名对、接收者错（本轮踩到）
+
+`ModelValidation.categoryNameKey(_:)` 被写成了 `LibraryCategory.categoryNameKey(_:)`：
+**名字完全正确、拼写完全正确，只有接收者错了。** 这种错有两个特点——
+肉眼看一遍发现不了；本机没有 Swift 工具链，只能烧一轮 CI（约 12 分钟）拿到那四行报错。
+
+但它其实可以离线判定：如果 `Type.member` 里的 `member` **恰好只声明在另一个包的类型上**，
+那几乎一定是接收者写错了。`tools/check_member_receiver.py` 只查这一种情况：
+
+- 从 `Packages/*/Sources/` 收集「类型 → 成员名」与反向的「成员名 → 类型集合」；
+- 扫 `Type.member(` 形态（只看静态调用写法，`Self.`、实例调用不看）；
+- 命中条件刻意收窄：member 不在接收者上、**唯一地**属于另一个包类型、
+  且同文件里没有同名声明。
+
+**实现上踩了一个自己的坑**：第一版只记「最后一次见到的类型声明」，
+于是嵌套类型（`SourceImageLoader.Configuration`）之后的成员全被挂到嵌套类型上，
+报出的第一条「错误」就是假阳性。修法是按花括号深度维护类型栈——
+预检工具自己也会犯错，而**误报会让人不再相信预检**，所以宁可漏报。

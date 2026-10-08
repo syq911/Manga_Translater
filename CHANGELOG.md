@@ -49,9 +49,23 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   + 合并规则（分类按名去重、仓库并集、服务器按 ID、条目跳过、分类重映射）
   + 端到端（A 导出 B 恢复、**备份里搜不到凭据**、恢复不覆盖本地进度）。
 
+### 🔧 修复 / Fixed（本轮 CI 抓到的一处）
+
+- **成员挂错接收者**：`ModelValidation.categoryNameKey(_:)` 被写成
+  `LibraryCategory.categoryNameKey(_:)`（名字对、拼写对，只有接收者错）。
+  这种错本地看不出、只有编译器看得见，一轮 CI 12 分钟。
+  已修，并按「每修一类问题固化一条规则」补上预检第 13 项（见下）。
+
 ### 🛠 工具 / Tooling
 
+- **新增预检第 13 项 `tools/check_member_receiver.py`**：成员名对但接收者错。
+  判定刻意收窄到「member 唯一地声明在另一个包类型上」——扫 `Packages/*/Sources`
+  建「类型 → 成员」与「成员 → 类型」两张表，再看调用点。
+  实现时按**花括号深度**维护类型栈（第一版只记最后一次类型声明，
+  于是嵌套类型之后的成员全挂错，报出假阳性——误报会让人不再相信预检）。
+  已按「改坏 → 确认拦下 → 改回」双向验证。
 - `check_imports.py` 登记本轮新增的公开类型（`ReaderJump` / `LibraryUpdateRule` 等）。
+- 预检从 13 项变成 **14 项**（`docs/development.md` 的表已同步）。
 
 ### 📖 文档 / Docs
 
