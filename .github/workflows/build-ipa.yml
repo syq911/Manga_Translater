@@ -37,7 +37,7 @@ jobs:
             -scheme "MangaTranslater"
 
       # 归档阶段不签名（CODE_SIGNING_ALLOWED=NO）；ad-hoc 签名在打包步骤里用 codesign 完成。
-      # 版本号优先取 tag（v0.1.0 → 0.1.0），分支构建用默认值；这样 tag 与 ipa 内版本永不漂移。
+          # 版本号优先取 tag（v0.0.1 → 0.0.1），分支构建用默认值；这样 tag 与 ipa 内版本永不漂移。
       - name: Resolve marketing version
         id: ver
         run: |
@@ -46,7 +46,8 @@ jobs:
           else
             # 分支构建的兜底版本号：与 pbxproj 的 MARKETING_VERSION 保持一致。
             # 正式发布仍然只认 tag（见 docs/development.md 的发版流程）。
-            VERSION="1.0.0"
+            # 当前处于 0.x 开发期（源 API 契约未冻结），首个公开测试版是 0.0.1。
+            VERSION="0.0.1"
           fi
           echo "版本号: $VERSION"
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"

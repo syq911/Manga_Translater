@@ -67,19 +67,33 @@ bash tools/preflight.sh
 ## 4. 发版流程
 
 ```bash
-# 改代码 → 加/改测试 → 更新 CHANGELOG.md → bash tools/preflight.sh（13 项全绿）
-git commit -m "1.0.0: ..."
+# 改代码 → 加/改测试 → 更新 CHANGELOG.md → bash tools/preflight.sh（14 项全绿）
+git commit -m "0.0.1: ..."
 git push origin main
 
-git -c user.name='dev-bot' -c user.email='dev-bot@local' tag -a v1.0.0 -m "v1.0.0"
-git push origin v1.0.0
+git -c user.name='dev-bot' -c user.email='dev-bot@local' tag -a v0.0.1 -m "v0.0.1"
+git push origin v0.0.1
 ```
 
 随后轮询 Actions，确认 `build-ipa` + `test` + `release` 全绿，
 并在 Release 页确认存在 `MangaTranslater.ipa` 与 `source.json`。
 
-**版本号只从 tag 注入**（`v1.0.0` → `MARKETING_VERSION=1.0.0`），
-因此 ipa 内版本与 tag 永不漂移；分支构建用 `1.0.0` 兜底（与 pbxproj 保持一致）。
+**版本号只从 tag 注入**（`v0.0.1` → `MARKETING_VERSION=0.0.1`），
+因此 ipa 内版本与 tag 永不漂移；分支构建用 `0.0.1` 兜底（与 pbxproj 保持一致）。
+
+### 测试版必须发成「正式 Release」，不能勾 Pre-release
+
+`build_altstore_source.py` 会跳过 `draft` 与 `prerelease` 的发布——这不是疏漏，
+而是设计意图（AltStore 只该看到可长期使用的版本）。但它带来一个反直觉的后果：
+
+**若某个版本是仓库里唯一带 ipa 的发布、且被勾成 Pre-release，
+脚本会因为「找不到任何正式发布」直接以非零码退出，`release` job 标红**
+（此时 Release 与 ipa 其实已经建好了，只是 `source.json` 没生成）。
+
+所以 0.x 阶段的公开测试版同样按**正式 Release** 发。注意它同时会占据
+`releases/latest` 的位置：`source.json` 的对外地址依赖这个位置。
+将来发过 `1.0.0` 之后**不要**再补发 `0.0.x` 的正式 Release——那会让
+`latest` 倒退，AltStore 会把旧版本当成「有更新」推给用户。
 
 发版前需要人工完成的外部配置（域名、Cloudflare、Resend、DeepSeek、
 Lemon Squeezy 的结账链接等）见 **`docs/going-live.md`**。

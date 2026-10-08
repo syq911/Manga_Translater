@@ -29,12 +29,12 @@ MangaTranslater **不自带任何在线源**，内容由你自己提供：
 
 ## Status
 
-**1.0.0** — the source API contract is frozen (v1.0) and the optional hosted
-translation service is implemented end to end. See [CHANGELOG.md](CHANGELOG.md)
+**0.0.1** — first public test build（`0.x` 期间源 API 契约尚未冻结，
+首个冻结契约的稳定版是 `1.0.0`）。See [CHANGELOG.md](CHANGELOG.md)
 and [docs/](docs/).
 
-**1.0.0** —— 源 API 契约已冻结（v1.0），可选的云翻译服务也已完整落地。
-详见 [CHANGELOG.md](CHANGELOG.md) 与 [docs/](docs/)。
+**0.0.1** —— 首个公开测试版。`0.x` 期间**源 API 契约尚未冻结**，
+拿到 `1.0.0` 时契约才冻结为 v1。详见 [CHANGELOG.md](CHANGELOG.md) 与 [docs/](docs/)。
 
 ## Requirements
 
