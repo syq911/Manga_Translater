@@ -31,7 +31,14 @@ struct BackupFormatTests {
 
     private static func sampleBundle() -> BackupBundle {
         let category = LibraryCategory(id: "cat-1", name: "追更", sortOrder: 0)
-        var entry = LibraryEntry(manga: sampleManga(), categoryID: category.id)
+        // `addedAt` 显式给整秒：备份的时间戳精度是**秒**（ISO8601），
+        // 用 `Date()` 会带上亚秒部分，于是「编码再解码」必然对不上——
+        // 那不是 bug，是格式的既定精度（下面有一条用例专门钉住它）。
+        var entry = LibraryEntry(
+            manga: sampleManga(),
+            addedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            categoryID: category.id
+        )
         entry.lastReadChapterID = "demo|https://example.com/c/3"
         entry.lastReadPageIndex = 7
         entry.unreadCount = 2
@@ -63,6 +70,26 @@ struct BackupFormatTests {
     func stableBytes() throws {
         let bundle = Self.sampleBundle()
         #expect(try bundle.encoded() == (try bundle.encoded()))
+    }
+
+    @Test("时间戳精度只到秒——这是格式的既定精度，不是 bug")
+    func timestampPrecisionIsSecond() throws {
+        // 写明白比「容忍」好：备份文件里的时间是 ISO8601（不带小数秒），
+        // 恢复后 `addedAt` 之类的值会丢掉亚秒部分。备份不需要亚秒精度，
+        // 但如果哪天有人把它当 bug「修」高精度，这条用例会红——
+        // 那时请先回答：备份里的时间真的需要亚秒吗？
+        var entry = LibraryEntry(manga: Self.sampleManga())
+        entry.addedAt = Date(timeIntervalSince1970: 1_700_000_000.75)
+        let bundle = BackupBundle(
+            appVersion: "1.0.0",
+            settings: SettingsSnapshot(),
+            library: [entry]
+        )
+
+        let decoded = try BackupBundle.decoded(from: try bundle.encoded())
+
+        let restored = try #require(decoded.library.first)
+        #expect(restored.addedAt == Date(timeIntervalSince1970: 1_700_000_000))
     }
 
     @Test("只有版本号的最小文件也能读：缺的字段用默认值")

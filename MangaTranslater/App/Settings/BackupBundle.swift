@@ -109,6 +109,10 @@ struct BackupBundle: Codable, Equatable {
     ///
     /// `sortedKeys` 是刻意的：同样的数据每次导出的字节完全一致，
     /// 于是「备份文件有没有变」可以用 diff 看出来，测试里也能直接比字符串。
+    ///
+    /// 时间用 ISO8601（**不带小数秒**）：备份里的时间戳精确到秒就够了，
+    /// 而少一种格式变体就少一处跨平台解析差异。代价是「编码再解码」会丢掉亚秒部分，
+    /// 因此拿 `Date()` 直接往返比对必然不等——测试里专门有一条用例钉住这个精度。
     func encoded() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

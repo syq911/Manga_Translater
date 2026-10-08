@@ -839,15 +839,23 @@ struct ReaderJumpTests {
         #expect(ReaderJump.resolvePage(input: input, pageCount: 48) == .jump(toIndex: 11))
     }
 
+    // 注意 `-1` 不在这张表里：负号不是数字键盘上会出现的字符，
+    // 出现它说明用户输入的根本不是页码 → 走 `invalid` 那一条（见下一条用例）。
     @Test("越界：钳制到边界并说明，而不是拒绝", arguments: [
         ("0", 48, PageJumpResult.outOfRange(clampedIndex: 0)),
-        ("-1", 48, .outOfRange(clampedIndex: 0)),
         ("49", 48, .outOfRange(clampedIndex: 47)),
         ("999", 48, .outOfRange(clampedIndex: 47)),
     ])
     func outOfRangeIsClamped(input: String, pageCount: Int, expected: PageJumpResult) {
         // 打错一位数字时，「跳到最后一页」比「弹个错然后什么都不做」更接近意图
         #expect(ReaderJump.resolvePage(input: input, pageCount: pageCount) == expected)
+    }
+
+    @Test("负数按「非法输入」处理，而不是「越界钳制到第一页」", arguments: ["-1", "-12"])
+    func negativeIsInvalidNotClamped(input: String) {
+        // 判断依据是**这个字符会不会出现在数字键盘上**：不会。
+        // 于是「请输入有效的页码」比「已跳到第一页」更贴近事实。
+        #expect(ReaderJump.resolvePage(input: input, pageCount: 48) == .invalid)
     }
 
     @Test("解析不出来就明确报错（不能静默变成「点了没反应」）", arguments: [
