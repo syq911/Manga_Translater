@@ -159,7 +159,13 @@ def parse_parameters(inner):
 
 
 def collect_inits(files):
-    """类型名 → (参数列表, 出现次数)；只保留恰好一个 init 的类型。"""
+    """类型名 → 该类型**全部** init 的参数列表（按声明顺序）。
+
+    刻意保留重载：第一版只保留「恰好一个 init」的类型，
+    于是所有 Codable 类型（它们都还有一个 `init(from decoder:)`）被整体跳过——
+    实测 `SettingsSnapshot(fontScale:…, readerTheme:…)` 的参数顺序错误就这样溜进了 CI。
+    判定改为「调用只要匹配任意一个重载就算过」，与 Swift 的重载解析同义。
+    """
     collected = {}
     for path in files:
         text = strip_comments(io.open(path, encoding="utf-8").read())
@@ -191,11 +197,16 @@ def collect_inits(files):
                 continue
             params = parse_parameters(inner)
             collected.setdefault(current_type, []).append(params)
-    return {name: decls[0] for name, decls in collected.items() if len(decls) == 1}
+    return dict(collected)
 
 
 def collect_call_labels(code, type_name):
-    """找出 `TypeName(` 调用的实参标签；返回 [[按出现顺序的标签]]。
+    """找出 `TypeName(` 调用的实参标签；返回 [(标签列表, 是否有尾随闭包)]。
+
+    为什么要管尾随闭包：`SourceRuntimePool(store: s) { _ in FakeRuntime() }` 里
+    `makeRuntime:` 是由**尾随闭包**提供的，标签列表里当然没有它——
+    只按标签判「缺少必需参数」会误报（实测）。因此这里把
+    「`(` 参数括起来之后是否紧跟着 `{`」也带出去。
 
     顺序很重要：Swift 要求实参顺序与声明一致，
     `JSSourceRuntime(transport: t, configuration: c)` 会被编译器拒绝
@@ -208,7 +219,7 @@ def collect_call_labels(code, type_name):
         prefix = code[max(0, match.start() - 6):match.start()]
         if prefix.rstrip().endswith(("func", "class", "struct", "enum", "actor", "extension")):
             continue
-        inner, _ = extract_paren_group(code, match.end() - 1)
+        inner, end_index = extract_paren_group(code, match.end() - 1)
         if inner is None:
             continue
         labels = []
@@ -225,7 +236,9 @@ def collect_call_labels(code, type_name):
                     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", label):
                         labels.append(label)
                     break
-        calls.append(labels)
+        # 尾随闭包：`)` 之后允许空白/换行，但必须紧跟 `{`
+        trailing_closure = re.match(r"\s*\{", code[end_index + 1:end_index + 16]) is not None
+        calls.append((labels, trailing_closure))
     return calls
 
 
@@ -334,42 +347,55 @@ def main():
     checked = 0
     for path in consumer_files:
         code = strip_comments(io.open(path, encoding="utf-8").read())
-        for type_name, params in inits.items():
-            required = {label for label, has_default in params if label and not has_default}
-            declared_order = [label for label, _ in params if label]
-            for labels in collect_call_labels(code, type_name):
+        for type_name, candidates in inits.items():
+            for labels, trailing_closure in collect_call_labels(code, type_name):
+                # 纯位置参数调用（`SourceID("demo")`）提取不到标签，
+                # 而「标签是否声明 / 顺序是否正确」对它们没有意义 → 不判。
+                # 不排除的话会误报一整片（实测：SourceID 有 `init(_:)` 与 `init(rawValue:)`
+                # 两个重载，解析出来都像 `(rawValue)`）。
+                if not labels:
+                    continue
                 checked += 1
                 relative = os.path.relpath(path).replace("\\", "/")
-                # 写错的标签名（拼错 / 记错）在 Swift 里是编译错误，
-                # 而它既不属于「缺少必需参数」也过得了顺序检查——单独报出来。
-                # `collect_inits` 只保留**唯一 init** 的类型，所以这里不会因重载误报。
-                unknown = [label for label in labels if label not in declared_order]
-                if unknown:
-                    problems.append(
-                        (
-                            relative,
-                            f"{type_name}(...) 出现未声明的参数标签：{', '.join(unknown)}；"
-                            f"可用标签为 ({', '.join(declared_order)})",
+                # 重载语义：只要匹配**任意一个** init 就算过；
+                # 全都不匹配时，报告最接近的那个（问题最少），这样消息才指向用户想调的那个重载。
+                best = None
+                for params in candidates:
+                    required = {label for label, has_default in params if label and not has_default}
+                    declared_order = [label for label, _ in params if label]
+                    issues = []
+                    # 写错的标签名（拼错 / 记错）在 Swift 里是编译错误，
+                    # 而它既不属于「缺少必需参数」也过得了顺序检查——单独报出来。
+                    unknown = [label for label in labels if label not in declared_order]
+                    if unknown:
+                        issues.append(f"出现未声明的参数标签：{', '.join(unknown)}")
+                    missing = required - set(labels)
+                    if trailing_closure and declared_order:
+                        # 尾随闭包会绑到**声明顺序里的最后一个参数**，
+                        # 所以「最后一个必需标签缺失」不算缺参
+                        missing -= {declared_order[-1]}
+                    if missing:
+                        issues.append(f"缺少必需参数：{', '.join(sorted(missing))}")
+                    # 顺序也要对：Swift 不允许「声明是 a,b 却写成 b,a」
+                    misplaced = out_of_order(labels, declared_order)
+                    if misplaced:
+                        issues.append(
+                            f"参数顺序与声明不符：实参以 `{misplaced}` 出现在不应该的位置"
                         )
-                    )
-                missing = required - set(labels)
-                if missing:
-                    problems.append(
-                        (
-                            relative,
-                            f"{type_name}(...) 缺少必需参数：{', '.join(sorted(missing))}",
+                    if not issues:
+                        best = None
+                        break
+                    if best is None or len(issues) < len(best[1]):
+                        best = (declared_order, issues)
+                if best is not None:
+                    declared_order, issues = best
+                    for issue in issues:
+                        problems.append(
+                            (
+                                relative,
+                                f"{type_name}(...) {issue}；声明顺序为 ({', '.join(declared_order)})",
+                            )
                         )
-                    )
-                # 顺序也要对：Swift 不允许「声明是 a,b 却写成 b,a」
-                misplaced = out_of_order(labels, declared_order)
-                if misplaced:
-                    problems.append(
-                        (
-                            relative,
-                            f"{type_name}(...) 参数顺序与声明不符：实参以 `{misplaced}` 出现在 "
-                            f"不应该的位置；声明顺序为 ({', '.join(declared_order)})",
-                        )
-                    )
 
     for path, message in check_mutating_calls_inside_expect(library_files + consumer_files):
         problems.append((path, message))

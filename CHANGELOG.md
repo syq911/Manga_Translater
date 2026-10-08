@@ -58,6 +58,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 🛠 工具 / Tooling
 
+- **修掉 `check_api_usage.py` 的一个覆盖漏洞**：它原先只保留「恰好一个 init」的类型，
+  于是**所有 Codable 类型都被整体跳过**（它们都还有一个 `init(from decoder:)`）——
+  `SettingsSnapshot(fontScale:…, readerTheme:…)` 的参数顺序错误就是这样溜进了 CI。
+  现在保留重载、按「调用匹配任意一个 init 即通过」判定（与 Swift 的重载解析同义），
+  并识别**尾随闭包**（`SourceRuntimePool(store: s) { … }` 里的 `makeRuntime` 由闭包提供，
+  不该判成缺参），同时跳过纯位置参数调用（`SourceID("demo")` 提取不到标签）。
+  覆盖面从 99 个类型 / 607 处调用涨到 **116 个类型 / 673 处**；
+  已反向验证：把参数顺序改回错的，精确报出那一行。
 - **新增预检第 13 项 `tools/check_member_receiver.py`**：成员名对但接收者错。
   判定刻意收窄到「member 唯一地声明在另一个包类型上」——扫 `Packages/*/Sources`
   建「类型 → 成员」与「成员 → 类型」两张表，再看调用点。

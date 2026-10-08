@@ -39,7 +39,7 @@ struct BackupFormatTests {
         return BackupBundle(
             exportedAt: Date(timeIntervalSince1970: 1_700_000_000),
             appVersion: "1.0.0",
-            settings: SettingsSnapshot(fontScale: 1.4, readerTheme: .sepia),
+            settings: SettingsSnapshot(readerTheme: .sepia, fontScale: 1.4),
             repositories: ["https://example.com/repo.json"],
             categories: [category],
             library: [entry],

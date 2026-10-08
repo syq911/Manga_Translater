@@ -38,7 +38,7 @@ bash tools/preflight.sh
 | 2 | `tools/check_imports.py` | ①「用了某包类型却没 import」；②「跨模块调用了 non-public 成员」——纯编译器错误，本地提前挡掉；几何类型（CG*）必须有 `import CoreGraphics` |
 | 3 | `tools/check_swift_syntax.py` | 括号配平、`#if/#endif` 配对、悬空 `else`、**多行字符串缩进规则**、**JSON 编解码类型必须 Codable**、`UPDATE` 条目表必须同时写 payload、静态成员限定、主 actor 静态成员、路径片段安全化、日期写法、throwing 调用、**SwiftUI `Section(标题) { } header:/footer:` 误用**（本机无 Swift 工具链时的词法体检） |
 | 4 | `tools/check_docs_sync.py` | `docs/source-api.md` 的契约示例与测试夹具必须逐字一致；`docs/*.md` 小节编号不得重复或回退 |
-| 5 | `tools/check_api_usage.py` | **构造调用与 init 声明一致性**：改签名忘改调用方（实测踩过） |
+| 5 | `tools/check_api_usage.py` | **构造调用与 init 声明一致性**：改签名忘改调用方、参数标签写错、**参数顺序写反**（实测踩过）；支持**重载**（按「匹配任意一个 init」判定）与**尾随闭包**（尾随闭包会满足最后一个参数） |
 | 6 | Python 脚本语法 | CI 里 `release` / `pages` job 会执行的脚本 |
 | 7 | `tools/check_localization.py` | **本地化一致性（两张表）**：App 表与包层表各自 key 集合一致、代码引用的 key 必须存在、占位符类型与数量一致、`String(format:)` 实参个数吻合、**死文案**与**重复 key** 报错、两表 key 不得重名、**测试不得断言文案字面值**；先剥注释再扫描 |
 | 8 | `tools/check_hardcoded_copy.py` | **用户可见文案不得硬编码中文**（含中日韩标点）；放行 `diag` / `logSink` 等开发者日志，`// i18n-exempt` 可显式豁免并会被打印出来 |
