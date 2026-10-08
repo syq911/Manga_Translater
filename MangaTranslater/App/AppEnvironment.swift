@@ -201,7 +201,13 @@ final class AppEnvironment {
     }
 
     /// 按默认路径构建。任一步失败都降级而非崩溃，保证 App 一定能启动。
+    ///
+    /// 沿途每一步都用 `BootTrace.mark` 留痕：真机上「启动即闪退」时，
+    /// 崩溃日志可能根本不生成（进程若在加载阶段就被终止，系统不会留 crash report），
+    /// 这条轨迹就是唯一能回答「崩在哪一步」的东西。
     static func makeDefault() -> AppEnvironment {
+        BootTrace.mark("env.begin")
+
         let fileManager = FileManager.default
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
@@ -212,11 +218,13 @@ final class AppEnvironment {
         } catch {
             diag("AppEnvironment: 无法创建数据目录，退回临时目录 —— \(error.localizedDescription)")
         }
+        BootTrace.mark("env.directory")
 
         let settings = AppSettings()
         let sourceStore = SourceStore(rootDirectory: root.appendingPathComponent("SourcesRoot", isDirectory: true))
         let cookieJar = CookieJar(storageURL: root.appendingPathComponent("cookies.json", isDirectory: false))
         let localSource = LocalSource(rootDirectory: root.appendingPathComponent("LocalLibrary", isDirectory: true))
+        BootTrace.mark("env.stores")
 
         // 书架：优先持久化；失败则降级为内存并明确告知 UI
         var libraryStore: LibraryStoring
@@ -231,9 +239,14 @@ final class AppEnvironment {
             libraryStore = InMemoryLibraryStore()
             isPersistent = false
         }
+        BootTrace.mark("env.database.persistent=\(isPersistent)")
 
         diag("AppEnvironment: 启动，数据目录 = \(root.path)，书架持久化 = \(isPersistent)")
-        return AppEnvironment(
+
+        // 依赖图本体：这一段构造的实例最多（HTTP 传输、JS 沙箱池、下载归档、
+        // 译文缓存、云账号…），真机崩溃若在 App 内，最可能落在这个区间。
+        BootTrace.mark("env.graph.begin")
+        let environment = AppEnvironment(
             settings: settings,
             sourceStore: sourceStore,
             cookieJar: cookieJar,
@@ -243,6 +256,8 @@ final class AppEnvironment {
             dataDirectory: root,
             isLibraryPersistent: isPersistent
         )
+        BootTrace.mark("env.graph.done")
+        return environment
     }
 
     // MARK: 便捷访问

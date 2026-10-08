@@ -29,11 +29,11 @@ MangaTranslater **不自带任何在线源**，内容由你自己提供：
 
 ## Status
 
-**0.0.1** — first public test build（`0.x` 期间源 API 契约尚未冻结，
+**0.0.2** — early test build（`0.x` 期间源 API 契约尚未冻结，
 首个冻结契约的稳定版是 `1.0.0`）。See [CHANGELOG.md](CHANGELOG.md)
 and [docs/](docs/).
 
-**0.0.1** —— 首个公开测试版。`0.x` 期间**源 API 契约尚未冻结**，
+**0.0.2** —— 早期测试版。`0.x` 期间**源 API 契约尚未冻结**，
 拿到 `1.0.0` 时契约才冻结为 v1。详见 [CHANGELOG.md](CHANGELOG.md) 与 [docs/](docs/)。
 
 ## Requirements

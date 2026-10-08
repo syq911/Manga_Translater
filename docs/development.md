@@ -136,11 +136,38 @@ git -c credential.helper= -c credential.helper='store --file=<路径>/cred' push
 | App target 误编译测试文件 | 同上（App target 的例外集必须包含测试文件名） |
 | 模拟器测试卡住 | 检查是否真实等待 / 真实网络；测试必须注入 sleeper 与 stub transport |
 | ipa 内版本不对 | tag 未推送或格式不是 `vX.Y.Z` |
+| **真机「启动即闪退」** | 先取 `Documents/boot.log`（见 §8）。文件不存在 → 加载 / 签名层；停在某一步 → 那一步之后崩的 |
+
+**真机崩但 CI 全绿是正常组合，别因此怀疑测试**：单元测试是以 App 为测试宿主
+跑的，等于在**模拟器**上启动过 App 且全绿；而模拟器**不校验代码签名**。
+所以「模拟器好、真机崩」这个组合本身就把范围限定在了真机专属的那一层。
 
 ## 8. 诊断日志
 
 `DiagnosticsLog` 写入文档目录，App 开启文件共享后可在「文件」App 中取出；
 设置页「诊断日志」一栏显示当前体积并可清空。任何排查都先加 `diag("...")` 打点。
+
+### 启动轨迹 `boot.log`
+
+真机上「启动即闪退」时，`DiagnosticsLog` 往往是空的——它要等 App 跑到写日志
+那一步才有内容，而进程可能根本没跑起来。这时看 **`Documents/boot.log`**
+（同一个「文件」App 位置：「我的 iPhone」→ MangaTranslater），
+它由 `BootTrace` 写出，是最原始的那条线索。
+
+**两套设施刻意分开**：`BootTrace` 不碰 `DiagnosticsLog`（它有自己的轮转、
+formatter 与目录选择），也不碰 `Copy`（文案表是否可用本身就在待查清单上），
+只用最基础的 `FileManager` + `FileHandle`，任何失败一律静默。
+排查启动问题时，工具本身越简单越好。
+
+判读只有三种情况：
+
+| boot.log | 结论 |
+|---|---|
+| 文件不存在，或一行都没有 | 进程没执行到我们的代码。方向是**加载层**：代码签名、`MinimumOSVersion`、dyld 找不到符号 |
+| 停在中间某一步 | 就是那一步之后崩的。序列：`env.begin` → `env.directory` → `env.stores` → `env.database.persistent=…` → `env.graph.begin` → `env.graph.done` |
+| 一路写到 `rootView.shown` | 启动本身没问题，崩点在首屏渲染之后，与启动无关 |
+
+每次进程启动会**覆盖**上一轮的轨迹，所以文件里永远是最近一次启动的记录。
 
 ## 9. 自测仓库（本机联调）
 

@@ -110,32 +110,54 @@ def check_packages(errors, info):
 
 def check_package_localization(errors, name, path, manifest):
     """
-    包内有 `.lproj` 本地化资源时，`Package.swift` 必须声明 `defaultLocalization`。
+    包内有本地化 / 资源时，`Package.swift` 必须把该声明的都声明出来。
 
-    起因（CI 实测）：给 AppCore 加了 `Resources/{en,zh-Hans}.lproj/Localizable.strings`
-    并声明 `resources:` 之后，SwiftPM 直接拒绝解析依赖图：
+    1) 有 `.lproj` → 必须声明 `defaultLocalization`。
+       起因（CI 实测）：给 AppCore 加了 `Resources/{en,zh-Hans}.lproj/Localizable.strings`
+       并声明 `resources:` 之后，SwiftPM 直接拒绝解析依赖图：
 
-        manifest property 'defaultLocalization' not set;
-        it is required in the presence of localized resources
+           manifest property 'defaultLocalization' not set;
+           it is required in the presence of localized resources
 
-    这个错误发生在 `Resolve Swift packages` 阶段，**编译都没走到**，
-    而且报的是 manifest 的问题、指向的是包清单而不是那个 `.lproj` 目录，
-    靠读报错很难联想到「我加了本地化资源」。所以在这里提前拦。
+       这个错误发生在 `Resolve Swift packages` 阶段，**编译都没走到**，
+       而且报的是 manifest 的问题、指向的是包清单而不是那个 `.lproj` 目录，
+       靠读报错很难联想到「我加了本地化资源」。所以在这里提前拦。
+
+    2) 有 `Resources/` 目录 → 必须声明 `resources:`。
+       这条原本由 `Bundle.module` 兜底：漏声明时该符号不存在，直接编译报错。
+       但 `Copy.swift` 后来改成了**手工查找 + 找不到就降级**——因为
+       `Bundle.module` 在找不到资源包时会 `fatalError`，那在真机上换来的是
+       「启动即闪退」。编译期因此不再报错，这条保险就挪到这里；
+       否则「资源没被打进 App」会一路溜到真机上，表现成界面全是 key。
     """
     has_lproj = False
-    for dirpath, dirnames, _ in os.walk(path):
-        if any(d.endswith(".lproj") for d in dirnames):
-            has_lproj = True
-            break
-    if not has_lproj:
+    has_resources_dir = False
+    for _, dirnames, _ in os.walk(path):
+        # 跳过构建产物目录：`.build` 下会出现同名的 Resources（反向验证时踩过）。
+        dirnames[:] = [d for d in dirnames if d not in (".build", ".swiftpm")]
+        for d in dirnames:
+            if d.endswith(".lproj"):
+                has_lproj = True
+            if d == "Resources":
+                has_resources_dir = True
+
+    if not has_lproj and not has_resources_dir:
         return
+
     manifest_text = io.open(manifest, encoding="utf-8").read()
+
     # 用「参数名 + 冒号」而不是包含子串来判断：包含子串会把
     # `defaultLocalizationXXX:` 这种写错的参数名也当成合规（反向验证时踩过）。
-    if not re.search(r"\bdefaultLocalization\s*:", manifest_text):
+    if has_lproj and not re.search(r"\bdefaultLocalization\s*:", manifest_text):
         errors.append(
             f"Packages/{name} 含 .lproj 本地化资源，但 Package.swift 未声明 "
             f"defaultLocalization（SwiftPM 会直接拒绝解析依赖图）"
+        )
+
+    if has_resources_dir and not re.search(r"\bresources\s*:", manifest_text):
+        errors.append(
+            f"Packages/{name} 含 Resources/ 目录，但 Package.swift 未声明 "
+            f"resources:（资源不会被打进 App，运行期取不到文案表）"
         )
 
 

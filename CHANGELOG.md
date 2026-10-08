@@ -13,6 +13,44 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 （开发中的改动先写在这里，发版时整体挪到下面的版本号下。）
 
+## [0.0.2] - 2026-10-08
+
+> 针对 0.0.1 **在真机上「启动即闪退」**。这一版做了两件事：把能排除的变量排掉，
+> 并让 App 自己留下启动轨迹——**根因当时尚未确诊**，所以同时准备了「缩小范围」
+> 与「下次能定位」两条路。
+>
+> 已知的排查结论（都已排除，不再怀疑）：资源包 `AppCore_AppCore.bundle` 确实被
+> 复制进了 `.app`；代码里没有 `try!` / `fatalError` / `precondition`；
+> 没有动态 framework 需要嵌入；997 个用例的测试是以 App 为宿主跑的，
+> 全绿——**说明 App 在模拟器上能正常启动**，问题落在真机专属的那一层
+> （模拟器不校验代码签名）。
+
+### 🔧 修复 / Fixed
+
+- **包层文案表改为「找不到资源包就降级」，不再 `fatalError`**。
+  `Copy` 原先直接用 SwiftPM 生成的 `Bundle.module`，它在资源包缺失时会
+  直接 `fatalError`。而「资源包没被复制进 `.app`」这件事编译期看不出来、
+  模拟器测试也照样全绿（资源就在 App 旁边），只有打包上真机才暴露，
+  代价是闪退。现在改为手工查找资源包，找不到就退回 `Bundle.main`：
+  界面会显示 `error.net.timeout` 这类 key（丑，但可诊断、且不中断使用）。
+  原先那道「漏写 `resources:` 就编译报错」的保险挪到了预检：
+  `check_project.py` 新增一条——包内有 `Resources/` 就必须声明 `resources:`。
+
+### 🔍 诊断 / Diagnostics
+
+以下两项是为定位真机闪退而加，不是产品功能。
+
+- **启动轨迹 `boot.log`**（新增 `BootTrace`）：`AppEnvironment.makeDefault()`
+  沿途分步打点（`env.begin` → `env.directory` → `env.stores` →
+  `env.database.persistent=…` → `env.graph.begin` → `env.graph.done`），
+  首屏上屏后再记一条 `rootView.shown`。写在 Documents 目录，
+  `UIFileSharingEnabled` 已开启，可在「文件」App → 我的 iPhone →
+  MangaTranslater 里直接取走，不需要连电脑。读法见 `docs/development.md` §8。
+  它刻意不依赖 `DiagnosticsLog`（轮转、formatter、目录选择各自都可能出问题），
+  也不依赖 `Copy`（文案表是否可用本身就是待查项），失败一律静默。
+- **CI 打印可用的 Xcode 与 SDK 列表**：产物一直取镜像上最新的 Xcode
+  （部署目标是 iOS 18），排查时需要知道它到底是哪一代 SDK 编出来的。
+
 ## [0.0.1] - 2026-10-08
 
 > **首个公开测试版。** `0.x` 期间**源 API 契约尚未冻结**——源脚本可以写，

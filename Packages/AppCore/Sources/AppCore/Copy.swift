@@ -50,8 +50,41 @@ public enum Copy {
 
     /// 资源包本体。
     ///
-    /// `Bundle.module` 由 SwiftPM 生成；如果 `Package.swift` 里漏了
-    /// `resources:` 声明，编译器会直接报错而不是运行期悄悄失败——这是刻意选的：
-    /// 让「文案表没打进 App」变成编译错误，而不是上线后才发现界面上全是 key。
-    private static var bundle: Bundle { .module }
+    /// **刻意不用 SwiftPM 生成的 `Bundle.module`**：它在找不到资源包时会
+    /// 直接 `fatalError`。而「资源包没被复制进 `.app`」这件事，编译期看不出来、
+    /// 模拟器测试也照样全绿（测试是以 App 为宿主跑的，资源就在旁边），
+    /// 只有真正打包上真机才暴露——那时它换来的是「启动即闪退」。
+    ///
+    /// 对一个已经装到用户手机上的 App 来说，「文案退化成 key」是**能继续用**的，
+    /// 闪退不是。所以这里自己做查找：找不到就退回 `.main`，
+    /// 代价是界面显示 `error.net.timeout` 这种 key（丑，但可诊断、且不中断使用）。
+    ///
+    /// 原先靠 `Bundle.module` 换来的那道「漏写 `resources:` 就编译报错」的保险，
+    /// 改由预检 `tools/check_project.py` 承担：包内有 `Resources/` 就必须
+    /// 在 `Package.swift` 里声明 `resources:`。
+    private static var bundle: Bundle {
+        resourceBundle ?? .main
+    }
+
+    /// 手工查找 SwiftPM 生成的资源包。
+    ///
+    /// 候选顺序与 SwiftPM 生成的 accessor 一致。iOS 上资源包被平铺在 `.app/`
+    /// 根目录（已由 CI 的 `Copy → Applications/MangaTranslater.app/AppCore_AppCore.bundle`
+    /// 证实），所以第一个候选即可命中。
+    private static let resourceBundle: Bundle? = {
+        let bundleName = "AppCore_AppCore"
+        let bases: [URL?] = [
+            Bundle.main.resourceURL,
+            Bundle.main.bundleURL,
+            Bundle(for: BundleFinder.self).resourceURL,
+        ]
+        for case let base? in bases {
+            let url = base.appendingPathComponent(bundleName + ".bundle", isDirectory: true)
+            if let found = Bundle(url: url) { return found }
+        }
+        return nil
+    }()
+
+    /// `Bundle(for:)` 需要一个类。
+    private final class BundleFinder {}
 }
