@@ -51,6 +51,13 @@ struct ReaderView: View {
     @State private var preloadTask: Task<Void, Never>?
     /// 页内翻译编排器（进入阅读器时创建，退出时重置）。
     @State private var translation: TranslationController?
+    /// 顶栏 / 底栏是否可见。
+    ///
+    /// 手册 §8.2 的交互是「三区点按：左右翻页、**点中央呼出**顶栏」——
+    /// 也就是沉浸阅读时顶栏应当能收起来，而不是永久占掉一块阅读面积。
+    @State private var showsChrome = true
+    @State private var showsReaderSettings = false
+    @State private var showsJumpSheet = false
 
     /// 缩放 / 平移状态。
     @State private var zoom = ZoomState()
@@ -68,14 +75,21 @@ struct ReaderView: View {
                 content
             }
             .contentShape(Rectangle())
+            // 双击缩放；单击中央收起 / 呼出顶栏与底栏。
+            // 两个手势都挂在同一层：SwiftUI 会把「单击」推迟到双击判定窗口之后，
+            // 因此双击缩放不会顺带把工具栏收起来。
             .onTapGesture(count: 2) { toggleDoubleTap() }
+            .onTapGesture { toggleChrome() }
             .overlay(alignment: .leading) { tapZone(isLeading: true) }
             .overlay(alignment: .trailing) { tapZone(isLeading: false) }
             .gesture(dragGesture)
             .simultaneousGesture(magnifyGesture)
 
-            bottomBar
+            if showsChrome {
+                bottomBar
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: showsChrome)
         .overlay(alignment: .top) { notices }
         // Apple 端上翻译：框架要求由 SwiftUI 提供 TranslationSession，
         // 桥负责把「待翻译文本 + continuation」和这次会话对上。
@@ -88,8 +102,29 @@ struct ReaderView: View {
         }
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
+        // 收起时连导航栏一起收（返回按钮也在里面），点中央再呼出——
+        // 手册 §8.2 的「点中央呼出」就是这个意思。
+        .toolbar(showsChrome ? .visible : .hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    addToLibrary()
+                } label: {
+                    Image(systemName: isInLibrary ? "star.fill" : "star")
+                }
+                .disabled(isInLibrary)
+                .accessibilityLabel(L("source.detail.addToLibrary"))
+
+                // ⤓ 下载本话（手册 §8.2 的顶栏线框图）
+                Button {
+                    toggleDownload()
+                } label: {
+                    Image(systemName: downloadIconName)
+                }
+                .disabled(manga.sourceID == .local || session == nil)
+                .accessibilityLabel(L("reader.downloadChapter"))
+
+                // Ⓣ 翻译
                 Button {
                     toggleTranslation()
                 } label: {
@@ -99,15 +134,23 @@ struct ReaderView: View {
                 }
                 .disabled(translation == nil || isLoading)
                 .accessibilityLabel(L("translation.reader.toggle"))
-            }
 
-            ToolbarItem(placement: .topBarTrailing) {
+                // 目录：跳章 / 跳页
                 Button {
-                    addToLibrary()
+                    showsJumpSheet = true
                 } label: {
-                    Image(systemName: isInLibrary ? "star.fill" : "star")
+                    Image(systemName: "list.bullet")
                 }
-                .disabled(isInLibrary)
+                .disabled(session == nil)
+                .accessibilityLabel(L("reader.jump.title"))
+
+                // ⚙ 阅读设置
+                Button {
+                    showsReaderSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .accessibilityLabel(L("settings.section.reader"))
             }
         }
         .task { await bootstrap() }
@@ -116,6 +159,19 @@ struct ReaderView: View {
             UIApplication.shared.isIdleTimerDisabled = false
             preloadTask?.cancel()
             translation?.stopAndReset()
+        }
+        .sheet(isPresented: $showsReaderSettings) {
+            ReaderSettingsSheet(settings: environment.settings)
+        }
+        .sheet(isPresented: $showsJumpSheet) {
+            ReaderJumpSheet(
+                chapters: session?.chapters ?? [],
+                currentChapterIndex: session?.chapterIndex ?? 0,
+                pageIndex: session?.pageIndex ?? 0,
+                pageCount: pages.count,
+                onJumpToChapter: { jumpToChapter($0) },
+                onJumpToPage: { jumpToPage($0) }
+            )
         }
         .alert(L("common.notice"), isPresented: Binding(
             get: { message != nil },
@@ -277,6 +333,17 @@ struct ReaderView: View {
 
     private var bottomBar: some View {
         VStack(spacing: 6) {
+            // 本章进度条 + 页码（手册 §8.2 的底栏线框图）。
+            // 页码用等宽数字：翻页时数字宽度不变，整行不会左右抖。
+            HStack(spacing: 8) {
+                ProgressView(value: chapterProgress)
+                    .progressViewStyle(.linear)
+                Text(pageLabel)
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+
             HStack {
                 Button {
                     advance(forward: false)
@@ -287,14 +354,9 @@ struct ReaderView: View {
 
                 Spacer()
 
-                VStack(spacing: 2) {
-                    Text(session?.currentChapter?.name ?? manga.title)
-                        .font(.footnote)
-                        .lineLimit(1)
-                    Text(pageLabel)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                Text(session?.currentChapter?.name ?? manga.title)
+                    .font(.footnote)
+                    .lineLimit(1)
 
                 Spacer()
 
@@ -319,6 +381,12 @@ struct ReaderView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
+    }
+
+    /// 本章阅读进度（0…1）。页数为 0 时给 0，避免除零。
+    private var chapterProgress: Double {
+        guard let session, !pages.isEmpty else { return 0 }
+        return Double(session.pageIndex + 1) / Double(pages.count)
     }
 
     private var navigationTitle: String {
@@ -379,6 +447,14 @@ struct ReaderView: View {
         settleZoom()
     }
 
+    /// 单击中央：收起 / 呼出顶栏与底栏（手册 §8.2「点中央呼出」）。
+    ///
+    /// 没有抽出「判定层」是刻意的：这里没有判定，只有一个开关。
+    /// 硬给它编一个 `ReaderChromePolicy` 只会多一层没人读的间接。
+    private func toggleChrome() {
+        showsChrome.toggle()
+    }
+
     /// 缩放变化后把位移钳制回合法范围。
     private func settleZoom() {
         zoom.setOffset(
@@ -386,6 +462,79 @@ struct ReaderView: View {
             containerSize: containerSize,
             imageSize: currentImage?.size ?? .zero
         )
+    }
+
+    // MARK: 跳章 / 跳页
+
+    /// 跳到指定章（目录里点某一话）。
+    ///
+    /// `moveToChapter` 对「就是当前章」返回 false——此时什么都不做，
+    /// 而不是重新载入一遍（重载会让当前页闪一下）。
+    private func jumpToChapter(_ index: Int) {
+        guard var working = session, working.moveToChapter(index) else { return }
+        session = working
+        Task { await loadCurrentChapter() }
+    }
+
+    /// 跳到指定页（0 基下标）。越界已在 `ReaderJump` 里钳制过。
+    private func jumpToPage(_ index: Int) {
+        guard var working = session else { return }
+        zoom.reset()
+        working.moveToPage(index, pageCount: pages.count)
+        session = working
+        schedulePreload(around: working.pageIndex)
+        saveProgress()
+        notifyTranslation()
+    }
+
+    // MARK: 下载本话
+
+    /// 顶栏 ⤓ 的图标：跟着当前章的下载状态变，点之前就知道会发生什么。
+    private var downloadIconName: String {
+        switch currentChapterDownloadState {
+        case .downloaded: return "arrow.down.circle.fill"
+        case .active, .paused, .queued: return "stop.circle"
+        case .none, .failed, .cancelled: return "arrow.down.circle"
+        }
+    }
+
+    /// 当前章在下载上的状态。
+    ///
+    /// 复用 `ChapterDownloadState`（与章节行左滑、作品详情页同一套语义），
+    /// 于是「什么状态能做什么」只有一份定义。
+    private var currentChapterDownloadState: ChapterDownloadState {
+        guard let chapter = session?.currentChapter else { return .none }
+        if environment.isChapterDownloaded(mangaID: manga.id, chapterID: chapter.id) {
+            return .downloaded
+        }
+        guard let job = environment.downloads.job(chapterID: chapter.id) else { return .none }
+        switch job.state {
+        case .pending: return .queued
+        case .running: return .active(completed: job.completedPages, total: job.totalPages)
+        case .paused: return .paused
+        case .failed: return .failed
+        case .cancelled: return .cancelled
+        case .completed: return .downloaded
+        }
+    }
+
+    /// 顶栏 ⤓ 的动作：按当前状态决定「下载 / 取消 / 提示已下载」。
+    private func toggleDownload() {
+        guard let chapter = session?.currentChapter else { return }
+        switch ChapterActionMenu.action(for: currentChapterDownloadState) {
+        case .download:
+            Task {
+                let result = await environment.downloadChapters([chapter], of: manga)
+                if let text = result.message { message = text }
+            }
+        case .cancel:
+            Task { await environment.downloads.cancel(chapterID: chapter.id) }
+        case .deleteArchive:
+            // 顶栏**不做删除**：删归档在下载页与作品详情页都有确认流程，
+            // 而「阅读时点一下就删掉正在看的这一话」既容易误触也没必要。
+            // 这里只告诉用户「已经下好了」。
+            message = L("reader.download.alreadyDone")
+        }
     }
 
     // MARK: 行为

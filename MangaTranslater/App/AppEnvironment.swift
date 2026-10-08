@@ -299,6 +299,30 @@ final class AppEnvironment {
         try await dataSourceProvider.dataSource(for: sourceID)
     }
 
+    /// 拉某部在线作品的章节列表。
+    ///
+    /// 书架「检查更新」与作品详情页都走它：同一个契约调用只留一处实现，
+    /// 免得两边的参数拼法慢慢跑偏（这类偏差最难查——两边都「看起来对」）。
+    func loadChapters(for manga: Manga) async throws -> [Chapter] {
+        try await dataSource(for: manga.sourceID)
+            .chapterList(mangaURL: manga.url, mangaID: manga.id)
+    }
+
+    /// 书架「检查更新」用的检查器。
+    ///
+    /// 放在这里而不是视图里：`loadChapters` 闭包要跨到主 actor 上拉数据，
+    /// 「谁在哪条 actor 上」属于接线，不属于界面。
+    /// （闭包里的 `self` 必须**显式**写出来——转义闭包隐式捕获 `self` 会被编译器拒绝。）
+    func makeLibraryUpdateChecker(maxConcurrent: Int = 3) -> LibraryUpdateChecker {
+        LibraryUpdateChecker(
+            loadChapters: { manga in
+                try await self.loadChapters(for: manga)
+            },
+            libraryStore: libraryStore,
+            maxConcurrent: maxConcurrent
+        )
+    }
+
     // MARK: 登录与人工验证（契约 §8）
 
     /// 源的登录页地址（脚本声明 `loginUrl` 才有）。
@@ -539,6 +563,89 @@ final class AppEnvironment {
             diag("AppEnvironment: 加入书架失败 —— \(error.localizedDescription)")
             return nil
         }
+    }
+
+    // MARK: 备份 / 恢复
+
+    /// 组装一份备份。
+    ///
+    /// **不含任何凭据**：服务器只导出标识 / 类型 / 名称 / 地址，
+    /// 自备密钥与云服务令牌都不进来——备份文件会被丢进 iCloud、邮件、聊天窗口，
+    /// 而「密钥进钥匙串」是另一条规则（手册 §5.2），两者不能混。
+    func makeBackupBundle(now: Date = Date()) throws -> BackupBundle {
+        let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "—"
+        return BackupBundle(
+            exportedAt: now,
+            appVersion: version,
+            settings: settings.snapshot(),
+            repositories: sourceStore.repositories,
+            categories: (try? libraryStore.categories()) ?? [],
+            library: (try? libraryStore.entries(sortedBy: .recentlyAdded, categoryID: nil)) ?? [],
+            servers: serverStore.all().map { BackupServer(server: $0) }
+        )
+    }
+
+    /// 应用一份备份。
+    ///
+    /// **合并**语义（`BackupMerge` 的注释里写了为什么）：分类按名字去重、
+    /// 仓库取并集、服务器按标识去重、书架条目**已存在的跳过**——
+    /// 本地那份带着更新的阅读进度，恢复不该把它冲掉。
+    ///
+    /// 顺序是刻意的：设置放**最后**。上面任何一步失败都不该让设置被改了一半，
+    /// 那种状态用户完全看不出来（界面照常，但行为和记忆里不一样）。
+    @discardableResult
+    func restore(from bundle: BackupBundle) throws -> BackupRestoreReport {
+        // 1) 分类：按名字新建（重名的跳过），再按名字建立「备份 ID → 本地 ID」映射
+        let existingCategories = (try? libraryStore.categories()) ?? []
+        let names = BackupMerge.categoryNamesToCreate(backup: bundle.categories, existing: existingCategories)
+        for name in names {
+            _ = try libraryStore.createCategory(name: name)
+        }
+        let remap = BackupMerge.categoryRemap(
+            backupCategories: bundle.categories,
+            localCategories: (try? libraryStore.categories()) ?? []
+        )
+
+        // 2) 书架条目（已存在的跳过；分类归属按名字重映射，对不上就落回未分类）
+        let existingEntries = (try? libraryStore.entries(sortedBy: .recentlyAdded, categoryID: nil)) ?? []
+        let entries = BackupMerge.entriesToAdd(
+            backup: bundle.library,
+            existingMangaIDs: Set(existingEntries.map(\.manga.id))
+        )
+        for var entry in entries {
+            entry.categoryID = entry.categoryID.flatMap { remap[$0] }
+            _ = try libraryStore.save(entry)
+        }
+
+        // 3) 仓库（并集）
+        let repositories = BackupMerge.repositoriesToAdd(
+            backup: bundle.repositories,
+            existing: sourceStore.repositories
+        )
+        for repository in repositories {
+            _ = try sourceStore.addRepository(repository)
+        }
+
+        // 4) 服务器（无凭据，界面会显示「无凭据」提醒重填）
+        let servers = BackupMerge.serversToAdd(backup: bundle.servers, existing: serverStore.all())
+        for server in servers {
+            try serverStore.add(server.makeServer())
+        }
+
+        // 5) 设置
+        settings.apply(bundle.settings)
+
+        // 一条诊断日志写成**单个字面量**：拼接的第二段前面不是 `diag(`，
+        // 会被「用户可见文案扫描」当成漏本地化的界面文案（实测踩到）。
+        diag("AppEnvironment: 已从备份恢复 —— 分类 +\(names.count)，作品 +\(entries.count)，仓库 +\(repositories.count)，服务器 +\(servers.count)")
+
+        return BackupRestoreReport(
+            settingsApplied: true,
+            categoriesCreated: names.count,
+            entriesAdded: entries.count,
+            repositoriesAdded: repositories.count,
+            serversAdded: servers.count
+        )
     }
 
     // MARK: 页内翻译（M4）

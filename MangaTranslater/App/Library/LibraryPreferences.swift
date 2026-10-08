@@ -31,4 +31,27 @@ enum LibraryPreferences {
         }
         return parsed
     }
+
+    // MARK: 布局
+
+    /// 书架的布局。
+    enum DisplayMode: String, CaseIterable, Sendable {
+        /// 网格：封面为主（手册 §8.1 的线框图）。
+        case grid
+        /// 列表：一行一条，**唯一能用左滑手势的布局**（左滑删除挂在 `List` 上）。
+        case list
+    }
+
+    static let displayModeKey = "library.displayMode"
+
+    /// 默认网格——手册 §8.1 说的就是「收藏网格（封面+标题+未读角标）」。
+    static let defaultDisplayMode: DisplayMode = .grid
+
+    /// 解析存储值；无法识别时回退默认（与排序偏好同一套容错策略）。
+    static func displayMode(from raw: String?) -> DisplayMode {
+        guard let raw, let parsed = DisplayMode(rawValue: raw) else {
+            return defaultDisplayMode
+        }
+        return parsed
+    }
 }

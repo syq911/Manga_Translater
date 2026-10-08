@@ -172,6 +172,10 @@ public enum DestructiveAction: String, CaseIterable, Sendable {
     case deleteAccount
     /// 清除某个源的登录状态（Cookie）。
     case clearSourceCookies
+    /// 删除本地导入的文件（**删的是用户自己的文件**）。
+    case deleteLocalBook
+    /// 从备份恢复（会覆盖设置）。
+    case restoreBackup
 }
 
 /// 「要不要二次确认」的单一事实来源。
@@ -200,7 +204,9 @@ public enum DestructiveActionPolicy {
              .deleteAllArchives,
              .deleteServer,
              .clearTranslationCache,
-             .deleteAccount:
+             .deleteAccount,
+             .deleteLocalBook,
+             .restoreBackup:
             return true
 
         case .cancelDownload,
@@ -218,9 +224,11 @@ public enum DestructiveActionPolicy {
     ///
     /// 注意 `.removeFromLibrary` 是「部分不可恢复」：作品本身还能重新收藏，
     /// 但阅读进度与分类归属找不回来——所以它算 `false`，而**确认文案里必须说清**。
+    /// `.deleteLocalBook` 与 `.deleteAccount` 才算真的回不去：
+    /// 前者的文件是用户自己放进去的，删掉就没了（App 里没有回收站）。
     public static func isIrreversible(_ action: DestructiveAction) -> Bool {
         switch action {
-        case .deleteAccount:
+        case .deleteAccount, .deleteLocalBook:
             return true
         case .removeFromLibrary,
              .deleteCategory,
@@ -236,7 +244,8 @@ public enum DestructiveActionPolicy {
              .clearCoverCache,
              .clearTranslationCache,
              .signOut,
-             .clearSourceCookies:
+             .clearSourceCookies,
+             .restoreBackup:
             return false
         }
     }

@@ -24,6 +24,7 @@ PKG_TYPES = {
         "ReaderNavigation", "ChapterDownloadState", "ChapterDownloadAction",
         "ChapterActionMenu", "DestructiveAction", "DestructiveActionPolicy",
         "LibraryFilterTarget", "LibraryFilterMenu",
+        "ReaderJump", "PageJumpResult", "LibraryUpdateRule", "LibraryUpdateVerdict",
     ],
     "ComicNet": [
         "HTTPClient", "HTTPResponse", "HTTPTransporting", "CookieJar", "StoredCookie",

@@ -20,6 +20,12 @@ struct SettingsView: View {
 
     @State private var showsAgeConfirmation = false
     @State private var statusMessage: String?
+    /// 待导出的备份（非 nil 即弹系统文件面板）。
+    @State private var exportDocument: BackupDocument?
+    /// 待确认的恢复包（非 nil 即弹确认：恢复会覆盖设置）。
+    @State private var pendingRestore: BackupBundle?
+    @State private var showsRestorePicker = false
+    @State private var isBackupBusy = false
 
     private var settings: AppSettings { environment.settings }
 
@@ -30,6 +36,7 @@ struct SettingsView: View {
                 sourcesSection
                 translationSection
                 readerSection
+                backupSection
                 aboutSection
             }
             .navigationTitle(L("tab.settings"))
@@ -50,6 +57,140 @@ struct SettingsView: View {
             } message: {
                 Text(statusMessage ?? "")
             }
+            .fileExporter(
+                isPresented: Binding(
+                    get: { exportDocument != nil },
+                    set: { if !$0 { exportDocument = nil } }
+                ),
+                document: exportDocument,
+                contentType: .json,
+                defaultFilename: Self.backupFileName()
+            ) { result in
+                exportDocument = nil
+                if case let .failure(error) = result {
+                    statusMessage = String(format: L("backup.exportFailed"), error.localizedDescription)
+                }
+            }
+            .fileImporter(
+                isPresented: $showsRestorePicker,
+                allowedContentTypes: [.json]
+            ) { result in
+                handleRestoreSelection(result)
+            }
+            .confirmationDialog(
+                L("backup.confirm.title"),
+                isPresented: Binding(
+                    get: { pendingRestore != nil },
+                    set: { if !$0 { pendingRestore = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button(L("backup.confirm.action")) { applyRestore() }
+                Button(L("common.cancel"), role: .cancel) { pendingRestore = nil }
+            } message: {
+                Text(restorePrompt)
+            }
+        }
+    }
+
+    // MARK: 备份 / 恢复
+
+    private var backupSection: some View {
+        Section {
+            Button {
+                exportBackup()
+            } label: {
+                Label(L("backup.export"), systemImage: "square.and.arrow.up")
+            }
+            .disabled(isBackupBusy)
+
+            Button {
+                showsRestorePicker = true
+            } label: {
+                Label(L("backup.restore"), systemImage: "square.and.arrow.down")
+            }
+            .disabled(isBackupBusy)
+        } header: {
+            Text(L("settings.section.backup"))
+        } footer: {
+            Text(L("backup.footer"))
+        }
+    }
+
+    /// 导出用的文件名：带日期，方便同一天导多次也不互相覆盖。
+    private static func backupFileName(now: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "MangaTranslater-\(formatter.string(from: now))"
+    }
+
+    private var restorePrompt: String {
+        guard let bundle = pendingRestore else { return "" }
+        let summary = bundle.summary
+        return String(
+            format: L("backup.confirm.message"),
+            summary.categories,
+            summary.libraryEntries,
+            summary.repositories,
+            summary.servers
+        )
+    }
+
+    private func exportBackup() {
+        isBackupBusy = true
+        defer { isBackupBusy = false }
+        do {
+            let bundle = try environment.makeBackupBundle()
+            exportDocument = BackupDocument(data: try bundle.encoded())
+        } catch {
+            statusMessage = String(format: L("backup.exportFailed"), error.localizedDescription)
+        }
+    }
+
+    private func handleRestoreSelection(_ result: Result<URL, Error>) {
+        switch result {
+        case let .success(url):
+            let needsScope = url.startAccessingSecurityScopedResource()
+            defer { if needsScope { url.stopAccessingSecurityScopedResource() } }
+            do {
+                let data = try Data(contentsOf: url)
+                let bundle = try BackupBundle.decoded(from: data)
+                // 先确认再动手：恢复会覆盖设置（`DestructiveActionPolicy(.restoreBackup)`）
+                if DestructiveActionPolicy.requiresConfirmation(.restoreBackup) {
+                    pendingRestore = bundle
+                } else {
+                    applyRestore(bundle)
+                }
+            } catch {
+                statusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+        case let .failure(error):
+            statusMessage = String(format: L("backup.importFailed"), error.localizedDescription)
+        }
+    }
+
+    private func applyRestore() {
+        guard let bundle = pendingRestore else { return }
+        pendingRestore = nil
+        applyRestore(bundle)
+    }
+
+    private func applyRestore(_ bundle: BackupBundle) {
+        isBackupBusy = true
+        defer { isBackupBusy = false }
+        do {
+            let report = try environment.restore(from: bundle)
+            statusMessage = report.changedAnything
+                ? String(
+                    format: L("backup.done"),
+                    report.categoriesCreated,
+                    report.entriesAdded,
+                    report.serversAdded
+                )
+                : L("backup.nothingNew")
+        } catch {
+            statusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
@@ -113,62 +254,10 @@ struct SettingsView: View {
         return "\(backend) · \(pair)"
     }
 
+    /// 阅读器设置。**实现只有一份**（`ReaderSettingsSections`），
+    /// 阅读器内的 ⚙ 弹窗用的是同一个视图，因此两处不会分叉。
     private var readerSection: some View {
-        Section(L("settings.section.reader")) {
-            Picker(selection: Binding(
-                get: { settings.readerMode },
-                set: { settings.readerMode = $0 }
-            )) {
-                ForEach(ReaderMode.allCases, id: \.self) { mode in
-                    Text(mode.localizedName).tag(mode)
-                }
-            } label: {
-                Text(L("settings.reader.mode"))
-            }
-
-            Picker(selection: Binding(
-                get: { settings.readerTheme },
-                set: { settings.readerTheme = $0 }
-            )) {
-                ForEach(ReaderTheme.allCases, id: \.self) { theme in
-                    Text(theme.localizedName).tag(theme)
-                }
-            } label: {
-                Text(L("settings.reader.theme"))
-            }
-
-            Stepper(
-                String(format: L("settings.reader.pageSpacing"), settings.readerPageSpacing),
-                value: Binding(
-                    get: { settings.readerPageSpacing },
-                    set: { settings.readerPageSpacing = $0 }
-                ),
-                in: AppSettings.readerPageSpacingRange
-            )
-
-            Toggle(L("settings.reader.keepAwake"), isOn: Binding(
-                get: { settings.keepsScreenAwake },
-                set: { settings.keepsScreenAwake = $0 }
-            ))
-
-            Stepper(
-                String(format: L("settings.reader.preload"), settings.preloadWindow),
-                value: Binding(
-                    get: { settings.preloadWindow },
-                    set: { settings.preloadWindow = $0 }
-                ),
-                in: AppSettings.preloadWindowRange
-            )
-
-            Stepper(
-                String(format: L("settings.reader.concurrency"), settings.maxConcurrentDownloads),
-                value: Binding(
-                    get: { settings.maxConcurrentDownloads },
-                    set: { settings.maxConcurrentDownloads = $0 }
-                ),
-                in: AppSettings.maxConcurrentDownloadsRange
-            )
-        }
+        ReaderSettingsSections(settings: settings)
     }
 
     private var aboutSection: some View {

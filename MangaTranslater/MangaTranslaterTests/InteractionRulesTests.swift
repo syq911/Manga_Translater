@@ -477,6 +477,9 @@ struct DestructiveActionPolicyTests {
         .signOut: false,
         .deleteAccount: true,
         .clearSourceCookies: false,
+        // 本轮新增（O-8 / O-9）
+        .deleteLocalBook: true,
+        .restoreBackup: true,
     ]
 
     @Test("枚举全体都被矩阵覆盖（数量不对就说明漏了）")
@@ -508,14 +511,20 @@ struct DestructiveActionPolicyTests {
         #expect(DestructiveActionPolicy.requiresConfirmation(.clearTranslationCache))
     }
 
-    @Test("只有注销账号是不可恢复的")
-    func onlyAccountDeletionIsIrreversible() {
+    @Test("只有「注销账号」与「删除本地文件」是不可恢复的")
+    func irreversibleSetIsExplicit() {
+        let irreversible: Set<DestructiveAction> = [.deleteAccount, .deleteLocalBook]
         for action in DestructiveAction.allCases {
             #expect(
-                DestructiveActionPolicy.isIrreversible(action) == (action == .deleteAccount),
+                DestructiveActionPolicy.isIrreversible(action) == irreversible.contains(action),
                 "\(action.rawValue) 的可恢复性判断不对"
             )
         }
+        // 说明为什么是这两个：
+        // - 注销账号：服务端删号，回不来；
+        // - 删除本地文件：删的是**用户自己放进来的文件**，App 里没有回收站。
+        // 其余操作要么能重做（重下 / 重翻），要么能重建（封面缓存），
+        // 所以它们「算破坏性操作但不算不可逆」。
     }
 
     @Test("不可恢复的操作要「输入确认」而不是「点一下确认」")
@@ -636,6 +645,24 @@ struct LibraryMenuTests {
     @Test("nil 也回退默认（首次启动时键不存在）")
     func sortOrderParsingNil() {
         #expect(LibraryPreferences.sortOrder(from: nil) == LibraryPreferences.defaultSortOrder)
+    }
+
+    @Test("布局偏好：能识别就沿用，认不出回退默认", arguments: [
+        ("grid", LibraryPreferences.DisplayMode.grid),
+        ("list", LibraryPreferences.DisplayMode.list),
+        ("", LibraryPreferences.DisplayMode.grid),
+        ("GRID", LibraryPreferences.DisplayMode.grid),
+        ("cards", LibraryPreferences.DisplayMode.grid),
+    ])
+    func displayModeParsing(raw: String, expected: LibraryPreferences.DisplayMode) {
+        #expect(LibraryPreferences.displayMode(from: raw) == expected)
+    }
+
+    @Test("默认布局是手册 §8.1 要求的网格；读不到时也回退到它")
+    func displayModeDefaultsToGrid() {
+        #expect(LibraryPreferences.defaultDisplayMode == .grid)
+        #expect(LibraryPreferences.displayMode(from: nil) == .grid)
+        #expect(LibraryPreferences.DisplayMode.allCases.count == 2)
     }
 
     @Test("每个排序方式都能被自己序列化后再解析回来（往返一致）")
@@ -776,5 +803,113 @@ struct ServerFormTests {
         let second = draft.merged(into: nil, assigningID: "komga-nas-2")
         #expect(first.id == "komga-nas")
         #expect(second.id == "komga-nas-2")
+    }
+}
+
+// MARK: - 跳页输入（O-11）
+
+@Suite("交互 · 跳页输入")
+struct ReaderJumpTests {
+
+    @Test("直接输入页码（1 基输入 → 0 基下标）", arguments: [
+        ("1", 48, PageJumpResult.jump(toIndex: 0)),
+        ("12", 48, .jump(toIndex: 11)),
+        ("48", 48, .jump(toIndex: 47)),
+        ("  12  ", 48, .jump(toIndex: 11)),
+    ])
+    func plainInput(input: String, pageCount: Int, expected: PageJumpResult) {
+        #expect(ReaderJump.resolvePage(input: input, pageCount: pageCount) == expected)
+    }
+
+    @Test("粘贴「12 / 48」这种页码标签也能用", arguments: [
+        "12/48",
+        "12 / 48",
+        " 12 ／ 48 ",
+    ])
+    func pastedPageLabel(input: String) {
+        #expect(ReaderJump.resolvePage(input: input, pageCount: 48) == .jump(toIndex: 11))
+    }
+
+    @Test("全角数字（中文输入法）能识别", arguments: [
+        "１２",
+        "１２／４８",
+        "１２ ／ ４８",
+    ])
+    func fullWidthDigits(input: String) {
+        #expect(ReaderJump.resolvePage(input: input, pageCount: 48) == .jump(toIndex: 11))
+    }
+
+    @Test("越界：钳制到边界并说明，而不是拒绝", arguments: [
+        ("0", 48, PageJumpResult.outOfRange(clampedIndex: 0)),
+        ("-1", 48, .outOfRange(clampedIndex: 0)),
+        ("49", 48, .outOfRange(clampedIndex: 47)),
+        ("999", 48, .outOfRange(clampedIndex: 47)),
+    ])
+    func outOfRangeIsClamped(input: String, pageCount: Int, expected: PageJumpResult) {
+        // 打错一位数字时，「跳到最后一页」比「弹个错然后什么都不做」更接近意图
+        #expect(ReaderJump.resolvePage(input: input, pageCount: pageCount) == expected)
+    }
+
+    @Test("解析不出来就明确报错（不能静默变成「点了没反应」）", arguments: [
+        "", "   ", "abc", "/", "12x", "1.5", "一", "１２a",
+    ])
+    func invalidInputs(input: String) {
+        #expect(ReaderJump.resolvePage(input: input, pageCount: 48) == .invalid)
+    }
+
+    @Test("页数为 0（还没载入完）时任何输入都不算合法")
+    func zeroPageCount() {
+        #expect(ReaderJump.resolvePage(input: "1", pageCount: 0) == .invalid)
+        #expect(ReaderJump.resolvePage(input: "0", pageCount: 0) == .invalid)
+    }
+
+    @Test("全角数字与全角斜杠都被归一化，其它字符原样保留")
+    func normalization() {
+        #expect(ReaderJump.normalizedDigits("１２３") == "123")
+        #expect(ReaderJump.normalizedDigits("１２／４８") == "12/48")
+        #expect(ReaderJump.normalizedDigits("　12　") == "12")
+        #expect(ReaderJump.normalizedDigits("12a") == "12a", "不做激进清洗，交给解析层报错")
+    }
+
+    @Test("跳到页：把解析结果作用到阅读会话上，页码真的变了")
+    func jumpMovesSession() throws {
+        let manga = Manga(sourceID: SourceID("demo"), url: "https://example.com/m/1", title: "Sample")
+        let chapters = [Chapter(mangaID: manga.id, url: "https://example.com/c/1", name: "Ch 1")]
+        var session = ReaderSession(manga: manga, chapters: chapters, pageIndex: 0)
+        let pageCount = 48
+
+        let result = ReaderJump.resolvePage(input: "12", pageCount: pageCount)
+        guard case let .jump(toIndex) = result else {
+            Issue.record("期望能解析出页码，实际 \(result)")
+            return
+        }
+        // `#expect` 里不调 mutating 方法：先取返回值再断言（预检第 5 项的要求）
+        let moved = session.moveToPage(toIndex, pageCount: pageCount)
+        #expect(moved)
+        #expect(session.pageIndex == 11)
+    }
+
+    @Test("跳到最后一页：边界输入落在最后一页而不是越界")
+    func jumpToLastPage() {
+        let manga = Manga(sourceID: SourceID("demo"), url: "https://example.com/m/1", title: "Sample")
+        let chapters = [Chapter(mangaID: manga.id, url: "https://example.com/c/1", name: "Ch 1")]
+        var session = ReaderSession(manga: manga, chapters: chapters, pageIndex: 0)
+        let pageCount = 48
+
+        guard case let .outOfRange(clampedIndex) = ReaderJump.resolvePage(input: "999", pageCount: pageCount) else {
+            Issue.record("越界输入应当被钳制")
+            return
+        }
+        session.moveToPage(clampedIndex, pageCount: pageCount)
+        #expect(session.pageIndex == pageCount - 1)
+    }
+
+    @Test("跳到当前页不会产生「变化」（避免白闪一次）")
+    func jumpToSamePageIsNoop() {
+        let manga = Manga(sourceID: SourceID("demo"), url: "https://example.com/m/1", title: "Sample")
+        let chapters = [Chapter(mangaID: manga.id, url: "https://example.com/c/1", name: "Ch 1")]
+        var session = ReaderSession(manga: manga, chapters: chapters, pageIndex: 5)
+        let moved = session.moveToPage(5, pageCount: 48)
+        #expect(moved == false)
     }
 }

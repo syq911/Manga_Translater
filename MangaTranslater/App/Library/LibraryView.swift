@@ -25,6 +25,9 @@ struct LibraryView: View {
     /// 用户会以为排序坏了（解析规则见 `LibraryPreferences`）。
     @AppStorage(LibraryPreferences.sortOrderKey)
     private var sortOrderRaw = LibraryPreferences.defaultSortOrder.rawValue
+    /// 布局偏好（手册 §8.1 的收藏网格 / 可左滑的列表）。同样持久化。
+    @AppStorage(LibraryPreferences.displayModeKey)
+    private var displayModeRaw = LibraryPreferences.defaultDisplayMode.rawValue
     @State private var showsImporter = false
     @State private var message: String?
     /// 待确认的「移出书架」。
@@ -33,6 +36,32 @@ struct LibraryView: View {
     private var sortOrder: LibrarySortOrder {
         LibraryPreferences.sortOrder(from: sortOrderRaw)
     }
+
+    private var displayMode: LibraryPreferences.DisplayMode {
+        LibraryPreferences.displayMode(from: displayModeRaw)
+    }
+
+    private var displayModeBinding: Binding<LibraryPreferences.DisplayMode> {
+        Binding(
+            get: { LibraryPreferences.displayMode(from: displayModeRaw) },
+            set: { displayModeRaw = $0.rawValue }
+        )
+    }
+
+    /// 最近阅读条的内容（手册 §8.1）：按 `lastReadAt` 倒序取前几部。
+    ///
+    /// 直接用书架条目里的 `lastReadAt`，不额外查历史表：
+    /// 「最近在读的那几本」正是用户最常回来的入口。
+    private var recentEntries: [LibraryEntry] {
+        entries
+            .filter { $0.lastReadAt != nil }
+            .sorted { ($0.lastReadAt ?? .distantPast) > ($1.lastReadAt ?? .distantPast) }
+            .prefix(8)
+            .map { $0 }
+    }
+
+    /// 网格列：自适应宽度，窄屏两列、iPad 四列以上。
+    private static let gridColumns = [GridItem(.adaptive(minimum: 96), spacing: 14)]
 
     private var sortOrderBinding: Binding<LibrarySortOrder> {
         Binding(
@@ -116,12 +145,65 @@ struct LibraryView: View {
                 }
             }
 
+            if !recentEntries.isEmpty {
+                recentSection
+            }
+
+            // 手册 §8.1 的「收藏网格」，同时保留列表：
+            // 网格是封面优先的浏览方式；列表是**唯一能用左滑手势**的布局。
+            // 两种都留着，选择持久化（`LibraryPreferences.DisplayMode`）。
+            switch displayMode {
+            case .grid:
+                gridSection
+            case .list:
+                listSection
+            }
+        }
+        .listStyle(.insetGrouped)
+        // 手册 §5.3：下拉逐源拉章节列表比对
+        .refreshable { await checkForUpdates() }
+    }
+
+    /// 最近阅读条。
+    private var recentSection: some View {
+        Section {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(recentEntries) { entry in
+                        NavigationLink {
+                            ReaderView(
+                                manga: entry.manga,
+                                readingSource: environment.readingSource(for: entry.manga)
+                            )
+                        } label: {
+                            recentCell(entry)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        } header: {
+            Text(L("library.recent.title"))
+        }
+    }
+
+    private func recentCell(_ entry: LibraryEntry) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            CoverThumbnailView(manga: entry.manga, width: 68, height: 96)
+            Text(entry.manga.title)
+                .font(.caption2)
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .frame(width: 68, alignment: .leading)
+        }
+    }
+
+    private var listSection: some View {
+        Section {
             ForEach(entries) { entry in
                 NavigationLink {
-                    ReaderView(
-                        manga: entry.manga,
-                        readingSource: environment.readingSource(for: entry.manga)
-                    )
+                    readerDestination(entry)
                 } label: {
                     row(for: entry)
                 }
@@ -138,6 +220,71 @@ struct LibraryView: View {
                 }
             }
         }
+    }
+
+    private var gridSection: some View {
+        Section {
+            LazyVGrid(columns: Self.gridColumns, spacing: 14) {
+                ForEach(entries) { entry in
+                    NavigationLink {
+                        readerDestination(entry)
+                    } label: {
+                        gridCell(entry)
+                    }
+                    .buttonStyle(.plain)
+                    // 网格里没有左滑（那是 `List` 的能力），管理动作统一走长按菜单
+                    .contextMenu { rowMenu(for: entry) }
+                }
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text(String(format: L("library.grid.count"), entries.count))
+        }
+    }
+
+    @ViewBuilder
+    private func readerDestination(_ entry: LibraryEntry) -> some View {
+        ReaderView(
+            manga: entry.manga,
+            readingSource: environment.readingSource(for: entry.manga)
+        )
+    }
+
+    private func gridCell(_ entry: LibraryEntry) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ZStack(alignment: .topTrailing) {
+                CoverThumbnailView(manga: entry.manga, width: 92, height: 130)
+                if entry.unreadCount > 0 {
+                    unreadBadge(entry.unreadCount)
+                }
+            }
+            HStack(spacing: 4) {
+                if entry.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+                Text(entry.manga.title)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+            }
+            Text(progressText(for: entry))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    /// 未读角标（手册 §8.1 明确要求）。数字是「新章节数」。
+    private func unreadBadge(_ count: Int) -> some View {
+        Text(String(format: L("library.unreadBadge"), count))
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.red, in: Capsule())
+            .foregroundStyle(.white)
+            .padding(4)
     }
 
     /// 长按菜单：分类归属与置顶（相比滑动删除，这些操作更适合放在菜单里）。
@@ -189,6 +336,9 @@ struct LibraryView: View {
                     }
                     Text(entry.manga.title)
                         .lineLimit(2)
+                    if entry.unreadCount > 0 {
+                        unreadBadge(entry.unreadCount)
+                    }
                 }
                 Text(progressText(for: entry))
                     .font(.caption)
@@ -242,6 +392,10 @@ struct LibraryView: View {
                         Text(order.localizedName).tag(order)
                     }
                 }
+                Picker(L("library.display.label"), selection: displayModeBinding) {
+                    Text(L("library.display.grid")).tag(LibraryPreferences.DisplayMode.grid)
+                    Text(L("library.display.list")).tag(LibraryPreferences.DisplayMode.list)
+                }
             } label: {
                 Label(L("library.sort.label"), systemImage: "arrow.up.arrow.down")
             }
@@ -293,6 +447,41 @@ struct LibraryView: View {
     private func selectCategory(_ id: String?) {
         selectedCategoryID = id
         reload()
+    }
+
+    // MARK: 检查更新
+
+    /// 下拉刷新：先重读本地库，再逐源比对章节列表。
+    ///
+    /// 检查的是**全部**条目（不受当前分类筛选影响）——「检查更新」问的是
+    /// 「我收藏的东西有没有新的」，而不是「我此刻看着的这一页有没有新的」。
+    private func checkForUpdates() async {
+        reload()
+        let all = (try? environment.libraryStore.entries(sortedBy: .recentlyAdded, categoryID: nil)) ?? []
+        let outcome = await environment.makeLibraryUpdateChecker().check(all)
+        reload()
+        message = Self.updateMessage(outcome)
+    }
+
+    /// 把检查结果压成一句话。
+    ///
+    /// 刻意把「判断不出来」和「拉取失败」分开报：
+    /// 前者是源没给足够信息（不是错误），后者是网络/解析出问题（要去查）。
+    /// 混在一起说「部分失败」会让用户以为哪里坏了。
+    static func updateMessage(_ outcome: LibraryUpdateOutcome) -> String {
+        if outcome.checked == 0 {
+            return L("library.refresh.nothingToCheck")
+        }
+        if outcome.withNewChapters == 0, outcome.failed == 0 {
+            return String(format: L("library.refresh.allUpToDate"), outcome.checked)
+        }
+        return String(
+            format: L("library.refresh.done"),
+            outcome.checked,
+            outcome.withNewChapters,
+            outcome.newChapterTotal,
+            outcome.failed
+        )
     }
 
     private func move(_ entry: LibraryEntry, to categoryID: String?) {
